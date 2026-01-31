@@ -1,0 +1,7 @@
+# Ephemeral folders (not tracked)
+active/
+incubate/
+learn/
+
+# Keep templates
+!**/.template.md
