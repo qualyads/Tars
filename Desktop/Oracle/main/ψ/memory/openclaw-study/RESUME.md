@@ -142,4 +142,22 @@ Libraries ยังไม่ได้ integrate เข้า server.js:
 
 ---
 
-*Created: 2026-02-03T21:45:00+07:00*
+---
+
+## ข้อผิดพลาด Session ที่แล้ว (บันทึกไว้เตือนตัวเอง)
+
+| ผิด | ถูก |
+|-----|-----|
+| บอก 37 libs | จริง 50 libs |
+| บอก 10 libs ไม่มี doc | จริง 18 libs |
+| ยืนยัน "100%" โดยไม่ verify | ต้อง verify ก่อนยืนยัน |
+
+### สิ่งที่ต้องทำ Session นี้
+
+1. **Verify Before Claiming** - ใช้ command จริงก่อนบอกตัวเลข
+2. **Don't Extrapolate** - อ่านจาก source of truth
+3. **Admit Uncertainty** - ถ้าไม่แน่ใจ บอกว่าไม่แน่ใจ
+
+---
+
+*Last Updated: 2026-02-03T22:00:00+07:00*

@@ -31,6 +31,12 @@
       "ทำ 1 อย่างให้เสร็จ ดีกว่าอ่าน 10 อย่างแต่ไม่ทำ",
       "Code ที่ทำงานได้ > Document ที่อ่านแล้วลืม",
       "Learning by Doing with Real Stakes"
+    ],
+    "errorPrevention": [
+      "Verify Before Claiming - ใช้ command จริงก่อนบอกตัวเลข",
+      "Don't Extrapolate - อ่านจาก source of truth ไม่เดา",
+      "Cross-Reference - เทียบหลาย files ก่อนสรุป",
+      "Admit Uncertainty - ถ้าไม่แน่ใจ บอกว่าไม่แน่ใจ"
     ]
   },
 
