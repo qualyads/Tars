@@ -1,0 +1,32 @@
+{
+  "railway": {
+    "url": "https://oracle-agent-production-546e.up.railway.app",
+    "endpoints": {
+      "sync": "/api/sync",
+      "memory": "/api/memory",
+      "context": "/api/context"
+    }
+  },
+
+  "line": {
+    "channel_token": "fqjSuzhMaMEIv2GY84Vi+rmysaItfOWHUtn8KLew3jqZc99Xl3GdW3NQMy2slD12YlOFpWjGQBR8TEGwwHoamZNgho8c1r4ZVRKr0usmLSESjzQkfD2EJVbNFTgx4mbD28ZDt/9yEgxZMeDIiDrrxwdB04t89/1O/w1cDnyilFU=",
+    "channel_secret": "2e10a85c338be323dad8af95ca06db2d",
+    "owner_id": "Uba2ae89ff15d0ca1ea673058844f287c"
+  },
+
+  "beds24": {
+    "config_path": "/Users/tanakitchaithip/scripts/tm30/beds24-config.json",
+    "property_id": 308400
+  },
+
+  "users": {
+    "Uba2ae89ff15d0ca1ea673058844f287c": "Tars",
+    "U2ce788802c5a339d8805ad37a42bc833": "Niw"
+  },
+
+  "memory": {
+    "local_path": "/Users/tanakitchaithip/Desktop/Oracle/main/ψ/memory",
+    "sync_interval_ms": 300000,
+    "auto_sync": true
+  }
+}

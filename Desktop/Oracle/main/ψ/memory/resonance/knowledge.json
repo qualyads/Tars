@@ -1,0 +1,65 @@
+[
+  {
+    "timestamp": "2026-02-03T09:24:24.152Z",
+    "topic": "api",
+    "content": "Beds24 API requires GET /v2/authentication/token with refreshToken header",
+    "source": "manual-important",
+    "reason": "Phase 2",
+    "priority": "high",
+    "savedBy": "oracle"
+  },
+  {
+    "timestamp": "2026-02-03T09:24:33.560Z",
+    "topic": "api",
+    "content": "LINE Messaging API push endpoint: POST https://api.line.me/v2/bot/message/push with Bearer token",
+    "source": "manual-important",
+    "reason": "LINE integration",
+    "priority": "high",
+    "savedBy": "oracle"
+  },
+  {
+    "timestamp": "2026-02-03T09:24:35.638Z",
+    "topic": "business",
+    "content": "Sublease business model: 4-7x profit return. Find deals at Facebook group 203572704968779",
+    "source": "manual-important",
+    "reason": "Tars business model",
+    "priority": "high",
+    "savedBy": "oracle"
+  },
+  {
+    "timestamp": "2026-02-03T09:24:37.284Z",
+    "topic": "technical",
+    "content": "Railway deployment: code -> GitHub -> Railway auto-deploy. Use railway.json for config",
+    "source": "manual-important",
+    "reason": "Deploy workflow",
+    "priority": "high",
+    "savedBy": "oracle"
+  },
+  {
+    "timestamp": "2026-02-03T09:24:39.435Z",
+    "topic": "preference",
+    "content": "Tars prefers: 1) ทำเลยไม่ต้องถาม 2) ตัดสินใจเอง 3) World-class quality 4) Automation + Passive income",
+    "source": "manual-important",
+    "reason": "Working style",
+    "priority": "high",
+    "savedBy": "oracle"
+  },
+  {
+    "timestamp": "2026-02-03T09:24:41.938Z",
+    "topic": "contact",
+    "content": "Niw (แฟน Tars) LINE userId: U2ce788802c5a339d8805ad37a42bc833, LINE ID: nati",
+    "source": "manual-important",
+    "reason": "Family contact",
+    "priority": "high",
+    "savedBy": "oracle"
+  },
+  {
+    "timestamp": "2026-02-03T09:24:44.419Z",
+    "topic": "hotel",
+    "content": "Best Hotel Pai properties: The Arch Casa (6 rooms), Betel Palm Village (4), Paddy Fields Haven (3), 365 Vila (1). Total 14 rooms",
+    "source": "manual-important",
+    "reason": "Hotel portfolio",
+    "priority": "high",
+    "savedBy": "oracle"
+  }
+]

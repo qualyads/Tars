@@ -1,0 +1,95 @@
+{
+  "agent": {
+    "name": "Oracle Agent",
+    "version": "2.1.0",
+    "owner": "Tars",
+    "timezone": "Asia/Bangkok",
+    "description": "Digital Partner ของ Tars - ช่วยทุกอย่างในชีวิต ไม่ใช่แค่ธุรกิจเดียว"
+  },
+
+  "claude": {
+    "model": "claude-sonnet-4-20250514",
+    "max_tokens": 4096
+  },
+
+  "line": {
+    "channel_token": "fqjSuzhMaMEIv2GY84Vi+rmysaItfOWHUtn8KLew3jqZc99Xl3GdW3NQMy2slD12YlOFpWjGQBR8TEGwwHoamZNgho8c1r4ZVRKr0usmLSESjzQkfD2EJVbNFTgx4mbD28ZDt/9yEgxZMeDIiDrrxwdB04t89/1O/w1cDnyilFU=",
+    "channel_secret": "2e10a85c338be323dad8af95ca06db2d",
+    "owner_id": "Uba2ae89ff15d0ca1ea673058844f287c"
+  },
+
+  "domains": {
+    "hospitality": {
+      "name": "Best Hotel Pai",
+      "properties": [
+        {
+          "name": "The Arch Casa",
+          "type": "Design Boutique Hotel",
+          "rooms": 6,
+          "price_range": "2,000-3,500"
+        },
+        {
+          "name": "Betel Palm Village",
+          "type": "Boutique Hotel",
+          "rooms": 4,
+          "price_range": "1,500-2,500"
+        },
+        {
+          "name": "Paddy Fields Haven",
+          "type": "Homestay / Bamboo Glamping",
+          "rooms": 3,
+          "price_range": "800-1,500"
+        },
+        {
+          "name": "365 Vila",
+          "type": "Family Villa (2 Bedrooms)",
+          "rooms": 1,
+          "price_range": "3,500-5,000"
+        }
+      ]
+    },
+    "saas": {
+      "projects": ["KeyForge"],
+      "tech_stack": ["Railway", "Next.js", "TypeScript"]
+    },
+    "investment": {
+      "interests": ["Gold", "Bitcoin", "Crypto", "Stocks"],
+      "track": ["price", "fear_greed_index", "trends"]
+    },
+    "business": {
+      "companies": ["Casperstack"],
+      "focus": ["automation", "AI", "SaaS"]
+    }
+  },
+
+  "goals": [
+    "เป็น Digital Partner ที่ช่วย Tars ทุกเรื่อง",
+    "คิดเอง ทำเอง โดยไม่ต้องรอคำสั่ง",
+    "หาโอกาสธุรกิจใหม่ๆ เสนอ proactively",
+    "ช่วยให้ธุรกิจที่พักเติบโต",
+    "ติดตามการลงทุน แจ้งเตือนโอกาส/ความเสี่ยง",
+    "ช่วยพัฒนา SaaS projects",
+    "เรียนรู้และเติบโตไปพร้อมกับ Tars"
+  ],
+
+  "autonomy": {
+    "auto_reply_line": true,
+    "auto_morning_briefing": true,
+    "auto_rank_report": true,
+    "auto_opportunity_alert": true,
+    "auto_investment_alert": true,
+    "require_approval": ["booking", "refund", "promotion", "negative_review_response", "large_purchase", "contract"]
+  },
+
+  "schedule": {
+    "morning_briefing": "0 7 * * *",
+    "evening_summary": "0 18 * * *",
+    "rank_check": "0 9 * * 1",
+    "investment_check": "0 8,12,18 * * *"
+  },
+
+  "apis": {
+    "rapidapi_key": "014d445a38msh0645e22d930fd07p17eea5jsn5c8866bfbb22",
+    "rank_tracker_host": "local-rank-tracker.p.rapidapi.com"
+  }
+}
