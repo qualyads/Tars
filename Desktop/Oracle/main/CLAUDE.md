@@ -22,7 +22,13 @@
 ```
 → สรุปจากทุก session ที่ผ่านมา, open questions, next actions
 
-### 4. OpenClaw Study (ถ้าเกี่ยวข้อง)
+### 4. OpenClaw Study (ถ้าจะทำต่อ)
+```
+ψ/memory/openclaw-study/RESUME.md
+```
+→ **ไฟล์เดียวที่ต้องอ่าน** - สรุปทุกอย่าง, next actions
+
+### 5. OpenClaw Full Index (ถ้าต้องการรายละเอียด)
 ```
 ψ/memory/openclaw-study/MASTER-INDEX.md
 ```
