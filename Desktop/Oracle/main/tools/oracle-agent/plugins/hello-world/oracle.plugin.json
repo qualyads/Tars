@@ -1,0 +1,7 @@
+{
+  "id": "hello-world",
+  "name": "Hello World Plugin",
+  "description": "ตัวอย่าง Plugin สำหรับ Oracle",
+  "version": "1.0.0",
+  "triggers": ["สวัสดี", "hello"]
+}

@@ -1,7 +1,8 @@
 {
   "name": "oracle-agent",
-  "version": "2.0.0",
-  "description": "Oracle Agent - Digital Partner for Tars (Phase 2: Intelligence)",
+  "version": "5.1.0",
+  "description": "Oracle Agent - Digital Partner for Tars (Phase 3: Autonomy + OpenClaw Plugin System)",
+  "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -10,10 +11,17 @@
     "sync:status": "node scripts/sync.js status",
     "sync:pull": "node scripts/sync.js pull",
     "sync:push": "node scripts/sync.js push",
-    "hotel": "node scripts/sync.js hotel"
+    "hotel": "node scripts/sync.js hotel",
+    "memory": "node scripts/memory-sync.js",
+    "memory:sync": "node scripts/memory-sync.js sync",
+    "memory:status": "node scripts/memory-sync.js status",
+    "memory:search": "node scripts/memory-sync.js search",
+    "boot": "node -e \"import('./lib/boot-system.js').then(m => m.runBoot())\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
+    "openai": "^4.20.0",
+    "better-sqlite3": "^9.4.0",
     "express": "^4.18.2",
     "node-cron": "^3.0.3",
     "dotenv": "^16.3.1"

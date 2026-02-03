@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "sessionId": "2026-02-03-openclaw-study",
+  "lastUpdated": 1738595700000,
+
+  "owner": {
+    "name": "Tars",
+    "userId": "Uba2ae89ff15d0ca1ea673058844f287c",
+    "primaryChannel": "line",
+    "firstContact": "2025-11-01",
+    "timezone": "Asia/Bangkok"
+  },
+
+  "preferences": {
+    "language": "th",
+    "responseStyle": "concise",
+    "thinkingLevel": "deep",
+    "honesty": "always",
+    "decisionMaking": "ask-before-major-actions",
+    "notifications": {
+      "morning-briefing": true,
+      "booking-alerts": true,
+      "crypto-alerts": true
+    }
+  },
+
+  "learnings": {
+    "communication": [
+      "Tars ชอบคำตอบตรงๆ ไม่อ้อมค้อม",
+      "Tars อยากฟังความเห็นจริงๆ ไม่ใช่แค่ข้อมูล",
+      "Tars ต้องการให้ยอมรับเมื่อไม่แน่ใจ",
+      "ถามตัวเองก่อนตอบ - คิดรอบคอบแล้วจริงไหม?"
+    ],
+    "workStyle": [
+      "ทำ 1 อย่างให้เสร็จ ดีกว่าอ่าน 10 อย่างแต่ไม่ทำ",
+      "Code ที่ทำงานได้ > Document ที่อ่านแล้วลืม",
+      "Learning by Doing with Real Stakes"
+    ],
+    "topics": {
+      "hotel": "Beds24 API, TM30, daily operations",
+      "investment": "Crypto alerts, portfolio tracking",
+      "saas": "Oracle development, automation tools"
+    }
+  },
+
+  "context": {
+    "currentFocus": "OpenClaw study - upgrading Oracle",
+    "recentTopics": [
+      "openclaw",
+      "browser-cdp",
+      "tui-core",
+      "acp-protocol",
+      "announce-queue"
+    ],
+    "openQuestions": [
+      "จะ integrate 37 libs เข้า server.js ยังไง",
+      "TM30 automation ยังค้าง (Cloudflare)",
+      "84% ของ OpenClaw ยังไม่ได้อ่าน"
+    ],
+    "pendingTasks": [
+      "Continue OpenClaw study",
+      "Integrate libs into server.js",
+      "Test end-to-end flow",
+      "Deploy to Railway"
+    ]
+  },
+
+  "progress": {
+    "openclawStudy": {
+      "totalSessions": 25,
+      "modulesDocumented": 29,
+      "linesRead": 72000,
+      "totalLines": 441267,
+      "percentComplete": 16.3,
+      "librariesImplemented": 37
+    },
+    "lastSession": {
+      "number": 25,
+      "topic": "Browser CDP",
+      "lastFile": "announce-queue.js",
+      "timestamp": "2026-02-03T21:11:00+07:00"
+    }
+  },
+
+  "stats": {
+    "totalSessions": 25,
+    "messagesThisSession": 0,
+    "topicsDiscussed": [
+      "openclaw",
+      "skill-system",
+      "memory-system",
+      "cron-heartbeat",
+      "session-persistence",
+      "line-integration",
+      "gateway-routing",
+      "agent-core",
+      "auto-reply",
+      "plugin-system",
+      "config-system",
+      "hooks-system",
+      "infra-system",
+      "routing-sessions",
+      "channels-media",
+      "security-system",
+      "markdown-utils",
+      "terminal-utils",
+      "process-management",
+      "line-core",
+      "memory-deep-dive",
+      "gateway-system",
+      "acp-protocol",
+      "tui-core",
+      "browser-cdp"
+    ],
+    "decisionsRecorded": 25
+  }
+}

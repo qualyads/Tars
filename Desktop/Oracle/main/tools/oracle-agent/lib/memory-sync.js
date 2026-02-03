@@ -362,7 +362,7 @@ function extractLearnings(userId, message) {
     hotel: ['ห้อง', 'ที่พัก', 'hotel', 'booking', 'แขก', 'check-in'],
     investment: ['ลงทุน', 'หุ้น', 'stock', 'invest'],
     saas: ['keyforge', 'saas', 'project'],
-    business: ['casperstack', 'ธุรกิจ', 'business']
+    business: ['ธุรกิจ', 'business']
   };
 
   for (const [topic, keywords] of Object.entries(topicKeywords)) {

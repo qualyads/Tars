@@ -95,7 +95,7 @@ const GOALS = {
   },
 
   business: {
-    name: 'Casperstack & VisionXBrain',
+    name: 'VisionXBrain',
     objectives: [
       { id: 'leads', description: 'Track new leads and opportunities' },
       { id: 'projects', description: 'Monitor project status' },

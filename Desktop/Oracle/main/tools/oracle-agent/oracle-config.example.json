@@ -1,0 +1,84 @@
+{
+  "name": "Oracle Agent",
+  "description": "Digital Partner for Tars",
+
+  "api": {
+    "anthropic": "${ANTHROPIC_API_KEY}",
+    "openai": "${OPENAI_API_KEY}",
+    "beds24": "${BEDS24_API_KEY}"
+  },
+
+  "model": {
+    "primary": "sonnet",
+    "fallback": "haiku",
+    "maxTokens": 8192,
+    "temperature": 0.7
+  },
+
+  "line": {
+    "enabled": true,
+    "accounts": {
+      "hotel": {
+        "channelSecret": "${LINE_HOTEL_CHANNEL_SECRET}",
+        "channelAccessToken": "${LINE_HOTEL_CHANNEL_ACCESS_TOKEN}",
+        "persona": "professional"
+      },
+      "personal": {
+        "channelSecret": "${LINE_PERSONAL_CHANNEL_SECRET}",
+        "channelAccessToken": "${LINE_PERSONAL_CHANNEL_ACCESS_TOKEN}",
+        "persona": "casual"
+      }
+    }
+  },
+
+  "autonomy": {
+    "enabled": true,
+    "monitoringInterval": "15m",
+    "levels": {
+      "personal": "high",
+      "hotel": "medium",
+      "investment": "low"
+    },
+    "approvalRequired": {
+      "investment": true,
+      "promotion": true,
+      "pricing": true
+    }
+  },
+
+  "heartbeat": {
+    "enabled": true,
+    "every": "30m",
+    "morningBriefing": "07:00",
+    "eveningReport": "21:00"
+  },
+
+  "session": {
+    "persistence": true,
+    "maxHistory": 100,
+    "compaction": {
+      "mode": "safeguard",
+      "threshold": 0.7
+    }
+  },
+
+  "contextPruning": {
+    "mode": "cache-ttl",
+    "ttl": "1h",
+    "minTokens": 16000,
+    "warningThreshold": 32000
+  },
+
+  "logging": {
+    "level": "info",
+    "redactSensitive": "tools",
+    "console": true,
+    "file": true
+  },
+
+  "paths": {
+    "memory": "./ψ/memory",
+    "skills": "./skills",
+    "plugins": "./plugins"
+  }
+}

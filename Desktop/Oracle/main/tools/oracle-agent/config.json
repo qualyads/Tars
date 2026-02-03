@@ -57,7 +57,7 @@
       "track": ["price", "fear_greed_index", "trends"]
     },
     "business": {
-      "companies": ["Casperstack"],
+      "companies": [],
       "focus": ["automation", "AI", "SaaS"]
     }
   },

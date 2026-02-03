@@ -1,0 +1,18 @@
+{
+  "lastBtcPrice": 78241.55,
+  "lastGoldPrice": null,
+  "lastFearGreed": 17,
+  "lastBriefing": "2026-02-03T09:50:00.419Z",
+  "pendingApprovals": [],
+  "dailyStats": {
+    "alerts_sent": 1,
+    "suggestions_made": 0,
+    "approved": 0,
+    "rejected": 0,
+    "skipped_quiet_hours": 0,
+    "skipped_dedup": 0,
+    "skipped_heartbeat_ok": 0
+  },
+  "lastHeartbeatTexts": {},
+  "activeConversation": null
+}

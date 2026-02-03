@@ -2,17 +2,31 @@
 
 ## ⚠️ IMPORTANT: เริ่ม Session ใหม่
 
-**ถ้านี่คือ session ใหม่ → อ่านไฟล์นี้ก่อน:**
+**ถ้านี่คือ session ใหม่ → อ่านไฟล์เหล่านี้ก่อน:**
+
+### 1. Identity (ต้องอ่าน)
 ```
 ψ/memory/resonance/identity.md
 ```
+→ ข้อมูล Tars, APIs, Directives, วิธีทำงาน
 
-**ไฟล์นั้นมี:**
-- ข้อมูล Tars (เจ้าของ)
-- APIs ทั้งหมด
-- วิธีทำงาน
-- Directives สำคัญ
-- โปรเจคที่เคยทำ
+### 2. Session State (ต้องอ่าน)
+```
+ψ/memory/oracle-session.json
+```
+→ Preferences ของ Tars, context ปัจจุบัน, สิ่งที่เรียนรู้
+
+### 3. Session Learnings (แนะนำ)
+```
+ψ/memory/resonance/session-learnings.md
+```
+→ สรุปจากทุก session ที่ผ่านมา, open questions, next actions
+
+### 4. OpenClaw Study (ถ้าเกี่ยวข้อง)
+```
+ψ/memory/openclaw-study/MASTER-INDEX.md
+```
+→ Progress การศึกษา OpenClaw, modules ที่วิเคราะห์แล้ว
 
 ---
 
@@ -57,7 +71,10 @@
 - `scripts/line-webhook-server.js` - Local server (Claude Max)
 - `tools/oracle-agent/lib/autonomy.js` - Autonomy Engine
 - `tools/oracle-agent/lib/memory-sync.js` - Dual Master Memory
+- `tools/oracle-agent/lib/session-memory.js` - 🆕 Session Persistence
 - `ψ/memory/oracle-memory.json` - Master memory file
+- `ψ/memory/oracle-session.json` - 🆕 Session state & preferences
+- `ψ/memory/resonance/session-learnings.md` - 🆕 Accumulated learnings
 
 ### API Endpoints (Local:3456 / Railway)
 ```
@@ -129,6 +146,38 @@ active/context → memory/logs → memory/retrospectives → memory/learnings �
 - `/snapshot` - Capture current context
 - `rrr` - Create retrospective after session
 - `/distill` - Extract patterns into learnings
+
+---
+
+## 🧠 Session Memory System
+
+> "AI ไม่ได้จำ - AI อ่าน"
+> เก็บ state ใน files → AI อ่าน → AI รู้
+
+### หลัง Session สำคัญ
+
+1. **Update oracle-session.json**
+   - เพิ่ม learnings ใหม่
+   - Update context (currentFocus, recentTopics)
+   - บันทึก preferences ที่เปลี่ยน
+
+2. **Append to session-learnings.md**
+   - Key Decisions
+   - Key Learnings
+   - Open Questions
+   - Next Actions
+
+3. **ใช้ session-memory.js** (optional)
+   ```bash
+   node tools/oracle-agent/lib/session-memory.js record-summary
+   ```
+
+### ทำไมต้องทำ?
+
+Session ใหม่จะ:
+- อ่าน oracle-session.json → รู้ preferences ของ Tars
+- อ่าน session-learnings.md → รู้ว่าเคยคุยอะไร, ตัดสินใจอะไร
+- ไม่ต้องถามซ้ำ, ไม่ต้องเริ่มใหม่
 
 ---
 
