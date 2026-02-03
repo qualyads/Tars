@@ -1,7 +1,7 @@
 {
   "version": 1,
   "sessionId": "2026-02-03-openclaw-study",
-  "lastUpdated": 1738598400000,
+  "lastUpdated": 1738598700000,
 
   "owner": {
     "name": "Tars",
@@ -16,12 +16,7 @@
     "responseStyle": "concise",
     "thinkingLevel": "deep",
     "honesty": "always",
-    "decisionMaking": "ask-before-major-actions",
-    "notifications": {
-      "morning-briefing": true,
-      "booking-alerts": true,
-      "crypto-alerts": true
-    }
+    "decisionMaking": "ask-before-major-actions"
   },
 
   "learnings": {
@@ -29,31 +24,13 @@
       "Tars ชอบคำตอบตรงๆ ไม่อ้อมค้อม",
       "Tars อยากฟังความเห็นจริงๆ ไม่ใช่แค่ข้อมูล",
       "Tars ต้องการให้ยอมรับเมื่อไม่แน่ใจ",
-      "ถามตัวเองก่อนตอบ - คิดรอบคอบแล้วจริงไหม?"
+      "ถามตัวเองก่อนตอบ - คิดรอบคอบแล้วจริงไหม?",
+      "ตรวจสอบข้อมูลให้แน่ใจก่อนยืนยัน 100%"
     ],
     "workStyle": [
       "ทำ 1 อย่างให้เสร็จ ดีกว่าอ่าน 10 อย่างแต่ไม่ทำ",
       "Code ที่ทำงานได้ > Document ที่อ่านแล้วลืม",
       "Learning by Doing with Real Stakes"
-    ],
-    "topics": {
-      "hotel": "Beds24 API, TM30, daily operations",
-      "investment": "Crypto alerts, portfolio tracking",
-      "saas": "Oracle development, automation tools"
-    }
-  },
-
-  "context": {
-    "currentFocus": "OpenClaw study - upgrading Oracle",
-    "recentTopics": [
-      "openclaw",
-      "library-implementation",
-      "documentation-sync"
-    ],
-    "openQuestions": [
-      "จะ integrate 50 libs เข้า server.js ยังไง",
-      "TM30 automation ยังค้าง (Cloudflare)",
-      "84% ของ OpenClaw ยังไม่ได้อ่าน (แต่เป็น LOW priority)"
     ]
   },
 
@@ -62,49 +39,34 @@
       "linesRead": 72000,
       "totalLines": 441267,
       "percentComplete": 16.3,
-      "librariesImplemented": 50,
-      "librariesFromStudy": 42,
-      "librariesPreExisting": 8,
-      "documentationFiles": 16,
-      "documentationMissing": 10
+      "libraries": {
+        "total": 50,
+        "withDocCoverage": 32,
+        "withoutDoc": 18,
+        "fromStudy": 42,
+        "preExisting": 8
+      },
+      "documentation": {
+        "systemDocs": 16,
+        "libsPerDoc": "varies (1-5 libs per system doc)"
+      }
     },
     "lastSession": {
       "date": "2026-02-03",
       "lastLibrary": "announce-queue.js",
       "lastDoc": "SECURITY-SYSTEM.md",
-      "timestamp": "2026-02-03T21:30:00+07:00"
+      "timestamp": "2026-02-03T21:45:00+07:00"
     }
   },
 
   "nextSession": {
     "resumeFile": "ψ/memory/openclaw-study/RESUME.md",
     "recommendedAction": "integrate-first",
-    "options": [
-      "A: Document missing libs (10 files)",
-      "B: Integrate libs into server.js (recommended)",
-      "C: Continue reading OpenClaw (LOW priority)"
-    ]
-  },
-
-  "stats": {
-    "totalSessions": 1,
-    "topicsDiscussed": [
-      "skill-system",
-      "memory-system",
-      "cron-heartbeat",
-      "session-persistence",
-      "line-integration",
-      "gateway-routing",
-      "agent-core",
-      "auto-reply",
-      "plugin-system",
-      "config-system",
-      "hooks-system",
-      "infra-system",
-      "routing-sessions",
-      "channels-media",
-      "security-system",
-      "browser-cdp"
+    "priority": [
+      "1. Integrate core libs (config-loader, logger, retry)",
+      "2. Integrate memory (embeddings, memory-index)",
+      "3. Integrate LINE (flex-builder, line-core, reply-queue)",
+      "4. Test each step"
     ]
   }
 }

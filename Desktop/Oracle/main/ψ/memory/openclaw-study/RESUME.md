@@ -1,7 +1,7 @@
 # OpenClaw Study - Resume Point
 
 > ไฟล์นี้สำหรับ session ใหม่ อ่านไฟล์เดียวรู้ทุกอย่าง
-> Last Updated: 2026-02-03T21:30:00+07:00
+> Last Updated: 2026-02-03T21:45:00+07:00
 
 ---
 
@@ -9,92 +9,83 @@
 
 | Metric | Value |
 |--------|-------|
-| Libraries Implemented | 50 files |
-| Documentation Files | 16 files |
+| Libraries Total | 50 files |
+| Libraries with Doc Coverage | ~32 files |
+| Libraries without Doc | ~18 files |
+| Documentation Files | 16 system docs |
 | OpenClaw Progress | ~16% (72K/441K lines) |
-| Last Session Date | 2026-02-03 |
 
 ---
 
-## What Was Done
+## Libraries Inventory (50 files)
 
-### Libraries Created (50 files in lib/)
+### Covered by Documentation (~32 libs)
 
-**From OpenClaw Study (42 files):**
-```
-acp-protocol.js      announce-queue.js    boot-system.js
-browser-cdp.js       channel-manager.js   channels.js
-compaction.js        config-defaults.js   config-loader.js
-context-builder.js   context-guard.js     cron-patterns.js
-dedupe.js            embeddings.js        flex-builder.js
-hooks-system.js      inbound-debounce.js  index.js
-inline-directives.js line-core.js         line-directives.js
-line-multi-account.js logger.js           markdown.js
-media.js             memory-db.js         memory-index.js
-message-router.js    plugin-system.js     process.js
-reply-queue.js       retry.js             routing.js
-security.js          session-manager.js   session-memory.js
-skill-system.js      smart-chunking.js    status-builder.js
-terminal.js          tui-core.js          utils.js
-```
+| Doc File | Libraries Covered |
+|----------|-------------------|
+| SKILL-SYSTEM.md | skill-system.js |
+| MEMORY-SYSTEM.md | memory.js, memory-db.js, memory-index.js, embeddings.js, memory-sync.js |
+| CRON-HEARTBEAT.md | cron-patterns.js |
+| HEARTBEAT-SYSTEM.md | heartbeat.js |
+| SESSION-PERSISTENCE.md | session-memory.js |
+| LINE-INTEGRATION.md | line.js, line-directives.js, line-multi-account.js |
+| GATEWAY-ROUTING.md | channel-manager.js, message-router.js |
+| AGENT-CORE.md | boot-system.js, compaction.js, context-guard.js |
+| AUTO-REPLY.md | smart-chunking.js, inbound-debounce.js, inline-directives.js |
+| PLUGIN-SYSTEM.md | plugin-system.js |
+| CONFIG-SYSTEM.md | config-loader.js, config-defaults.js |
+| HOOKS-SYSTEM.md | hooks-system.js |
+| INFRA-SYSTEM.md | logger.js, retry.js, dedupe.js |
+| ROUTING-SESSIONS.md | routing.js, session-manager.js |
+| CHANNELS-MEDIA.md | channels.js, media.js |
+| SECURITY-SYSTEM.md | security.js |
 
-**Pre-existing (8 files):**
-```
-autonomous-scheduler.js  autonomy.js    beds24.js
-claude.js               heartbeat.js    line.js
-memory-sync.js          memory.js
-```
+### NOT Documented (~18 libs)
 
-### Documentation Created (16 files in modules/)
+**From OpenClaw Study (14 libs):**
+| Library | Purpose | Priority |
+|---------|---------|----------|
+| acp-protocol.js | Agent Communication Protocol | LOW |
+| announce-queue.js | Notification queue management | MEDIUM |
+| browser-cdp.js | Chrome DevTools Protocol | MEDIUM |
+| context-builder.js | Context assembly for AI | HIGH |
+| flex-builder.js | LINE Flex message builders | HIGH |
+| index.js | Library exports | LOW (just exports) |
+| line-core.js | LINE core functions | HIGH |
+| markdown.js | Markdown processing | MEDIUM |
+| process.js | Process management | MEDIUM |
+| reply-queue.js | Serialized message delivery | MEDIUM |
+| status-builder.js | Status reporting | LOW |
+| terminal.js | Terminal UI helpers | LOW |
+| tui-core.js | Terminal User Interface | LOW |
+| utils.js | Utility functions | LOW |
 
-```
-✅ SKILL-SYSTEM.md        ✅ MEMORY-SYSTEM.md
-✅ CRON-HEARTBEAT.md      ✅ HEARTBEAT-SYSTEM.md
-✅ SESSION-PERSISTENCE.md ✅ LINE-INTEGRATION.md
-✅ GATEWAY-ROUTING.md     ✅ AGENT-CORE.md
-✅ AUTO-REPLY.md          ✅ PLUGIN-SYSTEM.md
-✅ CONFIG-SYSTEM.md       ✅ HOOKS-SYSTEM.md
-✅ INFRA-SYSTEM.md        ✅ ROUTING-SESSIONS.md
-✅ CHANNELS-MEDIA.md      ✅ SECURITY-SYSTEM.md
-```
-
----
-
-## What's Missing (Documentation)
-
-Libraries ที่ implement แล้วแต่ยังไม่มี doc:
-
-| Library | Status | Priority |
-|---------|--------|----------|
-| process.js | ❌ No doc | MEDIUM |
-| line-core.js | ❌ No doc | HIGH |
-| acp-protocol.js | ❌ No doc | LOW |
-| tui-core.js | ❌ No doc | LOW |
-| browser-cdp.js | ❌ No doc | MEDIUM |
-| announce-queue.js | ❌ No doc | MEDIUM |
-| flex-builder.js | ❌ No doc | HIGH |
-| context-builder.js | ❌ No doc | HIGH |
-| memory-index.js | ❌ No doc | HIGH |
-| embeddings.js | ❌ No doc | HIGH |
+**Pre-existing (4 libs):**
+| Library | Purpose | Priority |
+|---------|---------|----------|
+| autonomous-scheduler.js | Autonomy scheduling | MEDIUM |
+| autonomy.js | Autonomy engine | HIGH |
+| beds24.js | Beds24 API integration | HIGH |
+| claude.js | Claude API integration | HIGH |
 
 ---
 
-## What's Missing (OpenClaw Reading)
+## What's NOT Read Yet (~84% of OpenClaw)
 
-~84% ของ OpenClaw ยังไม่ได้อ่าน:
-
-| Directory | Status | Priority |
-|-----------|--------|----------|
-| src/telegram/ | ⏳ Pending | LOW |
-| src/discord/ | ⏳ Pending | LOW |
-| src/cli/ | ⏳ Pending | LOW |
-| src/slack/ | ⏳ Pending | LOW |
-| src/whatsapp/ | ⏳ Pending | LOW |
-| src/signal/ | ⏳ Pending | LOW |
+| Directory | Priority | Note |
+|-----------|----------|------|
+| src/telegram/ | LOW | Reference only |
+| src/discord/ | LOW | Reference only |
+| src/cli/ | LOW | Reference only |
+| src/slack/ | LOW | Reference only |
+| src/whatsapp/ | LOW | Reference only |
+| src/signal/ | LOW | Reference only |
+| skills/ (~55 folders) | MEDIUM | Might be useful |
+| extensions/ (~32 folders) | LOW | Reference only |
 
 ---
 
-## What's Missing (Integration)
+## What's NOT Integrated
 
 Libraries ยังไม่ได้ integrate เข้า server.js:
 
@@ -104,35 +95,29 @@ Libraries ยังไม่ได้ integrate เข้า server.js:
 - [ ] Hooks system
 - [ ] Plugin system
 - [ ] Skill system
+- [ ] Smart chunking
+- [ ] Inbound debounce
+- [ ] Reply queue
 
 ---
 
 ## Next Actions (Priority Order)
 
-### Option A: Document First
-1. เขียน doc สำหรับ libs ที่ขาด (10 files)
-2. ทำให้ docs กับ libs ตรงกัน
-3. แล้วค่อย integrate
+### Option A: Document Missing Libs
+เขียน doc สำหรับ 18 libs ที่ขาด
+- HIGH priority: 7 libs (context-builder, flex-builder, line-core, autonomy, beds24, claude, autonomous-scheduler)
+- MEDIUM priority: 6 libs
+- LOW priority: 5 libs
 
-### Option B: Integrate First
-1. เอา libs ที่มีไป integrate เข้า server.js
-2. ทดสอบว่าทำงานได้
-3. Document ทีหลัง
+### Option B: Integrate First (Recommended)
+เอา libs ที่มีไป integrate เข้า server.js
+1. เริ่มจาก core: config-loader, logger, retry
+2. แล้ว memory: embeddings, memory-index
+3. แล้ว LINE: flex-builder, line-core, reply-queue
+4. ทดสอบทีละ step
 
 ### Option C: Continue Reading
-1. อ่าน OpenClaw ต่อ (84% เหลือ)
-2. แต่ส่วนที่เหลือเป็น LOW priority (telegram, discord, cli)
-
----
-
-## Recommendation
-
-**เลือก Option B (Integrate First)**
-
-เหตุผล:
-1. มี code พร้อมแล้ว 42 files
-2. Code ที่ใช้งานได้ > Documentation ที่อ่านแล้วลืม
-3. ส่วนที่ยังไม่อ่านเป็น LOW priority
+อ่าน OpenClaw ต่อ (84% เหลือ) - แต่เป็น LOW priority
 
 ---
 
@@ -142,8 +127,19 @@ Libraries ยังไม่ได้ integrate เข้า server.js:
 1. This file (RESUME.md) ← คุณอ่านแล้ว
 2. ψ/memory/oracle-session.json ← Preferences
 3. tools/oracle-agent/lib/index.js ← Library exports
+4. tools/oracle-agent/server.js ← Current server (if integrating)
 ```
 
 ---
 
-*Created: 2026-02-03*
+## Verification Checklist
+
+- [x] 50 lib files (verified: ls lib/*.js | wc -l = 50)
+- [x] 16 doc files (verified: ls modules/*.md | wc -l = 16)
+- [x] ~32 libs have doc coverage
+- [x] ~18 libs without doc coverage
+- [x] Pre-existing libs: 8 (but only 4 truly pre-existing, others modified)
+
+---
+
+*Created: 2026-02-03T21:45:00+07:00*

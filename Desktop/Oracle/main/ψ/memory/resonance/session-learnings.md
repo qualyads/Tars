@@ -1,7 +1,6 @@
 # Session Learnings - Oracle Knowledge Base
 
-> ไฟล์นี้เก็บ "สิ่งที่เรียนรู้" จากทุก session
-> Last Updated: 2026-02-03T21:30:00+07:00
+> Last Updated: 2026-02-03T21:45:00+07:00
 
 ---
 
@@ -12,6 +11,7 @@
 - คิดรอบคอบก่อนเสนอ
 - ยอมรับข้อจำกัด
 - ถามตัวเองก่อนตอบ: "คิดมารอบคอบแล้วจริงไหม?"
+- **ตรวจสอบข้อมูลให้แน่ใจก่อนยืนยัน 100%**
 
 ### สิ่งที่ Tars อยากฟัง
 - ความรู้สึกจริงๆ ของผม
@@ -27,81 +27,89 @@
 > "AI ไม่ได้จำ - AI อ่าน"
 > เก็บ state ใน files → AI อ่าน → AI รู้
 
-### Progress Summary
+### Verified Progress
 
-| Metric | Value |
-|--------|-------|
-| OpenClaw Lines Read | ~72,000 / 441,267 |
-| Progress | ~16.3% |
-| Libraries Implemented | 50 files (42 new + 8 pre-existing) |
-| Documentation Files | 16 files |
+| Metric | Value | Verified |
+|--------|-------|----------|
+| Lib files | 50 | `ls lib/*.js \| wc -l` |
+| Doc files | 16 | `ls modules/*.md \| wc -l` |
+| Libs with doc coverage | ~32 | mapped manually |
+| Libs without doc | ~18 | mapped manually |
+| OpenClaw progress | ~16% | estimated |
 
-### What Was Studied & Documented
+### Documentation Coverage
 
-1. **Skill System** - SKILL.md structure, progressive disclosure
-2. **Memory System** - Hybrid search (BM25 + Vector), SQLite
-3. **Cron/Heartbeat** - Schedule types, isolated sessions
-4. **Session Persistence** - SessionEntry, JSONL transcripts
-5. **LINE Integration** - Rich messages, directives, multi-account
-6. **Gateway/Routing** - ChannelManager, AbortController pattern
-7. **Agent Core** - Bootstrap files, auto-compaction
-8. **Auto-Reply** - Inline directives, smart chunking, debounce
-9. **Plugin System** - Discovery, lifecycle hooks
-10. **Config System** - Pipeline, $include, env substitution
-11. **Hooks System** - Event registry, pub-sub
-12. **Infra System** - Logging, retry, error classification
-13. **Routing & Sessions** - Route resolution, session keys
-14. **Channels & Media** - Chat normalization, MIME detection
-15. **Security System** - Injection detection, path traversal
-16. **Process Management** - Command queue, lanes, timeout
+16 system docs cover ~32 libraries:
 
-### What Was Implemented (No Doc Yet)
+```
+SKILL-SYSTEM.md        → 1 lib
+MEMORY-SYSTEM.md       → 5 libs
+CRON-HEARTBEAT.md      → 1 lib
+HEARTBEAT-SYSTEM.md    → 1 lib
+SESSION-PERSISTENCE.md → 1 lib
+LINE-INTEGRATION.md    → 3 libs
+GATEWAY-ROUTING.md     → 2 libs
+AGENT-CORE.md          → 3 libs
+AUTO-REPLY.md          → 3 libs
+PLUGIN-SYSTEM.md       → 1 lib
+CONFIG-SYSTEM.md       → 2 libs
+HOOKS-SYSTEM.md        → 1 lib
+INFRA-SYSTEM.md        → 3 libs
+ROUTING-SESSIONS.md    → 2 libs
+CHANNELS-MEDIA.md      → 2 libs
+SECURITY-SYSTEM.md     → 1 lib
+```
 
-| Library | Purpose |
-|---------|---------|
-| process.js | Command queue, process management |
-| line-core.js | LINE core functions, webhook, chunking |
-| acp-protocol.js | Agent Communication Protocol |
-| tui-core.js | Terminal User Interface |
-| browser-cdp.js | Chrome DevTools Protocol |
-| announce-queue.js | Notification queue management |
-| flex-builder.js | LINE Flex message builders |
-| context-builder.js | Context assembly |
-| memory-index.js | Hybrid search index |
-| embeddings.js | Multi-provider embeddings |
+### Libraries Without Documentation (~18)
+
+**HIGH Priority (7):**
+- context-builder.js
+- flex-builder.js
+- line-core.js
+- autonomy.js (pre-existing)
+- beds24.js (pre-existing)
+- claude.js (pre-existing)
+- autonomous-scheduler.js (pre-existing)
+
+**MEDIUM Priority (6):**
+- announce-queue.js
+- browser-cdp.js
+- markdown.js
+- process.js
+- reply-queue.js
+
+**LOW Priority (5):**
+- acp-protocol.js
+- index.js (just exports)
+- status-builder.js
+- terminal.js
+- tui-core.js
+- utils.js
 
 ---
 
 ## Key Patterns Learned
 
 ### 1. Message Handling
-- **Inbound Debounce** - รอ 800ms รวม rapid messages
-- **Smart Chunking** - Fence-aware, ไม่ตัดกลาง code block
-- **Human Delay** - 800-2500ms ระหว่าง chunks
-- **Reply Queue** - Serialize delivery
+- Inbound Debounce - รอ 800ms รวม rapid messages
+- Smart Chunking - Fence-aware, ไม่ตัดกลาง code block
+- Human Delay - 800-2500ms ระหว่าง chunks
+- Reply Queue - Serialize delivery
 
 ### 2. Error Resilience
-- **Exponential Backoff + Jitter** - ป้องกัน thundering herd
-- **Error Classification** - transient/fatal/config/abort
-- **Deduplication** - Cache ผลลัพธ์ ไม่ทำซ้ำ
+- Exponential Backoff + Jitter
+- Error Classification (transient/fatal/config/abort)
+- Deduplication Cache
 
 ### 3. Memory
-- **Hybrid Search** - BM25 + Vector cosine
-- **Chunking with Overlap** - Context continuity
-- **Incremental Sync** - Hash + mtime tracking
+- Hybrid Search (BM25 + Vector)
+- Chunking with Overlap
+- Incremental Sync
 
 ### 4. Architecture
-- **Plugin System** - Discover, load, lifecycle
-- **Hooks System** - Event pub-sub
-- **Config Pipeline** - path → include → env → validate → defaults
-
----
-
-## Open Questions
-
-- [ ] จะ integrate 50 libs เข้า server.js ยังไง?
-- [ ] TM30 automation (Cloudflare challenge)
-- [ ] 84% ของ OpenClaw ยังไม่ได้อ่าน (LOW priority)
+- Plugin System with lifecycle hooks
+- Event-based Hooks System
+- Config Pipeline (path → include → env → validate → defaults)
 
 ---
 
@@ -109,13 +117,14 @@
 
 **Resume File:** `ψ/memory/openclaw-study/RESUME.md`
 
-**Recommended:** Integrate libraries into server.js
+**Recommended Action:** Integrate libraries into server.js
 
-**Options:**
-- A: Document missing libs (10 files)
-- B: Integrate libs into server.js (recommended)
-- C: Continue reading OpenClaw (LOW priority)
+**Integration Order:**
+1. Core: config-loader, logger, retry
+2. Memory: embeddings, memory-index
+3. LINE: flex-builder, line-core, reply-queue
+4. Test each step
 
 ---
 
-*Last Updated: 2026-02-03T21:30:00+07:00*
+*Last Updated: 2026-02-03T21:45:00+07:00*
