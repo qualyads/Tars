@@ -72,6 +72,7 @@ import SubAgentManager from './lib/subagent.js';
 import beds24 from './lib/beds24.js';
 import imageGen from './lib/image-gen.js';
 import autonomy from './lib/autonomy.js';
+import hotelNotify from './lib/hotel-notifications.js';
 
 // Phase 5.3: Tier 1-3 OpenClaw Features
 import typingIndicators from './lib/typing-indicators.js';
@@ -474,11 +475,10 @@ app.post('/webhook/line', async (req, res) => {
               if (bookings.length > 0) {
                 contextString += `\n\n**รายละเอียดการจอง:**`;
                 bookings.forEach((b, i) => {
-                  const guestName = `${b.firstName || ''} ${b.lastName || ''}`.trim() || 'Guest';
-                  const roomName = b.apiMessage?.match(/Room: ([^\n]+)/)?.[1] || `Room ${b.roomId}`;
+                  // Use enriched data from beds24.js (roomName, roomNameTh, guestName)
                   const nights = Math.ceil((new Date(b.departure) - new Date(b.arrival)) / (1000 * 60 * 60 * 24));
-                  contextString += `\n${i+1}. **${guestName}** (${b.country?.toUpperCase() || 'N/A'})`;
-                  contextString += `\n   - ห้อง: ${roomName}`;
+                  contextString += `\n${i+1}. **${b.guestName || 'Guest'}** (${b.country?.toUpperCase() || 'N/A'})`;
+                  contextString += `\n   - ห้อง: ${b.roomSystemId || ''} ${b.roomNameTh || b.roomName || `Room ${b.roomId}`}`;
                   contextString += `\n   - วันที่: ${b.arrival} → ${b.departure} (${nights} คืน)`;
                   contextString += `\n   - ผู้เข้าพัก: ${b.numAdult} ผู้ใหญ่${b.numChild > 0 ? `, ${b.numChild} เด็ก` : ''}`;
                   contextString += `\n   - ราคา: ฿${b.price?.toLocaleString() || 'N/A'}`;
@@ -487,7 +487,7 @@ app.post('/webhook/line', async (req, res) => {
 
                 const totalRevenue = bookings.reduce((sum, b) => sum + (b.price || 0), 0);
                 const uniqueRooms = new Set(bookings.map(b => b.roomId)).size;
-                contextString += `\n\n**สรุป:** ${uniqueRooms} ห้อง booked, ${11 - uniqueRooms} ห้องว่าง`;
+                contextString += `\n\n**สรุป:** ${uniqueRooms} ห้อง booked, ${beds24.TOTAL_ROOMS - uniqueRooms} ห้องว่าง`;
                 contextString += `\n**รายได้:** ฿${totalRevenue.toLocaleString()}`;
               } else {
                 contextString += `\n✅ ไม่มี arrivals ${dateThai} - ทุกห้องว่าง!`;
@@ -547,6 +547,20 @@ app.post('/webhook/line', async (req, res) => {
           (isOwner ? '\n\nนี่คือข้อความจาก Tars (เจ้าของ) - สามารถพูดคุยได้ตรงๆ' : '\n\nนี่คือข้อความจากลูกค้า - ตอบอย่างสุภาพและเป็นมืออาชีพ') +
           contextString;
 
+        // =====================================================================
+        // TYPING INDICATOR - แสดง "กำลังพิมพ์..." ระหว่าง AI คิด
+        // =====================================================================
+        const typingSessionId = `line:${userId}`;
+        try {
+          await typingIndicators.startTyping('line', userId, {
+            channelToken: config.line.channel_token
+          });
+          console.log(`[TYPING] Started for ${userId}`);
+        } catch (typingErr) {
+          // Typing indicator is nice-to-have, don't fail on error
+          console.log(`[TYPING] Could not start: ${typingErr.message}`);
+        }
+
         let response = await claude.chat(messages, {
           system: systemPrompt
         });
@@ -583,6 +597,9 @@ app.post('/webhook/line', async (req, res) => {
 
         // Reply via LINE
         await line.reply(replyToken, response);
+
+        // Stop typing indicator after response sent
+        typingIndicators.stopTyping(typingSessionId);
 
         // =====================================================================
         // PHASE 5.4: QUALITY TRACKER - วัดคุณภาพคำตอบ
@@ -2568,6 +2585,29 @@ cron.schedule(config.schedule.evening_summary, async () => {
   await heartbeat.eveningSummary();
 }, { timezone: config.agent.timezone });
 
+// Hotel Daily Summary - 08:00 Bangkok time (after morning briefing)
+cron.schedule('0 8 * * *', async () => {
+  console.log('[HOTEL] Daily summary triggered');
+  try {
+    await hotelNotify.notifyDailySummary();
+  } catch (error) {
+    console.error('[HOTEL] Daily summary error:', error.message);
+  }
+}, { timezone: config.agent.timezone });
+
+// Check-out Reminders - 09:00 Bangkok time
+cron.schedule('0 9 * * *', async () => {
+  console.log('[HOTEL] Check-out reminder triggered');
+  try {
+    const checkOuts = await beds24.getCheckOutsToday();
+    if (Array.isArray(checkOuts) && checkOuts.length > 0) {
+      await hotelNotify.notifyCheckOutReminder(checkOuts);
+    }
+  } catch (error) {
+    console.error('[HOTEL] Check-out reminder error:', error.message);
+  }
+}, { timezone: config.agent.timezone });
+
 // Weekly Rank Check - Monday 09:00
 if (config.autonomy.auto_rank_report) {
   cron.schedule(config.schedule.rank_check, async () => {
@@ -2703,10 +2743,16 @@ const server = app.listen(PORT, async () => {
   }
 
   // Initialize Webhook Ingress (Phase 7)
-  // Register default handlers
-  webhookIngress.on('beds24', '*', createBeds24Handler({ notifyOwner: (msg) => line.notifyOwner(msg) }));
-  webhookIngress.on('stripe', '*', createStripeHandler({ notifyOwner: (msg) => line.notifyOwner(msg) }));
-  webhookIngress.on('github', '*', createGitHubHandler({ notifyOwner: (msg) => line.notifyOwner(msg) }));
+  // Register default handlers - notify both LINE and Telegram
+  const notifyAll = async (msg) => {
+    await line.notifyOwner(msg).catch(e => console.error('[NOTIFY] LINE error:', e.message));
+    if (telegram.isConfigured()) {
+      await telegram.notifyOwner(msg).catch(e => console.error('[NOTIFY] Telegram error:', e.message));
+    }
+  };
+  webhookIngress.on('beds24', '*', createBeds24Handler({ notifyOwner: notifyAll }));
+  webhookIngress.on('stripe', '*', createStripeHandler({ notifyOwner: notifyAll }));
+  webhookIngress.on('github', '*', createGitHubHandler({ notifyOwner: notifyAll }));
 
   // Log webhook events
   webhookIngress.on('webhook', (webhook) => {

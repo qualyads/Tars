@@ -43,8 +43,9 @@
         {
           "name": "The Arch Casa",
           "type": "Design Boutique Hotel",
-          "rooms": 6,
-          "price_range": "2,000-3,500"
+          "rooms": 11,
+          "price_range": "2,000-3,500",
+          "beds24_property_id": 308400
         },
         {
           "name": "Betel Palm Village",
