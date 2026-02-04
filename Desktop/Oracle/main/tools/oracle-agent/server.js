@@ -89,6 +89,12 @@ import selfReflection from './lib/self-reflection.js';
 import sentimentAnalysis from './lib/sentiment-analysis.js';
 import qualityTracker from './lib/quality-tracker.js';
 
+// Phase 5.5: Proactive Partner Features
+import reminderSystem from './lib/reminder-system.js';
+import googleCalendar from './lib/google-calendar.js';
+import dailyDigest from './lib/daily-digest.js';
+import memoryConsolidation from './lib/memory-consolidation.js';
+
 // Phase 3.5: OpenClaw Upgrades
 import {
   initSessionLogger,
@@ -1532,6 +1538,218 @@ app.post('/api/quality/feedback', (req, res) => {
   const { recordId, feedback } = req.body;
   const record = qualityTracker.addFeedback(recordId, feedback);
   res.json({ success: !!record, record });
+});
+
+// =============================================================================
+// PHASE 5.5: PROACTIVE PARTNER ENDPOINTS
+// =============================================================================
+
+// Reminder System
+app.get('/api/reminders/status', (req, res) => {
+  res.json(reminderSystem.getStatus());
+});
+
+app.get('/api/reminders/pending', (req, res) => {
+  res.json(reminderSystem.getPending());
+});
+
+app.get('/api/reminders/upcoming', (req, res) => {
+  const hours = parseInt(req.query.hours) || 24;
+  res.json(reminderSystem.getUpcoming(hours));
+});
+
+app.get('/api/reminders/user/:userId', (req, res) => {
+  const status = req.query.status || null;
+  res.json(reminderSystem.getForUser(req.params.userId, status));
+});
+
+app.post('/api/reminders/add', (req, res) => {
+  const reminder = reminderSystem.add(req.body);
+  res.json({ success: true, reminder });
+});
+
+app.post('/api/reminders/parse-time', (req, res) => {
+  const { text } = req.body;
+  const time = reminderSystem.parseTime(text);
+  res.json({ text, parsed: time, formatted: time ? new Date(time).toLocaleString('th-TH') : null });
+});
+
+app.post('/api/reminders/snooze/:id', (req, res) => {
+  const minutes = req.body.minutes || null;
+  const reminder = reminderSystem.snooze(req.params.id, minutes);
+  res.json({ success: !!reminder, reminder });
+});
+
+app.post('/api/reminders/cancel/:id', (req, res) => {
+  const success = reminderSystem.cancel(req.params.id);
+  res.json({ success });
+});
+
+app.post('/api/reminders/complete/:id', (req, res) => {
+  const success = reminderSystem.complete(req.params.id);
+  res.json({ success });
+});
+
+// Google Calendar
+app.get('/api/calendar/status', (req, res) => {
+  res.json(googleCalendar.getStatus());
+});
+
+app.get('/api/calendar/today', async (req, res) => {
+  try {
+    const events = await googleCalendar.getToday();
+    res.json({ success: true, events });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/calendar/upcoming', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const events = await googleCalendar.getNextDays(days);
+    res.json({ success: true, events });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/calendar/summary', async (req, res) => {
+  try {
+    const summary = await googleCalendar.getDailySummary();
+    res.json({ success: true, summary });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/calendar/free-slots', async (req, res) => {
+  try {
+    const date = req.query.date ? new Date(req.query.date) : new Date();
+    const duration = parseInt(req.query.duration) || 60;
+    const slots = await googleCalendar.findFreeSlots({ date, duration });
+    res.json({ success: true, slots });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/calendar/create', async (req, res) => {
+  try {
+    const event = await googleCalendar.createEvent(req.body);
+    res.json({ success: true, event });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/calendar/quick-add', async (req, res) => {
+  try {
+    const { text } = req.body;
+    const event = await googleCalendar.quickAdd(text);
+    res.json({ success: true, event });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Daily Digest
+app.get('/api/digest/status', (req, res) => {
+  res.json(dailyDigest.getStatus());
+});
+
+app.get('/api/digest/recent', (req, res) => {
+  const limit = parseInt(req.query.limit) || 10;
+  res.json(dailyDigest.getRecent(limit));
+});
+
+app.post('/api/digest/morning', async (req, res) => {
+  try {
+    const digest = await dailyDigest.generateMorning(req.body);
+    res.json({ success: true, digest });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/digest/evening', async (req, res) => {
+  try {
+    const digest = await dailyDigest.generateEvening(req.body);
+    res.json({ success: true, digest });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/digest/generate', async (req, res) => {
+  try {
+    const digest = await dailyDigest.generate(req.body);
+    res.json({ success: true, digest });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Memory Consolidation
+app.get('/api/memory-consolidation/status', (req, res) => {
+  res.json(memoryConsolidation.getStatus());
+});
+
+app.get('/api/memory-consolidation/stats', (req, res) => {
+  res.json(memoryConsolidation.getStats());
+});
+
+app.get('/api/memory-consolidation/preferences', (req, res) => {
+  res.json(memoryConsolidation.getPreferences());
+});
+
+app.get('/api/memory-consolidation/query', (req, res) => {
+  const options = {
+    type: req.query.type,
+    search: req.query.search,
+    tags: req.query.tags ? req.query.tags.split(',') : null,
+    minImportance: req.query.minImportance ? parseInt(req.query.minImportance) : null,
+    limit: parseInt(req.query.limit) || 10
+  };
+  res.json(memoryConsolidation.query(options));
+});
+
+app.get('/api/memory-consolidation/related/:entity', (req, res) => {
+  res.json(memoryConsolidation.getRelated(req.params.entity));
+});
+
+app.get('/api/memory-consolidation/context', (req, res) => {
+  const topic = req.query.topic || null;
+  res.json(memoryConsolidation.getContextForAI(topic));
+});
+
+app.post('/api/memory-consolidation/add-short-term', (req, res) => {
+  const memory = memoryConsolidation.addShortTerm(req.body);
+  res.json({ success: true, memory });
+});
+
+app.post('/api/memory-consolidation/add-learning', (req, res) => {
+  const learning = memoryConsolidation.addLearning(req.body);
+  res.json({ success: true, learning });
+});
+
+app.post('/api/memory-consolidation/add-preference', (req, res) => {
+  memoryConsolidation.addPreference(req.body);
+  res.json({ success: true });
+});
+
+app.post('/api/memory-consolidation/add-fact', (req, res) => {
+  memoryConsolidation.addFact(req.body);
+  res.json({ success: true });
+});
+
+app.post('/api/memory-consolidation/consolidate', async (req, res) => {
+  try {
+    const result = await memoryConsolidation.consolidate();
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Force refresh local status
