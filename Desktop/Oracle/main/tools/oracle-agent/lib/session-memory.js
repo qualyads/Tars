@@ -11,8 +11,22 @@
 
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const MEMORY_BASE = '/Users/tanakitchaithip/Desktop/Oracle/main/ψ/memory';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Use local PSI memory if available, otherwise use data/ folder (Railway)
+const LOCAL_PSI_PATH = '/Users/tanakitchaithip/Desktop/Oracle/main/ψ/memory';
+const RAILWAY_DATA_PATH = path.join(__dirname, '..', 'data', 'memory');
+const IS_RAILWAY = process.env.RAILWAY_ENVIRONMENT || !fs.existsSync(LOCAL_PSI_PATH);
+const MEMORY_BASE = IS_RAILWAY ? RAILWAY_DATA_PATH : LOCAL_PSI_PATH;
+
+// Ensure directory exists
+if (!fs.existsSync(MEMORY_BASE)) {
+  fs.mkdirSync(MEMORY_BASE, { recursive: true });
+}
+
 const SESSION_FILE = path.join(MEMORY_BASE, 'oracle-session.json');
 const LEARNINGS_FILE = path.join(MEMORY_BASE, 'resonance/session-learnings.md');
 

@@ -21,9 +21,18 @@ const __dirname = path.dirname(__filename);
 // For JSON imports
 const require = createRequire(import.meta.url);
 
-// Paths
+// Paths - use local PSI memory if available, otherwise use data/ folder (Railway)
 const CONFIG_PATH = path.join(__dirname, '..', 'shared-config.json');
-const PSI_MEMORY_PATH = '/Users/tanakitchaithip/Desktop/Oracle/main/ψ/memory';
+const LOCAL_PSI_PATH = '/Users/tanakitchaithip/Desktop/Oracle/main/ψ/memory';
+const RAILWAY_DATA_PATH = path.join(__dirname, '..', 'data', 'memory');
+const IS_RAILWAY = process.env.RAILWAY_ENVIRONMENT || !fs.existsSync(LOCAL_PSI_PATH);
+const PSI_MEMORY_PATH = IS_RAILWAY ? RAILWAY_DATA_PATH : LOCAL_PSI_PATH;
+
+// Ensure Railway data directory exists
+if (IS_RAILWAY && !fs.existsSync(RAILWAY_DATA_PATH)) {
+  fs.mkdirSync(RAILWAY_DATA_PATH, { recursive: true });
+}
+
 const MASTER_MEMORY_FILE = path.join(PSI_MEMORY_PATH, 'oracle-memory.json');
 const CONVERSATIONS_FILE = path.join(PSI_MEMORY_PATH, 'logs', 'conversations.jsonl');
 const KNOWLEDGE_FILE = path.join(PSI_MEMORY_PATH, 'resonance', 'knowledge.json');
