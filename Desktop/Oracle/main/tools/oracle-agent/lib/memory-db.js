@@ -9,7 +9,14 @@
  * Cost: ~$0.00002 per 1K tokens (text-embedding-3-small)
  */
 
-import Database from 'better-sqlite3';
+// Dynamic import for optional better-sqlite3
+let Database = null;
+try {
+  Database = (await import('better-sqlite3')).default;
+} catch (e) {
+  console.warn('[MEMORY] better-sqlite3 not available - SQLite features disabled');
+}
+
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
@@ -72,6 +79,10 @@ function getOpenAI() {
 let db = null;
 
 function getDB() {
+  if (!Database) {
+    console.warn('[MEMORY] SQLite not available');
+    return null;
+  }
   if (!db) {
     // Ensure data directory exists
     const dataDir = path.dirname(CONFIG.dbPath);
@@ -163,6 +174,9 @@ async function getEmbedding(text) {
   }
 
   const database = getDB();
+  if (!database) {
+    return null;  // No SQLite - return null
+  }
 
   // Check cache first
   const hash = hashContent(text);
@@ -205,6 +219,9 @@ async function getEmbeddings(texts) {
   }
 
   const database = getDB();
+  if (!database) {
+    return texts.map(() => null);
+  }
   const results = new Array(texts.length).fill(null);
   const toEmbed = [];
   const toEmbedIndices = [];
@@ -327,6 +344,9 @@ function estimateTokens(text) {
  */
 async function syncFile(filePath, source = 'memory') {
   const database = getDB();
+  if (!database) {
+    return { error: 'SQLite not available' };
+  }
 
   if (!fs.existsSync(filePath)) {
     // File deleted - remove chunks
@@ -456,6 +476,9 @@ function walkDir(dir, extensions) {
  */
 async function search(query, options = {}) {
   const database = getDB();
+  if (!database) {
+    return [];  // No SQLite - return empty
+  }
   const maxResults = options.maxResults || CONFIG.maxResults;
   const minScore = options.minScore || CONFIG.minScore;
 
@@ -490,6 +513,9 @@ async function search(query, options = {}) {
  */
 async function vectorSearch(query, limit) {
   const database = getDB();
+  if (!database) {
+    return [];
+  }
   const queryEmbedding = await getEmbedding(query);
 
   if (!queryEmbedding) {
@@ -529,6 +555,9 @@ async function vectorSearch(query, limit) {
  */
 function keywordSearch(query, limit) {
   const database = getDB();
+  if (!database) {
+    return [];
+  }
 
   // Build FTS query
   const tokens = query.match(/[A-Za-z0-9ก-๙]+/g) || [];
@@ -649,6 +678,17 @@ function bufferToFloat32Array(buffer) {
 
 function getStatus() {
   const database = getDB();
+  if (!database) {
+    return {
+      totalChunks: 0,
+      withEmbeddings: 0,
+      cacheSize: 0,
+      sources: {},
+      vectorEnabled: !!getOpenAI(),
+      dbPath: CONFIG.dbPath,
+      sqliteAvailable: false
+    };
+  }
 
   const chunks = database.prepare('SELECT COUNT(*) as count FROM chunks').get();
   const withEmbeddings = database.prepare('SELECT COUNT(*) as count FROM chunks WHERE embedding IS NOT NULL').get();
