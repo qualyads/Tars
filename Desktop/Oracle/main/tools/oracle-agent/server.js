@@ -99,6 +99,9 @@ import googleCalendar from './lib/google-calendar.js';
 import dailyDigest from './lib/daily-digest.js';
 import memoryConsolidation from './lib/memory-consolidation.js';
 
+// Phase 5.6: User Profiles System
+import userProfiles from './lib/user-profiles.js';
+
 // Phase 3.5: OpenClaw Upgrades
 import {
   initSessionLogger,
@@ -364,6 +367,42 @@ app.post('/webhook/line', async (req, res) => {
         console.log(`[LINE] Message from ${userId}: ${userMessage}`);
 
         // =====================================================================
+        // PHASE 5.6: USER PROFILES - ตรวจสอบตัวตน user
+        // =====================================================================
+        const userProfile = userProfiles.getAIContext(userId);
+
+        // Check if user needs onboarding (not owner, not known)
+        if (!userProfiles.isOwner(userId) && userProfiles.needsOnboarding(userId)) {
+          console.log(`[USER-PROFILES] New user ${userId}, checking onboarding...`);
+
+          // Check if this is onboarding response
+          const existingProfile = userProfiles.getProfile(userId);
+          if (existingProfile && existingProfile.onboardingStarted) {
+            // Process onboarding response
+            const result = userProfiles.processOnboarding(userId, userMessage);
+            await line.reply(replyToken, result.message);
+
+            if (result.success) {
+              logSystemEvent('user-profiles', 'onboarded', { userId });
+            }
+            return;
+          }
+
+          // Start onboarding - get LINE display name if possible
+          const displayName = event.source.displayName || null;
+          const onboardingMsg = userProfiles.getOnboardingMessage(userId, displayName);
+
+          // Mark as onboarding started
+          userProfiles.updateProfile(userId, { onboardingStarted: true });
+
+          await line.reply(replyToken, onboardingMsg);
+          logSystemEvent('user-profiles', 'onboarding_started', { userId });
+          return;
+        }
+
+        console.log(`[USER-PROFILES] ${userProfile.name} (${userProfile.role}) - ${userProfile.contextString}`);
+
+        // =====================================================================
         // PHASE 5.4: SENTIMENT ANALYSIS - วิเคราะห์อารมณ์ user
         // =====================================================================
         const sentiment = sentimentAnalysis.analyze(userMessage, userId);
@@ -393,6 +432,45 @@ app.post('/webhook/line', async (req, res) => {
 
         // Check if this is owner or customer
         const isOwner = userId === config.line.owner_id;
+
+        // =====================================================================
+        // PHASE 5.6: OWNER COMMANDS - คำสั่งพิเศษสำหรับ owner
+        // =====================================================================
+        if (isOwner) {
+          // Check for partner registration command
+          // Usage: "ลงทะเบียน นิว เป็น partner"
+          const registerCmd = userProfiles.registerPartnerByCommand(userMessage);
+          if (registerCmd.isCommand) {
+            // Store pending registration
+            const pendingKey = `pending_partner_${registerCmd.name.toLowerCase()}`;
+            await memory.set(pendingKey, {
+              name: registerCmd.name,
+              role: registerCmd.role,
+              registeredBy: userId,
+              createdAt: new Date().toISOString()
+            });
+
+            await line.reply(replyToken,
+              `✅ รับทราบครับ! จะลงทะเบียน "${registerCmd.name}" เป็น ${registerCmd.role}\n\n` +
+              `เมื่อ ${registerCmd.name} ส่งข้อความมาครั้งแรก ผมจะจำได้และตั้งค่าให้อัตโนมัติครับ 👍`
+            );
+            logSystemEvent('user-profiles', 'partner_pending', { name: registerCmd.name, role: registerCmd.role });
+            return;
+          }
+
+          // Check for list users command
+          if (userMessage.match(/^(รายชื่อ|list)\s*(users?|profiles?)?$/i)) {
+            const profiles = userProfiles.getAllProfiles();
+            const profileList = Object.values(profiles).map(p =>
+              `• ${p.name} (${p.role}) - ${p.onboarded ? '✅' : '⏳'}`
+            ).join('\n');
+
+            await line.reply(replyToken,
+              `👥 **User Profiles**\n\n${profileList || 'ยังไม่มี profiles'}`
+            );
+            return;
+          }
+        }
 
         // Phase 2: Get intelligent context
         const context = await memory.getIntelligentContext();
@@ -430,6 +508,18 @@ app.post('/webhook/line', async (req, res) => {
         }
         if (suggestions.length > 0) {
           contextString += `\n[Proactive Suggestions: ${suggestions.map(s => s.message).join('; ')}]`;
+        }
+
+        // Add user profile context (Phase 5.6)
+        if (userProfile.contextString) {
+          contextString += `\n[👤 ${userProfile.contextString}]`;
+        }
+        // Filter content based on user permissions
+        if (!userProfile.canAccess?.investment) {
+          contextString += `\n[🚫 ไม่ต้องพูดเรื่องทอง/BTC/ลงทุน กับ user นี้]`;
+        }
+        if (!userProfile.canAccess?.business) {
+          contextString += `\n[🚫 ไม่ต้องพูดเรื่อง business/opportunities กับ user นี้]`;
         }
 
         // Add sentiment-based context
@@ -1695,6 +1785,43 @@ app.post('/api/reflection/improve', (req, res) => {
   res.json({ original: response, improved, changed: response !== improved });
 });
 
+// =============================================================================
+// USER PROFILES API (Phase 5.6)
+// =============================================================================
+
+app.get('/api/profiles', (req, res) => {
+  res.json(userProfiles.getAllProfiles());
+});
+
+app.get('/api/profiles/:userId', (req, res) => {
+  const profile = userProfiles.getProfile(req.params.userId);
+  if (!profile) {
+    return res.status(404).json({ error: 'Profile not found' });
+  }
+  res.json(profile);
+});
+
+app.post('/api/profiles/:userId', (req, res) => {
+  const { name, role, preferences } = req.body;
+  const profile = userProfiles.updateProfile(req.params.userId, { name, role, preferences });
+  res.json(profile);
+});
+
+app.post('/api/profiles/:userId/partner', (req, res) => {
+  const { name, preferences } = req.body;
+  const profile = userProfiles.setAsPartner(req.params.userId, name, preferences);
+  res.json(profile);
+});
+
+app.delete('/api/profiles/:userId', (req, res) => {
+  const deleted = userProfiles.deleteProfile(req.params.userId);
+  res.json({ deleted });
+});
+
+app.get('/api/profiles/:userId/context', (req, res) => {
+  res.json(userProfiles.getAIContext(req.params.userId));
+});
+
 // Sentiment Analysis
 app.get('/api/sentiment/status', (req, res) => {
   res.json(sentimentAnalysis.getStatus());
@@ -2720,6 +2847,10 @@ const server = app.listen(PORT, async () => {
 
   // Initialize Autonomy Engine (Phase 3)
   autonomy.initialize();
+
+  // Initialize User Profiles System (Phase 5.6)
+  userProfiles.init(config);
+  console.log('[USER-PROFILES] System initialized');
 
   // Initialize Heartbeat System (Phase 4)
   if (config.heartbeat?.enabled) {

@@ -1,11 +1,42 @@
 # Session Handoff
 
-**From:** Session 2026-02-04 (late night - final)
+**From:** Session 2026-02-05 (morning)
 **To:** Next Session
 
 ---
 
 ## What We Did This Session
+
+### 0. User Profiles System (v5.7.0) 🆕
+สร้างระบบจำแนก user และให้ข้อมูลตาม permission:
+
+| Feature | Description |
+|---------|-------------|
+| **Multi-User Identity** | รู้จัก user แต่ละคน (Tars = owner, นิว = partner) |
+| **Onboarding Flow** | ถาม user ใหม่ว่าต้องการอะไร แล้วจำไว้ |
+| **Permission Levels** | owner/partner/staff/guest - เห็นข้อมูลต่างกัน |
+| **Owner Commands** | "ลงทะเบียน นิว เป็น partner" |
+
+**Flow:**
+```
+LINE Message เข้ามา
+       ↓
+เช็ค User ID → เคยเจอไหม?
+       ↓
+┌─────────────────────────────────────────────┐
+│ Owner (Tars)?  → Full access ทุกอย่าง      │
+│ Known user?    → ใช้ saved preferences      │
+│ Unknown user?  → Onboarding → ถามว่าต้องการอะไร │
+└─────────────────────────────────────────────┘
+       ↓
+AI ตอบตาม permission level
+```
+
+**Files:**
+- `lib/user-profiles.js` - User management system
+- `data/user-profiles.json` - Stored profiles
+
+---
 
 ### 1. Self-Improvement Features (v5.5.0)
 สร้าง 4 features สำหรับ AI self-improvement:
@@ -194,4 +225,35 @@ Oracle Agent v5.6.0 - FULLY INTEGRATED PROACTIVE PARTNER
 
 ---
 
-*Handoff updated: 2026-02-04 (final) - v5.6.0 + OpenClaw analysis saved*
+---
+
+## 🔴 INCOMPLETE: n8n Service (2026-02-04)
+
+**Goal:** Claude รับทำ n8n ให้ลูกค้าได้ 100%
+
+**ทำแล้ว:**
+- ✅ Research n8n + MCP + API
+- ✅ สร้าง workflow ตัวอย่าง (`tools/n8n-test/line-to-sheets-workflow.json`)
+- ✅ บันทึก skill (`ψ/skills/n8n.md`)
+- ✅ บันทึกข้อจำกัดของ Claude (ไม่สามารถกรอกฟอร์ม/สมัคร account)
+
+**ยังไม่ได้ทำ:**
+- [ ] Deploy n8n instance
+- [ ] ทดสอบ import workflow
+- [ ] ทดสอบ API create workflow
+- [ ] Verify ทำงานได้จริง
+
+**ต้องทำก่อนรับงานลูกค้า:**
+1. Tars สมัคร n8n Cloud หรือ Deploy Railway
+2. ให้ URL + API Key
+3. Claude ทดสอบ
+4. อัพเดท skill status เป็น ✅ VERIFIED
+
+**Lessons Learned:**
+- Claude ไม่สามารถกรอกฟอร์ม/สมัคร account ได้ (ไม่มี browser automation)
+- แต่ถ้ามี CLI login (เช่น Railway) Claude deploy ได้
+- หลังจากมี API Key แล้ว Claude ทำได้ทุกอย่าง
+
+---
+
+*Handoff updated: 2026-02-04 - v5.6.0 + n8n skill (🔴 INCOMPLETE)*
