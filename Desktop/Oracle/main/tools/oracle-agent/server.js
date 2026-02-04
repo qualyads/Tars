@@ -440,6 +440,44 @@ app.post('/webhook/line', async (req, res) => {
           contextString += `\n[Rules: ${mistakeCheck.rulesToFollow.join('; ')}]`;
         }
 
+        // =====================================================================
+        // SMART API DATA FETCHING - ดึงข้อมูลจริงเมื่อ user ถามเกี่ยวกับโรงแรม
+        // =====================================================================
+        const lowerMessage = userMessage.toLowerCase();
+        const hotelKeywords = ['beds24', 'ห้อง', 'booking', 'จอง', 'ว่าง', 'เต็ม', 'check-in', 'check-out', 'checkin', 'checkout', 'แขก', 'guest', 'occupancy', 'โรงแรม', 'hotel', 'availability', 'วันนี้', 'พรุ่งนี้'];
+        const isHotelQuery = hotelKeywords.some(kw => lowerMessage.includes(kw));
+
+        if (isHotelQuery) {
+          console.log('[LINE] Detected hotel query, fetching Beds24 data...');
+          try {
+            const [occupancy, checkIns, checkOuts] = await Promise.all([
+              beds24.getOccupancy().catch(e => ({ error: e.message })),
+              beds24.getCheckInsToday().catch(e => ({ error: e.message })),
+              beds24.getCheckOutsToday().catch(e => ({ error: e.message }))
+            ]);
+
+            contextString += `\n\n📊 **ข้อมูล Beds24 Real-time:**`;
+
+            if (occupancy && !occupancy.error) {
+              contextString += `\n- Occupancy: ${JSON.stringify(occupancy)}`;
+            }
+            if (checkIns && !checkIns.error) {
+              contextString += `\n- Check-ins วันนี้: ${Array.isArray(checkIns) ? checkIns.length : 0} รายการ`;
+              if (Array.isArray(checkIns) && checkIns.length > 0) {
+                contextString += ` (${checkIns.map(c => c.guestName || c.firstName || 'Guest').join(', ')})`;
+              }
+            }
+            if (checkOuts && !checkOuts.error) {
+              contextString += `\n- Check-outs วันนี้: ${Array.isArray(checkOuts) ? checkOuts.length : 0} รายการ`;
+            }
+
+            console.log('[LINE] Beds24 data fetched successfully');
+          } catch (apiError) {
+            console.error('[LINE] Beds24 API error:', apiError.message);
+            contextString += `\n[⚠️ Beds24 API error: ${apiError.message}]`;
+          }
+        }
+
         // Build messages for Claude
         const messages = [
           ...history.slice(-10), // Last 10 messages for context
