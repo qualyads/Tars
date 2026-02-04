@@ -451,28 +451,52 @@ app.post('/webhook/line', async (req, res) => {
         if (isHotelQuery) {
           console.log('[LINE] Detected hotel query, fetching Beds24 data...');
           try {
-            const [occupancy, checkIns, checkOuts] = await Promise.all([
-              beds24.getOccupancy().catch(e => ({ error: e.message })),
-              beds24.getCheckInsToday().catch(e => ({ error: e.message })),
-              beds24.getCheckOutsToday().catch(e => ({ error: e.message }))
-            ]);
+            // Detect which date user is asking about
+            const isTomorrow = lowerMessage.includes('พรุ่งนี้') || lowerMessage.includes('tomorrow');
+            const isToday = lowerMessage.includes('วันนี้') || lowerMessage.includes('today');
 
-            contextString += `\n\n📊 **ข้อมูล Beds24 Real-time:**`;
+            const today = new Date();
+            const targetDate = isTomorrow
+              ? new Date(today.getTime() + 24 * 60 * 60 * 1000)
+              : today;
+            const dateStr = targetDate.toISOString().split('T')[0];
+            const dateThai = isTomorrow ? 'พรุ่งนี้' : 'วันนี้';
 
-            if (occupancy && !occupancy.error) {
-              contextString += `\n- Occupancy: ${JSON.stringify(occupancy)}`;
-            }
-            if (checkIns && !checkIns.error) {
-              contextString += `\n- Check-ins วันนี้: ${Array.isArray(checkIns) ? checkIns.length : 0} รายการ`;
-              if (Array.isArray(checkIns) && checkIns.length > 0) {
-                contextString += ` (${checkIns.map(c => c.guestName || c.firstName || 'Guest').join(', ')})`;
+            // Fetch bookings for target date
+            const bookings = await beds24.getBookingsByDate(dateStr).catch(e => ({ error: e.message }));
+
+            contextString += `\n\n📊 **ข้อมูล Beds24 Real-time (${dateThai} ${dateStr}):**`;
+            contextString += `\n🏨 The Arch Casa มี 11 ห้อง`;
+
+            if (bookings && !bookings.error && Array.isArray(bookings)) {
+              contextString += `\n📅 Arrivals ${dateThai}: ${bookings.length} รายการ`;
+
+              if (bookings.length > 0) {
+                contextString += `\n\n**รายละเอียดการจอง:**`;
+                bookings.forEach((b, i) => {
+                  const guestName = `${b.firstName || ''} ${b.lastName || ''}`.trim() || 'Guest';
+                  const roomName = b.apiMessage?.match(/Room: ([^\n]+)/)?.[1] || `Room ${b.roomId}`;
+                  const nights = Math.ceil((new Date(b.departure) - new Date(b.arrival)) / (1000 * 60 * 60 * 24));
+                  contextString += `\n${i+1}. **${guestName}** (${b.country?.toUpperCase() || 'N/A'})`;
+                  contextString += `\n   - ห้อง: ${roomName}`;
+                  contextString += `\n   - วันที่: ${b.arrival} → ${b.departure} (${nights} คืน)`;
+                  contextString += `\n   - ผู้เข้าพัก: ${b.numAdult} ผู้ใหญ่${b.numChild > 0 ? `, ${b.numChild} เด็ก` : ''}`;
+                  contextString += `\n   - ราคา: ฿${b.price?.toLocaleString() || 'N/A'}`;
+                  contextString += `\n   - ช่องทาง: ${b.apiSource || b.referer || 'Direct'}`;
+                });
+
+                const totalRevenue = bookings.reduce((sum, b) => sum + (b.price || 0), 0);
+                const uniqueRooms = new Set(bookings.map(b => b.roomId)).size;
+                contextString += `\n\n**สรุป:** ${uniqueRooms} ห้อง booked, ${11 - uniqueRooms} ห้องว่าง`;
+                contextString += `\n**รายได้:** ฿${totalRevenue.toLocaleString()}`;
+              } else {
+                contextString += `\n✅ ไม่มี arrivals ${dateThai} - ทุกห้องว่าง!`;
               }
-            }
-            if (checkOuts && !checkOuts.error) {
-              contextString += `\n- Check-outs วันนี้: ${Array.isArray(checkOuts) ? checkOuts.length : 0} รายการ`;
+            } else if (bookings?.error) {
+              contextString += `\n⚠️ API Error: ${bookings.error}`;
             }
 
-            console.log('[LINE] Beds24 data fetched successfully');
+            console.log('[LINE] Beds24 data fetched successfully for', dateStr);
           } catch (apiError) {
             console.error('[LINE] Beds24 API error:', apiError.message);
             contextString += `\n[⚠️ Beds24 API error: ${apiError.message}]`;

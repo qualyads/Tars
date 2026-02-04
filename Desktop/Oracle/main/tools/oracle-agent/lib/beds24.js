@@ -66,8 +66,8 @@ async function refreshAccessToken() {
     const refreshToken = tokenCache.refreshToken || process.env.BEDS24_REFRESH_TOKEN;
 
     const options = {
-      hostname: 'beds24.com',
-      path: '/api/v2/authentication/token',
+      hostname: 'api.beds24.com',
+      path: '/v2/authentication/token',
       method: 'GET',
       headers: {
         'refreshToken': refreshToken,
@@ -130,8 +130,8 @@ async function apiGet(endpoint, retried = false) {
     const token = tokenCache.accessToken || process.env.BEDS24_ACCESS_TOKEN;
 
     const options = {
-      hostname: 'beds24.com',
-      path: '/api/v2' + endpoint,
+      hostname: 'api.beds24.com',
+      path: '/v2' + endpoint,
       method: 'GET',
       headers: {
         'token': token,
@@ -184,8 +184,8 @@ async function apiPost(endpoint, body = [], retried = false) {
     const token = tokenCache.accessToken || process.env.BEDS24_ACCESS_TOKEN;
 
     const options = {
-      hostname: 'beds24.com',
-      path: '/api/v2' + endpoint,
+      hostname: 'api.beds24.com',
+      path: '/v2' + endpoint,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -241,6 +241,36 @@ async function getTodayBookings() {
     return result.data || result;
   } catch (error) {
     console.error('[BEDS24] Error getting bookings:', error);
+    return { error: error.message };
+  }
+}
+
+/**
+ * Get bookings for a specific date
+ * @param {string} date - Date in YYYY-MM-DD format
+ */
+async function getBookingsByDate(date) {
+  try {
+    // Get bookings that are staying on this date (arrival <= date < departure)
+    const result = await apiGet(`/bookings?arrivalFrom=${date}&arrivalTo=${date}`);
+    return result.data || result;
+  } catch (error) {
+    console.error('[BEDS24] Error getting bookings by date:', error);
+    return { error: error.message };
+  }
+}
+
+/**
+ * Get all current and future bookings (for occupancy check)
+ */
+async function getAllActiveBookings() {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const result = await apiGet(`/bookings?arrivalFrom=${today}&departureFrom=${today}&departureTo=${futureDate}`);
+    return result.data || result;
+  } catch (error) {
+    console.error('[BEDS24] Error getting active bookings:', error);
     return { error: error.message };
   }
 }
@@ -334,6 +364,8 @@ function getTokenStatus() {
 
 module.exports = {
   getTodayBookings,
+  getBookingsByDate,
+  getAllActiveBookings,
   getAvailability,
   getOccupancy,
   getCheckInsToday,
