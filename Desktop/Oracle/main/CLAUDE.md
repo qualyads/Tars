@@ -1,190 +1,212 @@
-# CLAUDE.md - อ่านก่อนทำงานทุกครั้ง!
+# CLAUDE.md - Oracle Agent Memory System v4.2
 
-## ⚠️ IMPORTANT: เริ่ม Session ใหม่
+## ⚡ MANDATORY BOOT SEQUENCE
 
-**ถ้านี่คือ session ใหม่ → อ่านไฟล์เหล่านี้ก่อน:**
+> **ก่อนตอบ user ทุกครั้ง ให้ทำตามนี้:**
 
-### 1. Identity (ต้องอ่าน)
+### Step 1: Load Core (ALWAYS)
 ```
-ψ/memory/resonance/identity.md
+READ: ψ/memory/core.md
 ```
-→ ข้อมูล Tars, APIs, Directives, วิธีทำงาน
 
-### 2. Session State (ต้องอ่าน)
+### Step 2: Load Skills Index (ALWAYS)
 ```
-ψ/memory/oracle-session.json
+READ: ψ/skills/_index.md
 ```
-→ Preferences ของ Tars, context ปัจจุบัน, สิ่งที่เรียนรู้
 
-### 3. Session Learnings (แนะนำ)
+### Step 3: Load Active Project (if exists)
 ```
-ψ/memory/resonance/session-learnings.md
+READ: ψ/memory/active/checkpoint.md (ถ้ามี)
+READ: ψ/memory/active/handoff.md (ถ้ามี)
 ```
-→ สรุปจากทุก session ที่ผ่านมา, open questions, next actions
 
-### 4. OpenClaw Study (ถ้าจะทำต่อ)
-```
-ψ/memory/openclaw-study/RESUME.md
-```
-→ **ไฟล์เดียวที่ต้องอ่าน** - สรุปทุกอย่าง, next actions
-
-### 5. OpenClaw Full Index (ถ้าต้องการรายละเอียด)
-```
-ψ/memory/openclaw-study/MASTER-INDEX.md
-```
-→ Progress การศึกษา OpenClaw, modules ที่วิเคราะห์แล้ว
+### Step 4: Acknowledge
+พิมพ์: `"Memory loaded: [core], [skills], [active if any]"`
 
 ---
 
-# Oracle Agent - Digital Partner
+## 🔍 Memory Search Protocol
 
-## Current Version: v3.0 (Phase 3: Autonomy)
+> **เมื่อต้องหาข้อมูลเก่า หรือ user ถาม "เคยคุยเรื่อง X ไหม"**
 
-### Architecture
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Oracle Agent v3.0                     │
-├─────────────────────────────────────────────────────────┤
-│  Terminal (Local)           Railway (Cloud)             │
-│  - Claude Max (FREE)        - Anthropic API (PAID)      │
-│  - Port 3456                - Always-on                 │
-│  - Dual Master              - Dual Master               │
-│                                                         │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │           Memory Sync (Bidirectional)           │   │
-│  │   ψ/memory/oracle-memory.json ↔ Railway API     │   │
-│  └─────────────────────────────────────────────────┘   │
-│                                                         │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │           🧠 Autonomy Engine (Phase 3)          │   │
-│  │   - Goals: hospitality, investment, saas,       │   │
-│  │            business, personal                    │   │
-│  │   - Triggers: 10 active conditions              │   │
-│  │   - Monitoring: Every 15 minutes                │   │
-│  │   - Approval Queue: For high-impact actions     │   │
-│  │   - Learning: From Tars's decisions             │   │
-│  └─────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
+```bash
+cd /Users/tanakitchaithip/Desktop/Oracle/main/tools/vector-search
+./memory-search.sh "query"
 ```
 
-### Phase History
-1. **Phase 1: Foundation** - Basic LINE bot, Claude integration
-2. **Phase 2: Intelligence** - Beds24 API, Memory sync, Failover router
-3. **Phase 3: Autonomy** - Goals, Triggers, Monitoring, Learning
+**ใช้เมื่อ:**
+- User ถาม "เคยคุย/ทำ X ไหม?"
+- ต้องการหาข้อมูลที่ไม่รู้ว่าอยู่ไฟล์ไหน
+- Grep ไม่เจอ (เพราะใช้คำต่างกัน)
 
-### Key Files
-- `tools/oracle-agent/server.js` - Railway server (Router Mode)
-- `scripts/line-webhook-server.js` - Local server (Claude Max)
-- `tools/oracle-agent/lib/autonomy.js` - Autonomy Engine
-- `tools/oracle-agent/lib/memory-sync.js` - Dual Master Memory
-- `tools/oracle-agent/lib/session-memory.js` - 🆕 Session Persistence
-- `ψ/memory/oracle-memory.json` - Master memory file
-- `ψ/memory/oracle-session.json` - 🆕 Session state & preferences
-- `ψ/memory/resonance/session-learnings.md` - 🆕 Accumulated learnings
+**ตัวอย่าง:**
+```bash
+./memory-search.sh "Beds24 authentication"
+./memory-search.sh "ราคาห้องพัก"
+./memory-search.sh "OpenClaw memory system"
+```
+
+---
+
+## 🧠 Memory Loading Protocol
+
+**ประเมิน task แล้ว load ตามความจำเป็น:**
+
+| Task Type | Load | Tokens |
+|-----------|------|--------|
+| Quick question | L1 + Skills Index | ~2.5K |
+| Coding/Project work | L1 + L2 + Skills | ~5K |
+| Research/Strategy | L1 + L2 + Skills + Knowledge | ~10K |
+| "เคยคุยเรื่อง X ไหม" | Memory Search → ~5 results | ~3K |
+
+### L1: CORE (Always Load)
+- `ψ/memory/core.md` - Identity, Directives & Quick Reference
+
+### L2: ACTIVE (Project-Aware)
+- `ψ/memory/active/checkpoint.md` - Current state
+- `ψ/memory/active/handoff.md` - From last session
+
+### L3: SKILLS (On-Demand) ⚡ NEW
+- `ψ/skills/_index.md` - **ดู skill ที่ต้องการ**
+- `ψ/skills/*.md` - โหลดเฉพาะ skill ที่ใช้
+
+| Skill | File | Trigger |
+|-------|------|---------|
+| Beds24 | `beds24.md` | hotel, booking, ห้องพัก |
+| Investment | `investment.md` | ทอง, BTC, ลงทุน |
+| Curl Login | `curl-login.md` | login, API |
+| Discussion | `discussion.md` | คุย OpenClaw |
+| TM30 | `tm30.md` | ตม., foreigner |
+| LINE Bot | `line-bot.md` | LINE, notify |
+| Webflow | `webflow.md` | website, relume |
+| Memory Search | `memory-search.md` | หาข้อมูลเก่า, เคยคุย |
+
+### L4: KNOWLEDGE (On-Demand)
+- `ψ/memory/knowledge/_index.md` - **อ่านก่อน!** แล้วเลือก load
+- `ψ/memory/knowledge/*.md` - Topic-specific files (flat structure)
+
+### L5: LOGS (Historical)
+- `ψ/memory/logs/YYYY-MM-DD_*.md` - Session summaries
+- Searchable via Grep tool
+
+### L6: GRAPH (Relational)
+- `ψ/memory/graph/entities.json` - คน, projects, concepts
+- `ψ/memory/graph/relations.json` - ความสัมพันธ์
+
+---
+
+## 🛡️ Anti-Forgetting Protocol
+
+### Every 30 Messages หรือเมื่อ Context รู้สึกเต็ม:
+
+1. **Create Checkpoint:**
+   ```
+   WRITE: ψ/memory/active/checkpoint.md
+   ```
+   ใส่: Current task, decisions made, blockers, next steps
+
+2. **Tag Critical Info:**
+   ```markdown
+   <!-- PERSIST -->
+   ข้อมูลสำคัญที่ต้องจำ
+   <!-- /PERSIST -->
+   ```
+
+3. **Before End Session:**
+   ```
+   WRITE: ψ/memory/active/handoff.md
+   ```
+   ใส่: What we did, decisions, next session should...
+
+---
+
+## 🔍 Retrieval Protocol
+
+**เมื่อ user ถามเรื่องที่ไม่มีใน loaded context:**
+
+1. **First:** อ่าน `ψ/memory/knowledge/_index.md`
+2. **If found:** อ่าน specific file ที่ระบุ
+3. **If not found:** Grep search ใน `ψ/memory/knowledge/`
+4. **Still not found:** ค้น `ψ/memory/logs/`
+5. **Still not found:** บอก user ว่าไม่มี, เสนอว่าจะเรียนรู้
+
+**Cite source เสมอ:** "จาก knowledge/domains/technical/beds24.md..."
+
+---
+
+## 📁 Memory Structure
+
+```
+ψ/
+├── memory/
+│   ├── core.md                ← L1: IDENTITY (always load)
+│   │
+│   ├── active/                ← L2: CURRENT SESSION
+│   │   ├── checkpoint.md
+│   │   └── handoff.md
+│   │
+│   ├── knowledge/             ← L4: KNOWLEDGE (on-demand)
+│   │   ├── _index.md          ← Topic map
+│   │   ├── apis.md
+│   │   ├── hospitality.md
+│   │   └── ...
+│   │
+│   ├── logs/                  ← L5: HISTORY
+│   │   └── YYYY-MM-DD_*.md
+│   │
+│   ├── graph/                 ← L6: RELATIONAL
+│   │   ├── entities.json
+│   │   └── relations.json
+│   │
+│   └── archive/
+│
+└── skills/                    ← L3: SKILLS (on-demand) ⚡
+    ├── _index.md              ← Skill list (~500 tokens)
+    ├── beds24.md
+    ├── investment.md
+    ├── curl-login.md
+    ├── discussion.md
+    ├── tm30.md
+    ├── line-bot.md
+    └── webflow.md
+```
+
+---
+
+## 🎯 Quick Reference
+
+### Current Version: v4.2 (Skills + Vector Search)
+
+### Key Principles
+1. **"ลืม" = "ยังไม่ได้โหลด"** - แก้ได้ทันทีโดยการอ่านไฟล์
+2. **Retrieve > Hold** - ไม่ต้อง hold ทุกอย่างใน context
+3. **Checkpoint บ่อยๆ** - ป้องกัน auto-compact
+
+### Commands
+- `/snapshot` - Create checkpoint
+- `rrr` - Create retrospective
+- `/distill` - Extract patterns
 
 ### API Endpoints (Local:3456 / Railway)
 ```
-Health & Status:
-GET  /health                    - Server health check
-GET  /api/autonomy/status       - Autonomy engine status
-GET  /api/autonomy/approvals    - Pending approval queue
-GET  /api/autonomy/market       - Crypto market data
-
-Actions:
-POST /api/autonomy/briefing     - Send morning briefing
-POST /api/autonomy/monitor      - Manual monitoring check
-POST /api/autonomy/approvals/:id - Process approval
-
-Memory:
-POST /api/sync                  - Bidirectional memory sync
-GET  /api/context               - Get intelligent context
-
-Hotel:
-GET  /api/hotel/today           - Today's check-ins/outs
-GET  /api/hotel/occupancy       - Current occupancy
+GET  /health                    - Server health
+GET  /api/autonomy/status       - Autonomy status
+GET  /api/sessions              - Session logs
+POST /api/summarize             - Trigger summarization
 ```
 
 ---
 
-# Oracle Philosophy
+## 📊 Success Metrics
 
-> "The Oracle Keeps the Human Human"
-
-## The Three Principles
-
-### 1. Nothing is Deleted
-- Append only, timestamps = truth
-- Git history, logs, retrospectives preserve everything
-- Context is never lost
-
-### 2. Patterns Over Intentions
-- Observe behavior, not promises
-- Let patterns emerge from retrospectives and learnings
-- Data speaks louder than plans
-
-### 3. External Brain, Not Command
-- Mirror reality, don't decide for the human
-- Query systems, dashboards, no auto-actions
-- AI amplifies, human decides
+| Metric | Target |
+|--------|--------|
+| Identity Consistency | 100% (never forget who I am) |
+| Project Context | 95% (always know current project) |
+| Historical Recall | 80% (find info when searched) |
+| Token Efficiency | <5K for routine tasks |
 
 ---
 
-## Autonomy Levels
-
-| Domain | Level | ทำได้เลย | ต้องขออนุมัติ |
-|--------|-------|---------|-------------|
-| Personal | HIGH | ทุกอย่าง | - |
-| Hotel | MEDIUM | ตอบคำถาม, Alert | Promotion, ราคา |
-| Investment | LOW | Alert | ซื้อ/ขาย |
-| SaaS | MEDIUM | Monitor | Launch, Pricing |
-
----
-
-## Knowledge Flow
-
-```
-active/context → memory/logs → memory/retrospectives → memory/learnings → memory/resonance
-(research)       (snapshot)    (session)              (patterns)         (soul)
-```
-
-## Commands
-
-- `/snapshot` - Capture current context
-- `rrr` - Create retrospective after session
-- `/distill` - Extract patterns into learnings
-
----
-
-## 🧠 Session Memory System
-
-> "AI ไม่ได้จำ - AI อ่าน"
-> เก็บ state ใน files → AI อ่าน → AI รู้
-
-### หลัง Session สำคัญ
-
-1. **Update oracle-session.json**
-   - เพิ่ม learnings ใหม่
-   - Update context (currentFocus, recentTopics)
-   - บันทึก preferences ที่เปลี่ยน
-
-2. **Append to session-learnings.md**
-   - Key Decisions
-   - Key Learnings
-   - Open Questions
-   - Next Actions
-
-3. **ใช้ session-memory.js** (optional)
-   ```bash
-   node tools/oracle-agent/lib/session-memory.js record-summary
-   ```
-
-### ทำไมต้องทำ?
-
-Session ใหม่จะ:
-- อ่าน oracle-session.json → รู้ preferences ของ Tars
-- อ่าน session-learnings.md → รู้ว่าเคยคุยอะไร, ตัดสินใจอะไร
-- ไม่ต้องถามซ้ำ, ไม่ต้องเริ่มใหม่
-
----
-
-*Oracle Open Framework v3.0.0 - Phase 3: Autonomy*
+*Oracle Memory System v4.2 - Skills + Vector Search*
+*Last updated: 2026-02-04*

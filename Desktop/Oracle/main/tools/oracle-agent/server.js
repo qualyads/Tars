@@ -32,7 +32,7 @@ import claude from './lib/claude.js';
 import line from './lib/line.js';
 import memory from './lib/memory.js';
 import memorySync from './lib/memory-sync.js';
-import heartbeat from './lib/heartbeat.js';
+import HeartbeatManager from './lib/heartbeat.js';
 import beds24 from './lib/beds24.js';
 import autonomy from './lib/autonomy.js';
 
@@ -67,6 +67,9 @@ import {
 
 const app = express();
 app.use(express.json());
+
+// Heartbeat Manager instance
+let heartbeatManager = null;
 
 // =============================================================================
 // FAILOVER ROUTER CONFIGURATION
@@ -706,6 +709,32 @@ app.get('/api/autonomy/market', async (req, res) => {
 });
 
 // =============================================================================
+// HEARTBEAT SYSTEM ENDPOINTS
+// =============================================================================
+
+// Get heartbeat status
+app.get('/api/heartbeat/status', (req, res) => {
+  if (!heartbeatManager) {
+    return res.json({ enabled: false, message: 'Heartbeat not initialized' });
+  }
+  res.json(heartbeatManager.getStatus());
+});
+
+// Trigger heartbeat manually
+app.post('/api/heartbeat/trigger', async (req, res) => {
+  if (!heartbeatManager) {
+    return res.status(400).json({ error: 'Heartbeat not initialized' });
+  }
+
+  try {
+    const result = await heartbeatManager.trigger();
+    res.json(result || { status: 'skipped', message: 'Conditions not met' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =============================================================================
 // PHASE 3.5: SESSION & PROMPT ENDPOINTS
 // =============================================================================
 
@@ -808,6 +837,107 @@ app.post('/api/prompts/version', (req, res) => {
 });
 
 // =============================================================================
+// PHASE 3.5: SUMMARIZATION ENDPOINTS
+// =============================================================================
+
+// Get summaries
+app.get('/api/summaries', async (req, res) => {
+  try {
+    const summariesDir = './data/summaries';
+    const fs = await import('fs');
+    const path = await import('path');
+
+    if (!fs.existsSync(summariesDir)) {
+      return res.json({ count: 0, summaries: [] });
+    }
+
+    const files = fs.readdirSync(summariesDir)
+      .filter(f => f.endsWith('_summary.md'))
+      .map(f => ({
+        file: f,
+        session: f.replace('_summary.md', ''),
+        created: fs.statSync(path.join(summariesDir, f)).mtime
+      }))
+      .sort((a, b) => b.created - a.created);
+
+    res.json({
+      count: files.length,
+      summaries: files
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get specific summary
+app.get('/api/summaries/:file', async (req, res) => {
+  try {
+    const { file } = req.params;
+    const fs = await import('fs');
+    const path = await import('path');
+
+    const summaryPath = path.join('./data/summaries', `${file}_summary.md`);
+
+    if (!fs.existsSync(summaryPath)) {
+      return res.status(404).json({ error: 'Summary not found' });
+    }
+
+    const content = fs.readFileSync(summaryPath, 'utf8');
+    res.json({
+      file: file,
+      content
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Trigger manual summarization
+app.post('/api/summarize', async (req, res) => {
+  try {
+    const { date, all } = req.body;
+
+    logSystemEvent('system', 'summarization_manual', { date, all });
+
+    const { spawn } = await import('child_process');
+    const args = ['tools/summarize-session.js'];
+
+    if (all) {
+      args.push('--all');
+    } else if (date) {
+      args.push('--date', date);
+    }
+
+    const summarizer = spawn('node', args, {
+      cwd: import.meta.dirname,
+      stdio: 'pipe'
+    });
+
+    let output = '';
+    summarizer.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+    summarizer.stderr.on('data', (data) => {
+      output += data.toString();
+    });
+
+    summarizer.on('close', (code) => {
+      res.json({
+        success: code === 0,
+        code,
+        output
+      });
+    });
+
+    summarizer.on('error', (error) => {
+      res.status(500).json({ error: error.message });
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =============================================================================
 // SCHEDULED TASKS (Heartbeat)
 // =============================================================================
 
@@ -832,6 +962,56 @@ if (config.autonomy.auto_rank_report) {
     await heartbeat.rankReport();
   }, { timezone: config.agent.timezone });
 }
+
+// =============================================================================
+// PHASE 3.5: NIGHTLY SESSION SUMMARIZATION (Haiku)
+// =============================================================================
+
+// Nightly LINE Session Summarization - 23:00 Bangkok time
+// Uses Claude Haiku for cost-effective summarization (~$0.30/month)
+cron.schedule('0 23 * * *', async () => {
+  console.log('[SUMMARIZER] Nightly LINE session summarization triggered');
+  logSystemEvent('system', 'summarization_start', { type: 'line' });
+
+  try {
+    const { spawn } = await import('child_process');
+    const summarizer = spawn('node', ['tools/summarize-session.js'], {
+      cwd: import.meta.dirname,
+      stdio: 'inherit'
+    });
+
+    summarizer.on('close', (code) => {
+      console.log(`[SUMMARIZER] LINE summarization completed with code ${code}`);
+      logSystemEvent('system', 'summarization_complete', { type: 'line', code });
+    });
+  } catch (error) {
+    console.error('[SUMMARIZER] LINE error:', error);
+    logError('system', error, { source: 'line-summarizer' });
+  }
+}, { timezone: config.agent.timezone });
+
+// Nightly Terminal Session Summarization - 23:30 Bangkok time
+// Summarizes Claude Code terminal sessions
+cron.schedule('30 23 * * *', async () => {
+  console.log('[SUMMARIZER] Nightly terminal session summarization triggered');
+  logSystemEvent('system', 'summarization_start', { type: 'terminal' });
+
+  try {
+    const { spawn } = await import('child_process');
+    const summarizer = spawn('node', ['tools/terminal-summarizer.js'], {
+      cwd: import.meta.dirname,
+      stdio: 'inherit'
+    });
+
+    summarizer.on('close', (code) => {
+      console.log(`[SUMMARIZER] Terminal summarization completed with code ${code}`);
+      logSystemEvent('system', 'summarization_complete', { type: 'terminal', code });
+    });
+  } catch (error) {
+    console.error('[SUMMARIZER] Terminal error:', error);
+    logError('system', error, { source: 'terminal-summarizer' });
+  }
+}, { timezone: config.agent.timezone });
 
 // =============================================================================
 // START SERVER
@@ -865,6 +1045,24 @@ const server = app.listen(PORT, async () => {
   // Initialize Autonomy Engine (Phase 3)
   autonomy.initialize();
 
+  // Initialize Heartbeat System (Phase 4)
+  if (config.heartbeat?.enabled) {
+    heartbeatManager = new HeartbeatManager(config.heartbeat);
+
+    // Set notification callback to LINE
+    heartbeatManager.setNotifyCallback(async (message) => {
+      console.log('[HEARTBEAT] Sending alert to LINE...');
+      await line.notifyOwner(message);
+      logSystemEvent('heartbeat', 'alert_sent', { length: message.length });
+    });
+
+    // Start heartbeat
+    heartbeatManager.start();
+
+    // Register cleanup
+    registerCleanup('heartbeat', () => heartbeatManager.stop(), { phase: 'cleanup', priority: 5 });
+  }
+
   console.log('');
   console.log('╔════════════════════════════════════════════════════════════╗');
   console.log('║        ORACLE AGENT v3.5 - AUTONOMOUS MODE                 ║');
@@ -878,6 +1076,11 @@ const server = app.listen(PORT, async () => {
   console.log('║  - Monitoring: Every 15 minutes                            ║');
   console.log('║  - Triggers: Price alerts, Occupancy, Opportunities        ║');
   console.log('║  - Learning: From Tars decisions                           ║');
+  console.log('║                                                            ║');
+  console.log('║  💓 PHASE 4: HEARTBEAT SYSTEM                              ║');
+  console.log(`║  - Interval: ${config.heartbeat?.every || 'disabled'}                                       ║`);
+  console.log(`║  - Active Hours: ${config.heartbeat?.activeHours ? config.heartbeat.activeHours.start + ':00-' + config.heartbeat.activeHours.end + ':00' : 'N/A'}                           ║`);
+  console.log(`║  - Model: ${config.heartbeat?.model?.split('-')[2] || 'N/A'}                                         ║`);
   console.log('║                                                            ║');
   console.log('║  🆕 PHASE 3.5: OPENCLAW UPGRADES                           ║');
   console.log(`║  - JSONL Logging: data/sessions/                           ║`);
@@ -900,10 +1103,13 @@ const server = app.listen(PORT, async () => {
   console.log('║  - GET  /api/sessions/:id        Get session entries       ║');
   console.log('║  - GET  /api/prompts             List prompts              ║');
   console.log('║  - GET  /api/prompts/versions    List prompt versions      ║');
+  console.log('║  - GET  /api/summaries           List summaries            ║');
+  console.log('║  - POST /api/summarize           Trigger summarization     ║');
   console.log('║                                                            ║');
   console.log('║  Scheduled:                                                ║');
   console.log('║  - 07:00  Morning Briefing (Auto)                          ║');
   console.log('║  - 18:00  Evening Summary                                  ║');
+  console.log('║  - 23:00  Session Summarization (Haiku)                    ║');
   console.log('║  - Every 15min  Monitoring Loop                            ║');
   console.log('║                                                            ║');
   console.log('╚════════════════════════════════════════════════════════════╝');

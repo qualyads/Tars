@@ -1,13 +1,311 @@
 /**
- * Heartbeat System
- * Handles scheduled/proactive tasks
+ * Oracle Heartbeat System v2.0
+ * AI ตื่นมาเองทุก X นาที + ตัดสินใจว่าจะแจ้งหรือไม่
+ *
+ * Features:
+ * - Periodic tick (default 30m)
+ * - HEARTBEAT.md checklist
+ * - HEARTBEAT_OK protocol (silent when nothing urgent)
+ * - Active hours (08:00-22:00)
+ * - Model override (Haiku for heartbeat)
+ * - Queue priority (user messages first)
  */
 
-const https = require('https');
-const config = require('../config.json');
-const claude = require('./claude');
-const line = require('./line');
-const memory = require('./memory');
+import { readFileSync, existsSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import Anthropic from '@anthropic-ai/sdk';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const HEARTBEAT_FILE = join(__dirname, '../HEARTBEAT.md');
+
+// Config defaults
+const DEFAULT_CONFIG = {
+  enabled: true,
+  every: '30m',           // Interval
+  model: 'claude-3-haiku-20240307',  // Cheap model for heartbeat
+  activeHours: { start: 8, end: 22 },
+  ackMaxChars: 300,       // Max chars to consider as HEARTBEAT_OK
+  skipIfBusy: true
+};
+
+class HeartbeatManager {
+  constructor(config = {}) {
+    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.timer = null;
+    this.isRunning = false;
+    this.mainQueueBusy = false;
+    this.lastRun = null;
+    this.notifiedItems = new Map(); // Track what we've notified to avoid duplicates
+    this.onNotify = null; // Callback for notifications
+
+    // Initialize Anthropic client
+    this.anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY
+    });
+  }
+
+  /**
+   * Parse interval string to milliseconds
+   */
+  parseInterval(interval) {
+    const match = interval.match(/^(\d+)(m|h|s)$/);
+    if (!match) return 30 * 60 * 1000; // Default 30 minutes
+
+    const [, num, unit] = match;
+    const multipliers = { s: 1000, m: 60000, h: 3600000 };
+    return parseInt(num) * multipliers[unit];
+  }
+
+  /**
+   * Check if within active hours
+   */
+  isActiveHours() {
+    if (!this.config.activeHours) return true;
+
+    const now = new Date();
+    const hour = now.getHours();
+    const { start, end } = this.config.activeHours;
+
+    return hour >= start && hour < end;
+  }
+
+  /**
+   * Read HEARTBEAT.md file
+   */
+  readHeartbeatFile() {
+    if (!existsSync(HEARTBEAT_FILE)) {
+      return null;
+    }
+
+    try {
+      return readFileSync(HEARTBEAT_FILE, 'utf-8');
+    } catch (error) {
+      console.error('[HEARTBEAT] Failed to read HEARTBEAT.md:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Check if file content is effectively empty
+   */
+  isEffectivelyEmpty(content) {
+    if (!content) return true;
+
+    // Remove comments, headers, and whitespace
+    const stripped = content
+      .split('\n')
+      .filter(line => {
+        const trimmed = line.trim();
+        return trimmed &&
+               !trimmed.startsWith('#') &&
+               !trimmed.startsWith('//') &&
+               !trimmed.startsWith('---') &&
+               !trimmed.startsWith('*');
+      })
+      .join('')
+      .trim();
+
+    return stripped.length === 0;
+  }
+
+  /**
+   * Check if response indicates nothing urgent (HEARTBEAT_OK)
+   */
+  isHeartbeatOk(response) {
+    if (!response) return true;
+
+    const text = response.trim();
+
+    // Check if starts or ends with HEARTBEAT_OK
+    if (text.includes('HEARTBEAT_OK')) {
+      const remaining = text.replace(/HEARTBEAT_OK/g, '').trim();
+      return remaining.length <= this.config.ackMaxChars;
+    }
+
+    return false;
+  }
+
+  /**
+   * Build prompt for heartbeat
+   */
+  buildPrompt(heartbeatContent) {
+    const now = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+
+    return `You are Oracle, a proactive AI assistant for Tars.
+
+Current time: ${now}
+
+Read the following HEARTBEAT.md checklist and determine if there's anything that needs Tars's attention.
+
+---
+${heartbeatContent}
+---
+
+Instructions:
+1. Go through each check in the checklist
+2. If you find something urgent or important, summarize it clearly
+3. If nothing needs attention, reply with just: HEARTBEAT_OK
+4. Keep responses concise - Tars is busy
+5. Don't repeat notifications from the last 6 hours
+
+Response format for alerts:
+🔔 Oracle Alert
+
+[Brief summary]
+
+Details:
+- ...
+
+Recommended action:
+- ...
+
+If nothing urgent: HEARTBEAT_OK`;
+  }
+
+  /**
+   * Run heartbeat check
+   */
+  async runHeartbeat() {
+    if (this.isRunning) {
+      console.log('[HEARTBEAT] Already running, skipping...');
+      return null;
+    }
+
+    if (this.config.skipIfBusy && this.mainQueueBusy) {
+      console.log('[HEARTBEAT] Main queue busy, skipping...');
+      return null;
+    }
+
+    if (!this.isActiveHours()) {
+      console.log('[HEARTBEAT] Outside active hours, skipping...');
+      return null;
+    }
+
+    this.isRunning = true;
+    console.log('[HEARTBEAT] Running heartbeat check...');
+
+    try {
+      // Read HEARTBEAT.md
+      const heartbeatContent = this.readHeartbeatFile();
+
+      if (!heartbeatContent || this.isEffectivelyEmpty(heartbeatContent)) {
+        console.log('[HEARTBEAT] HEARTBEAT.md empty, skipping API call');
+        return null;
+      }
+
+      // Build prompt
+      const prompt = this.buildPrompt(heartbeatContent);
+
+      // Call Claude (Haiku for cost efficiency)
+      const response = await this.anthropic.messages.create({
+        model: this.config.model,
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }]
+      });
+
+      const responseText = response.content[0]?.text || '';
+      console.log('[HEARTBEAT] Response:', responseText.substring(0, 100) + '...');
+
+      // Check if HEARTBEAT_OK
+      if (this.isHeartbeatOk(responseText)) {
+        console.log('[HEARTBEAT] Nothing urgent - HEARTBEAT_OK');
+        this.lastRun = new Date();
+        return { status: 'ok', message: 'HEARTBEAT_OK' };
+      }
+
+      // Has content - notify user
+      console.log('[HEARTBEAT] Alert detected, notifying...');
+
+      if (this.onNotify) {
+        await this.onNotify(responseText);
+      }
+
+      this.lastRun = new Date();
+      return { status: 'alert', message: responseText };
+
+    } catch (error) {
+      console.error('[HEARTBEAT] Error:', error.message);
+      return { status: 'error', message: error.message };
+    } finally {
+      this.isRunning = false;
+    }
+  }
+
+  /**
+   * Start heartbeat timer
+   */
+  start() {
+    if (!this.config.enabled) {
+      console.log('[HEARTBEAT] Disabled in config');
+      return;
+    }
+
+    const intervalMs = this.parseInterval(this.config.every);
+    console.log(`[HEARTBEAT] Starting with interval: ${this.config.every} (${intervalMs}ms)`);
+    console.log(`[HEARTBEAT] Active hours: ${this.config.activeHours.start}:00 - ${this.config.activeHours.end}:00`);
+    console.log(`[HEARTBEAT] Model: ${this.config.model}`);
+
+    // Run immediately on start
+    this.runHeartbeat();
+
+    // Set up interval
+    this.timer = setInterval(() => this.runHeartbeat(), intervalMs);
+  }
+
+  /**
+   * Stop heartbeat timer
+   */
+  stop() {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+      console.log('[HEARTBEAT] Stopped');
+    }
+  }
+
+  /**
+   * Set main queue busy status
+   */
+  setQueueBusy(busy) {
+    this.mainQueueBusy = busy;
+  }
+
+  /**
+   * Set notification callback
+   */
+  setNotifyCallback(callback) {
+    this.onNotify = callback;
+  }
+
+  /**
+   * Manual trigger (for testing or CLI)
+   */
+  async trigger() {
+    console.log('[HEARTBEAT] Manual trigger...');
+    return await this.runHeartbeat();
+  }
+
+  /**
+   * Get status
+   */
+  getStatus() {
+    return {
+      enabled: this.config.enabled,
+      running: !!this.timer,
+      lastRun: this.lastRun,
+      interval: this.config.every,
+      activeHours: this.config.activeHours,
+      model: this.config.model,
+      isActiveNow: this.isActiveHours(),
+      queueBusy: this.mainQueueBusy
+    };
+  }
+}
+
+// Legacy exports for backward compatibility
+import https from 'https';
+import http from 'http';
 
 /**
  * Fetch market data (Gold, BTC, Fear & Greed)
@@ -20,7 +318,6 @@ async function fetchMarketData() {
   };
 
   try {
-    // Fear & Greed Index
     const fgResponse = await fetchJSON('https://api.alternative.me/fng/?limit=1');
     if (fgResponse?.data?.[0]) {
       data.fearGreed = {
@@ -33,7 +330,6 @@ async function fetchMarketData() {
   }
 
   try {
-    // BTC Price from CoinGecko
     const btcResponse = await fetchJSON('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true');
     if (btcResponse?.bitcoin) {
       data.btc = {
@@ -46,7 +342,6 @@ async function fetchMarketData() {
   }
 
   try {
-    // Gold Price (approximate from free API)
     const goldResponse = await fetchJSON('https://api.coingecko.com/api/v3/simple/price?ids=tether-gold&vs_currencies=usd&include_24hr_change=true');
     if (goldResponse?.['tether-gold']) {
       data.gold = {
@@ -61,207 +356,9 @@ async function fetchMarketData() {
   return data;
 }
 
-/**
- * Morning Briefing - 07:00
- */
-async function morningBriefing() {
-  console.log('[HEARTBEAT] Generating morning briefing...');
-
-  try {
-    // Fetch market data
-    const marketData = await fetchMarketData();
-
-    // Get memory context
-    const context = await memory.getContextForClaude();
-    const recentConvos = await memory.getRecentConversations();
-
-    // Build briefing data
-    const briefingData = {
-      date: new Date().toLocaleDateString('th-TH', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      }),
-      market: marketData,
-      business: {
-        properties: config.business.properties,
-        pending_approvals: await memory.getPendingApprovals()
-      },
-      recent_activity: {
-        conversations: recentConvos.length,
-        last_contacts: recentConvos.slice(0, 3)
-      }
-    };
-
-    // Generate briefing with Claude
-    const briefing = await claude.generateReport('morning', briefingData);
-
-    // Send to owner
-    await line.notifyOwner(briefing);
-
-    // Update stats
-    await memory.updateStats('briefings_sent', 1);
-
-    console.log('[HEARTBEAT] Morning briefing sent');
-    return briefing;
-  } catch (error) {
-    console.error('[HEARTBEAT] Morning briefing failed:', error);
-
-    // Send error notification
-    await line.notifyOwner(`⚠️ Oracle Agent: Morning briefing failed\nError: ${error.message}`);
-  }
-}
-
-/**
- * Evening Summary - 18:00
- */
-async function eveningSummary() {
-  console.log('[HEARTBEAT] Generating evening summary...');
-
-  try {
-    const mem = await memory.getAll();
-
-    const summaryData = {
-      date: new Date().toLocaleDateString('th-TH'),
-      stats: mem.stats,
-      conversations_today: Object.entries(mem.conversations)
-        .filter(([_, conv]) => {
-          const today = new Date().toDateString();
-          return new Date(conv.last_message).toDateString() === today;
-        })
-        .map(([userId, conv]) => ({
-          userId: userId.substring(0, 10) + '...',
-          messages: conv.messages.slice(-4)
-        })),
-      pending_approvals: await memory.getPendingApprovals()
-    };
-
-    const summary = await claude.generateReport('evening', summaryData);
-
-    await line.notifyOwner(summary);
-
-    console.log('[HEARTBEAT] Evening summary sent');
-    return summary;
-  } catch (error) {
-    console.error('[HEARTBEAT] Evening summary failed:', error);
-  }
-}
-
-/**
- * Weekly Rank Report - Monday 09:00
- */
-async function rankReport() {
-  console.log('[HEARTBEAT] Generating rank report...');
-
-  try {
-    const rankings = [];
-
-    for (const property of config.business.properties) {
-      // Find place_id from rank-tracker config if available
-      const trackerConfigPath = require('path').join(__dirname, '../../rank-tracker/config.json');
-      let placeId = null;
-
-      try {
-        const trackerConfig = require(trackerConfigPath);
-        const prop = trackerConfig.properties.find(p => p.name === property.name);
-        if (prop) placeId = prop.place_id;
-      } catch (e) {}
-
-      if (placeId) {
-        // Call rank tracker API
-        const keywords = ['hotel pai', 'boutique hotel pai', 'where to stay pai'];
-        const results = [];
-
-        for (const keyword of keywords.slice(0, 3)) {
-          try {
-            const result = await fetchRanking(placeId, keyword);
-            results.push({ keyword, ...result });
-          } catch (e) {
-            results.push({ keyword, error: e.message });
-          }
-          await sleep(500); // Rate limit
-        }
-
-        rankings.push({
-          name: property.name,
-          type: property.type,
-          rankings: results
-        });
-      }
-    }
-
-    const reportData = {
-      date: new Date().toLocaleDateString('th-TH'),
-      properties: rankings
-    };
-
-    const report = await claude.generateReport('weekly', reportData);
-
-    await line.notifyOwner(report);
-
-    console.log('[HEARTBEAT] Rank report sent');
-    return report;
-  } catch (error) {
-    console.error('[HEARTBEAT] Rank report failed:', error);
-    await line.notifyOwner(`⚠️ Oracle Agent: Rank report failed\nError: ${error.message}`);
-  }
-}
-
-/**
- * Fetch ranking from RapidAPI
- */
-async function fetchRanking(placeId, keyword) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(`https://${config.apis.rank_tracker_host}/ranking-at-coordinate`);
-    url.searchParams.append('query', keyword);
-    url.searchParams.append('place_id', placeId);
-    url.searchParams.append('lat', '19.3592');
-    url.searchParams.append('lng', '98.4400');
-
-    const options = {
-      hostname: url.hostname,
-      path: url.pathname + url.search,
-      method: 'GET',
-      headers: {
-        'x-rapidapi-host': config.apis.rank_tracker_host,
-        'x-rapidapi-key': config.apis.rapidapi_key
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const result = JSON.parse(data);
-          if (result.status === 'OK') {
-            resolve({
-              found: result.data.found,
-              rank: result.data.rank,
-              total: result.data.count
-            });
-          } else {
-            reject(new Error(result.message || 'Unknown error'));
-          }
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
-
-    req.on('error', reject);
-    req.end();
-  });
-}
-
-/**
- * Helper: Fetch JSON from URL
- */
 function fetchJSON(url) {
   return new Promise((resolve, reject) => {
-    const protocol = url.startsWith('https') ? https : require('http');
-
+    const protocol = url.startsWith('https') ? https : http;
     protocol.get(url, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
@@ -276,16 +373,8 @@ function fetchJSON(url) {
   });
 }
 
-/**
- * Helper: Sleep
- */
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+// Export HeartbeatManager as default
+export default HeartbeatManager;
 
-module.exports = {
-  morningBriefing,
-  eveningSummary,
-  rankReport,
-  fetchMarketData
-};
+// Named exports for legacy compatibility
+export { HeartbeatManager, fetchMarketData };

@@ -1,7 +1,7 @@
 {
   "agent": {
     "name": "Oracle Agent",
-    "version": "3.5.0",
+    "version": "4.0.0",
     "owner": "Tars",
     "timezone": "Asia/Bangkok",
     "description": "Digital Partner ของ Tars - ช่วยทุกอย่างในชีวิต ไม่ใช่แค่ธุรกิจเดียว"
@@ -85,7 +85,18 @@
     "morning_briefing": "0 7 * * *",
     "evening_summary": "0 18 * * *",
     "rank_check": "0 9 * * 1",
-    "investment_check": "0 8,12,18 * * *"
+    "investment_check": "0 8,12,18 * * *",
+    "session_summarize": "0 23 * * *",
+    "terminal_summarize": "30 23 * * *"
+  },
+
+  "heartbeat": {
+    "enabled": true,
+    "every": "30m",
+    "model": "claude-3-haiku-20240307",
+    "activeHours": { "start": 8, "end": 22 },
+    "ackMaxChars": 300,
+    "skipIfBusy": true
   },
 
   "apis": {
