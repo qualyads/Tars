@@ -169,4 +169,29 @@ Oracle Agent v5.6.0 - FULLY INTEGRATED PROACTIVE PARTNER
 
 ---
 
-*Handoff updated: 2026-02-04 (late night final) - v5.6.0 fully integrated*
+## OpenClaw Analysis (Saved for Future)
+
+บันทึกไว้สำหรับการพัฒนาในอนาคต:
+
+**Files created:**
+- `ψ/memory/knowledge/openclaw-features.md` - Analysis summary
+- `ψ/memory/archive/2026-02-04_openclaw-comparison.md` - Full comparison
+
+**Priority features for Best Hotel Pai:**
+
+| Tier | Feature | Why |
+|------|---------|-----|
+| 1 | WhatsApp (Baileys) | นักท่องเที่ยวต่างชาติ |
+| 1 | Image Processing | รับสลิปโอนเงิน |
+| 1 | Audio Transcription | Voice notes |
+| 2 | Browser Automation | Scrape ราคาคู่แข่ง |
+| 2 | Lobster Workflows | Guest journey automation |
+
+**Oracle vs OpenClaw:**
+- Oracle: 46 features (เน้น self-improvement + business)
+- OpenClaw: 55 features (เน้น channels + enterprise)
+- Gap: 19 features (ส่วนใหญ่ไม่จำเป็นสำหรับ hotel business)
+
+---
+
+*Handoff updated: 2026-02-04 (final) - v5.6.0 + OpenClaw analysis saved*
