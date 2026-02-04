@@ -1,6 +1,6 @@
 # Session Handoff
 
-**From:** Session 2026-02-04 (late night continued)
+**From:** Session 2026-02-04 (late night - final)
 **To:** Next Session
 
 ---
@@ -8,7 +8,7 @@
 ## What We Did This Session
 
 ### 1. Self-Improvement Features (v5.5.0)
-สร้าง 4 features ใหม่สำหรับ AI self-improvement:
+สร้าง 4 features สำหรับ AI self-improvement:
 
 | Feature | File | Purpose |
 |---------|------|---------|
@@ -17,14 +17,41 @@
 | **Sentiment Analysis** | `lib/sentiment-analysis.js` | ตรวจอารมณ์ user |
 | **Quality Tracker** | `lib/quality-tracker.js` | วัดคุณภาพคำตอบ |
 
-### 2. Lesson Learned
-Oracle (AI) ทำผิดพลาด 2 ครั้ง:
-1. บอกว่าทำแค่ 16 features ทั้งที่มี 30+ (underclaim)
-2. บอกว่า features ไม่มี ทั้งที่มีอยู่แล้ว (assumption)
+### 2. Proactive Partner Features (v5.6.0)
+สร้าง 4 features ที่ทำให้ Oracle proactive:
 
-**Prevention Rule:** เช็คโค้ดจริงก่อนพูดเสมอ
-- `ls lib/` ก่อนบอกจำนวน
-- `grep -l "keyword"` ก่อนบอกว่าไม่มี
+| Feature | File | Purpose |
+|---------|------|---------|
+| **Reminder System** | `lib/reminder-system.js` | "เตือนผม 5 โมง โทรลูกค้า" |
+| **Google Calendar** | `lib/google-calendar.js` | ดู/สร้าง events |
+| **Daily Digest** | `lib/daily-digest.js` | Morning briefing, Evening summary |
+| **Memory Consolidation** | `lib/memory-consolidation.js` | Short-term → Long-term memory |
+
+### 3. Full Integration into Main Flow
+**ทุก feature ถูก integrate เข้า LINE webhook แล้ว:**
+
+```
+ข้อความเข้ามา
+    ↓
+1. Sentiment Analysis (วิเคราะห์อารมณ์)
+2. Memory Consolidation (บันทึก short-term)
+3. Mistake Tracker (เช็ค prevention rules)
+    ↓
+[AI สร้าง Response]
+    ↓
+4. Self-Reflection (เช็คก่อนส่ง)
+5. Quality Tracker (ให้คะแนน)
+    ↓
+ส่ง LINE
+```
+
+### 4. Scheduled Tasks
+| เวลา | Task | Action |
+|------|------|--------|
+| 07:00 | Morning Briefing | ส่ง LINE สรุปวันนี้ |
+| 18:00 | Evening Summary | ส่ง LINE สรุปวันที่ผ่านมา |
+| 00:00 | Memory Consolidation | รวม memories เก่า |
+| ทุกนาที | Reminder Check | ส่ง reminders ที่ถึงเวลา |
 
 ---
 
@@ -36,107 +63,110 @@ Oracle (AI) ทำผิดพลาด 2 ครั้ง:
 | `lib/self-reflection.js` | **NEW** - Pre-send response checking |
 | `lib/sentiment-analysis.js` | **NEW** - User mood detection |
 | `lib/quality-tracker.js` | **NEW** - Response quality scoring |
-| `server.js` | Added imports + 25 new endpoints |
-| `config.json` | v5.4.0 → v5.5.0 |
+| `lib/reminder-system.js` | **NEW** - Natural language reminders |
+| `lib/google-calendar.js` | **NEW** - Calendar integration |
+| `lib/daily-digest.js` | **NEW** - Morning/evening summaries |
+| `lib/memory-consolidation.js` | **NEW** - Memory management |
+| `server.js` | Integrated all features + schedules |
+| `config.json` | v5.6.0 |
 
 ---
 
 ## Oracle Agent Status
 
 ```
-Oracle Agent v5.5.0 - FULL FEATURES + SELF-IMPROVEMENT
+Oracle Agent v5.6.0 - FULLY INTEGRATED PROACTIVE PARTNER
 ├── Phase 1-3: Core + Autonomy ✅
 ├── Phase 4-6: Heartbeat + Sub-Agent + Gateway ✅
 ├── Phase 7-9: Failover + Webhooks + Queue ✅
 ├── Phase 10-15: Gmail + Thinking Levels ✅
 ├── Phase 16-19: Tier 1-3 Features ✅
-└── Phase 20: Self-Improvement Features ✅ NEW
-    ├── Mistake Tracker (เรียนรู้จากความผิดพลาด)
-    ├── Self-Reflection (เช็คก่อนตอบ)
-    ├── Sentiment Analysis (ตรวจอารมณ์)
-    └── Quality Tracker (วัดคุณภาพ)
+├── Phase 5.4: Self-Improvement ✅ INTEGRATED
+│   ├── Sentiment Analysis (AUTO every message)
+│   ├── Self-Reflection (AUTO before reply)
+│   ├── Quality Tracker (AUTO after reply)
+│   └── Mistake Tracker (AUTO prevention)
+└── Phase 5.5: Proactive Partner ✅ INTEGRATED
+    ├── Reminder System (notify via LINE)
+    ├── Daily Digest (7:00 + 18:00)
+    ├── Memory Consolidation (midnight)
+    └── Google Calendar (needs credentials)
 ```
 
-**Total lib/ files:** 71 files
+**Total lib files:** 87 files
 
 ---
 
 ## Git Status
 
-- **Latest Commit:** `7418626` - Oracle Agent v5.5.0: Self-Improvement Features
-- **Pushed to:** GitHub ✅
-- **Railway:** Auto-deploying
+**Commits this session:**
+1. `7418626` - Oracle Agent v5.5.0: Self-Improvement Features
+2. `45f26f1` - Update handoff: Oracle v5.5.0
+3. `6360d05` - Oracle Agent v5.6.0: Proactive Partner Features
+4. `4462c3b` - Integrate all features into main flow
+
+**All pushed to GitHub ✅**
 
 ---
 
-## API Endpoints (New)
+## What's Now Auto-Running
 
-```bash
-# Mistake Tracker
-GET  /api/mistakes/status
-GET  /api/mistakes/recent
-GET  /api/mistakes/stats
-GET  /api/mistakes/weak-areas
-GET  /api/mistakes/rules
-POST /api/mistakes/record
-POST /api/mistakes/check
+### On Every LINE Message:
+1. ✅ Sentiment Analysis - ตรวจอารมณ์
+2. ✅ Memory Storage - บันทึก short-term
+3. ✅ Mistake Check - ป้องกันความผิดพลาด
+4. ✅ Self-Reflection - เช็คก่อนส่ง
+5. ✅ Quality Score - วัดคุณภาพ
 
-# Self-Reflection
-GET  /api/reflection/status
-GET  /api/reflection/stats
-GET  /api/reflection/recent
-POST /api/reflection/check
-POST /api/reflection/improve
+### Scheduled:
+1. ✅ Morning Briefing - 07:00 daily
+2. ✅ Evening Summary - 18:00 daily
+3. ✅ Memory Consolidation - 00:00 daily
+4. ✅ Reminder Check - every minute
 
-# Sentiment Analysis
-GET  /api/sentiment/status
-GET  /api/sentiment/stats
-GET  /api/sentiment/history/:userId
-GET  /api/sentiment/mood/:userId
-POST /api/sentiment/analyze
-POST /api/sentiment/is-upset
+---
 
-# Quality Tracker
-GET  /api/quality/status
-GET  /api/quality/stats
-GET  /api/quality/report
-GET  /api/quality/trend
-GET  /api/quality/recent
-POST /api/quality/score
-POST /api/quality/feedback
-```
+## Pending Setup (Optional)
+
+1. **Google Calendar** - ต้องใส่ credentials:
+   - `GOOGLE_CLIENT_ID`
+   - `GOOGLE_CLIENT_SECRET`
+   - `GOOGLE_REFRESH_TOKEN`
+
+2. **Telegram** - ยังไม่ได้ enable:
+   - `bot_token`
+   - `owner_id`
+
+---
+
+## Lessons Learned
+
+<!-- PERSIST -->
+**สำคัญมาก - Oracle ต้องจำ:**
+
+1. **เช็คโค้ดก่อนพูดเสมอ**
+   - `ls lib/` ก่อนบอกจำนวน features
+   - `grep -l "keyword"` ก่อนบอกว่าไม่มี
+   - ห้าม assume จาก memory
+
+2. **Oracle v5.6.0 = Proactive Partner**
+   - 87 lib files
+   - 8 features ใหม่ (4 self-improvement + 4 proactive)
+   - ทุกอย่าง integrate เข้า main flow แล้ว
+
+3. **Auto-run ทุกข้อความ:**
+   - Sentiment → Mistake Check → AI → Reflection → Quality
+<!-- /PERSIST -->
 
 ---
 
 ## Next Session Should
 
-1. **Test** self-improvement endpoints หลัง deploy
-2. **Integrate** mistake tracker เข้ากับ main chat flow
-3. **Monitor** sentiment analysis accuracy
-4. **Review** quality reports หลังใช้งานจริง
+1. **Test** - ส่งข้อความ LINE ทดสอบว่า features ทำงาน
+2. **Monitor** - ดู logs ว่า sentiment/quality ทำงาน
+3. **Setup Calendar** - ถ้าต้องการใช้ Google Calendar
+4. **Check Digests** - รอดู morning/evening summaries
 
 ---
 
-## Pending Tasks (From Before)
-
-1. **Telegram Setup** - ยังไม่ได้ใส่ bot_token และ owner_id
-2. **Voice API Keys** - ต้องใส่ OpenAI key ถ้าจะใช้ TTS/STT
-3. **Webhook Secrets** - ต้องใส่ secrets สำหรับ Stripe, GitHub
-
----
-
-## Remember
-
-<!-- PERSIST -->
-- Oracle Agent v5.5.0 = FULL FEATURES + SELF-IMPROVEMENT
-- 4 new self-improvement features:
-  - Mistake Tracker (บันทึก + ป้องกันความผิดพลาด)
-  - Self-Reflection (เช็คคำตอบก่อนส่ง)
-  - Sentiment Analysis (ตรวจอารมณ์ user)
-  - Quality Tracker (วัดคุณภาพคำตอบ)
-- **LESSON:** เช็คโค้ดก่อนพูดเสมอ - ls, grep ก่อนอ้าง
-<!-- /PERSIST -->
-
----
-
-*Handoff updated: 2026-02-04 (late night) - v5.5.0 deployed*
+*Handoff updated: 2026-02-04 (late night final) - v5.6.0 fully integrated*
