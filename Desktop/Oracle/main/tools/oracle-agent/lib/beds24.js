@@ -12,9 +12,13 @@
  * API Docs: https://api.beds24.com/
  */
 
-const https = require('https');
-const fs = require('fs');
-const path = require('path');
+import https from 'https';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const BEDS24_API = 'api.beds24.com';
 const TOKEN_FILE = path.join(__dirname, '..', '.beds24_tokens.json');
@@ -584,7 +588,8 @@ function getTokenStatus() {
 // EXPORTS
 // ============================================================
 
-module.exports = {
+// Named exports
+export {
   // Room Mapping
   ROOM_MAP,
   TOTAL_ROOMS,
@@ -610,6 +615,29 @@ module.exports = {
   getTokenStatus,
 
   // Utilities
+  enrichBooking,
+  extractBookingId,
+  extractDataArray
+};
+
+// Default export (for import beds24 from './beds24.js')
+export default {
+  ROOM_MAP,
+  TOTAL_ROOMS,
+  getRoomById,
+  getRoomBySystemId,
+  getAllRooms,
+  getTodayBookings,
+  getBookingsByDate,
+  getAllActiveBookings,
+  getCheckInsToday,
+  getCheckOutsToday,
+  getCurrentGuests,
+  getAvailability,
+  getOccupancy,
+  getOccupancyForDate,
+  forceRefreshToken,
+  getTokenStatus,
   enrichBooking,
   extractBookingId,
   extractDataArray
