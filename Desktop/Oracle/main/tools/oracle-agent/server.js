@@ -1,10 +1,10 @@
 /**
- * Oracle Agent - Main Server v3.5 (Autonomous Mode + OpenClaw Upgrades)
+ * Oracle Agent - Main Server v5.4 (Full OpenClaw + Tier 1-3 Features)
  * Digital Partner for Tars - ALL aspects of life
  *
  * Features:
  * - 24/7 Always-on (Failover System)
- * - LINE 2-way communication
+ * - Multi-Channel Gateway (LINE, Telegram, WhatsApp planned)
  * - Router: Local (free) → Railway (API)
  * - Phase 3: AUTONOMY ENGINE
  *   - Proactive monitoring (Gold, BTC, Hotel)
@@ -15,6 +15,29 @@
  *   - JSONL Session Logging
  *   - Prompt Versioning
  *   - Graceful Shutdown
+ * - Phase 4: HEARTBEAT SYSTEM
+ *   - AI wakes every 30 minutes
+ *   - HEARTBEAT_OK protocol
+ * - Phase 5: SUB-AGENT SPAWN
+ *   - AI spawns background workers
+ *   - Parallel task execution
+ *   - Non-blocking, announces results
+ * - Phase 6: MULTI-CHANNEL GATEWAY
+ *   - Same brain, all channels
+ *   - LINE + Telegram + WhatsApp (planned)
+ *   - Unified message handling
+ * - Phase 7: MODEL FAILOVER + WEBHOOK INGRESS
+ *   - Auto-switch between Claude/GPT/Gemini/Groq
+ *   - Webhook endpoints for Beds24, Stripe, GitHub
+ *   - Event-driven automation
+ * - Phase 8: GMAIL PUB/SUB + QUEUE MANAGEMENT
+ *   - Real-time email processing
+ *   - Message batching and steering
+ *   - Concurrency lanes
+ * - Phase 9: THINKING LEVELS
+ *   - Control AI reasoning depth
+ *   - Auto-detect question complexity
+ *   - Cost optimization (40-50% savings)
  * - Shared memory system with learnings
  */
 
@@ -30,11 +53,35 @@ const config = require('./config.json');
 // Import core modules
 import claude from './lib/claude.js';
 import line from './lib/line.js';
+import telegram from './lib/telegram.js';
+import gateway from './lib/gateway.js';
+import trustPolicy from './lib/trust-policy.js';
+import toolPolicy from './lib/tool-policy.js';
+import voiceManager from './lib/voice.js';
+import broadcastManager from './lib/broadcast.js';
+import codingOrchestrator from './lib/coding-orchestrator.js';
+import modelFailover from './lib/model-failover.js';
+import webhookIngress, { createBeds24Handler, createStripeHandler, createGitHubHandler } from './lib/webhook-ingress.js';
+import gmailPubSub from './lib/gmail-pubsub.js';
+import queueManager from './lib/queue-manager.js';
+import thinkingLevels from './lib/thinking-levels.js';
 import memory from './lib/memory.js';
 import memorySync from './lib/memory-sync.js';
 import HeartbeatManager from './lib/heartbeat.js';
+import SubAgentManager from './lib/subagent.js';
 import beds24 from './lib/beds24.js';
 import autonomy from './lib/autonomy.js';
+
+// Phase 5.3: Tier 1-3 OpenClaw Features
+import typingIndicators from './lib/typing-indicators.js';
+import verboseMode from './lib/verbose-mode.js';
+import debugCommand from './lib/debug-command.js';
+import reactions from './lib/reactions.js';
+import localModels from './lib/local-models.js';
+import firecrawl from './lib/firecrawl.js';
+import lobster from './lib/lobster.js';
+import otel from './lib/opentelemetry.js';
+import presence from './lib/presence.js';
 
 // Phase 3.5: OpenClaw Upgrades
 import {
@@ -70,6 +117,9 @@ app.use(express.json());
 
 // Heartbeat Manager instance
 let heartbeatManager = null;
+
+// Sub-Agent Manager instance
+let subAgentManager = null;
 
 // =============================================================================
 // FAILOVER ROUTER CONFIGURATION
@@ -367,6 +417,101 @@ app.post('/webhook/line', async (req, res) => {
 });
 
 // =============================================================================
+// TELEGRAM WEBHOOK
+// =============================================================================
+
+app.post('/webhook/telegram', async (req, res) => {
+  try {
+    // Check if Telegram is enabled
+    if (!config.telegram?.enabled) {
+      return res.status(200).send('OK (disabled)');
+    }
+
+    const update = req.body;
+
+    // Handle message updates
+    if (update.message && update.message.text) {
+      const msg = update.message;
+      const chatId = msg.chat.id.toString();
+      const userId = msg.from.id.toString();
+      const userMessage = msg.text;
+      const sessionId = `telegram:${chatId}`;
+
+      console.log(`[TELEGRAM] Message from ${msg.from.username || userId}: ${userMessage}`);
+
+      // Phase 3.5: Log user message to JSONL
+      logUserMessage(sessionId, userMessage, {
+        channel: 'telegram',
+        username: msg.from.username,
+        chatType: msg.chat.type,
+        timestamp: msg.date * 1000
+      });
+
+      // Load conversation history
+      const history = await memory.getConversation(chatId);
+
+      // Check if this is owner
+      const isOwner = userId === config.telegram?.owner_id?.toString();
+
+      // Phase 2: Get intelligent context
+      const context = await memory.getIntelligentContext();
+
+      // Phase 3: Get autonomy suggestions
+      const suggestions = autonomy.getProactiveSuggestions();
+      const pendingApprovals = autonomy.getPendingApprovals();
+
+      // Build context string for Claude
+      let contextString = '';
+      if (context.current_focus) {
+        contextString += `\n\n[Current Focus: ${context.current_focus.topic}]`;
+      }
+      if (pendingApprovals.length > 0 && isOwner) {
+        contextString += `\n[Pending Approvals: ${pendingApprovals.length}]`;
+      }
+      if (suggestions.length > 0 && isOwner) {
+        contextString += `\n[Suggestions: ${suggestions.map(s => s.message).join('; ')}]`;
+      }
+
+      // Build messages for Claude
+      const messages = [
+        ...history.slice(-10),
+        { role: 'user', content: userMessage }
+      ];
+
+      // Get response from Claude
+      const systemPrompt = SYSTEM_PROMPT +
+        (isOwner ? '\n\nนี่คือข้อความจาก Tars (เจ้าของ) ผ่าน Telegram - สามารถพูดคุยได้ตรงๆ' : '\n\nนี่คือข้อความจากผู้ใช้ทาง Telegram - ตอบอย่างสุภาพและเป็นมืออาชีพ') +
+        contextString;
+
+      const response = await claude.chat(messages, {
+        system: systemPrompt
+      });
+
+      // Save to memory
+      await memory.saveConversation(chatId, userMessage, response);
+
+      // Phase 3.5: Log assistant response
+      logAssistantMessage(sessionId, response, {
+        channel: 'telegram',
+        model: 'claude-sonnet',
+        isOwner
+      });
+
+      // Reply via Telegram
+      await telegram.send(chatId, response);
+
+      console.log(`[TELEGRAM] Replied to ${msg.from.username || userId}: ${response.substring(0, 50)}...`);
+    }
+
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('[TELEGRAM] Webhook error:', error);
+    logError('system', error, { source: 'telegram-webhook' });
+    res.status(500).send('Error');
+  }
+});
+
+// =============================================================================
 // API ENDPOINTS
 // =============================================================================
 
@@ -398,6 +543,861 @@ app.get('/api/router/status', async (req, res) => {
     },
     activeHandler: localOnline ? 'local' : 'railway'
   });
+});
+
+// Gateway status (Multi-Channel)
+app.get('/api/gateway/status', (req, res) => {
+  res.json(gateway.getStatus());
+});
+
+// Setup Telegram webhook
+app.post('/api/gateway/telegram/setup', async (req, res) => {
+  try {
+    const { webhook_url } = req.body;
+    if (!webhook_url) {
+      return res.status(400).json({ error: 'webhook_url required' });
+    }
+
+    const result = await telegram.setWebhook(webhook_url);
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test notify owner via gateway
+app.post('/api/gateway/notify', async (req, res) => {
+  try {
+    const { message, channels } = req.body;
+    if (!message) {
+      return res.status(400).json({ error: 'message required' });
+    }
+
+    const results = await gateway.notifyOwner(message, channels);
+    res.json({ success: true, results });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =============================================================================
+// TRUST POLICY ENDPOINTS
+// =============================================================================
+
+// Get trust levels info
+app.get('/api/trust/levels', (req, res) => {
+  const { TrustPolicyManager } = require('./lib/trust-policy.js');
+  res.json(TrustPolicyManager.getTrustLevelsInfo());
+});
+
+// Get trust policy for a user
+app.get('/api/trust/user/:channel/:userId', (req, res) => {
+  const { channel, userId } = req.params;
+  const summary = trustPolicy.getSummary(channel, userId);
+  res.json(summary);
+});
+
+// Check if user can perform action
+app.post('/api/trust/check', (req, res) => {
+  const { channel, userId, action } = req.body;
+  if (!channel || !userId || !action) {
+    return res.status(400).json({ error: 'channel, userId, and action required' });
+  }
+
+  const result = trustPolicy.canPerform(channel, userId, action);
+  res.json(result);
+});
+
+// =============================================================================
+// TOOL POLICY ENDPOINTS (Auto-Run)
+// =============================================================================
+
+// Get tool policy status
+app.get('/api/tools/policy', (req, res) => {
+  res.json(toolPolicy.getStatus());
+});
+
+// Check if tool is allowed
+app.post('/api/tools/check', (req, res) => {
+  const { trustLevel, tool } = req.body;
+  if (!trustLevel || !tool) {
+    return res.status(400).json({ error: 'trustLevel and tool required' });
+  }
+
+  const result = toolPolicy.isToolAllowed(trustLevel, tool);
+  res.json(result);
+});
+
+// Check if command can execute
+app.post('/api/tools/exec-check', (req, res) => {
+  const { trustLevel, command } = req.body;
+  if (!trustLevel || !command) {
+    return res.status(400).json({ error: 'trustLevel and command required' });
+  }
+
+  const result = toolPolicy.canExecute(trustLevel, command);
+  res.json(result);
+});
+
+// Add to exec allowlist
+app.post('/api/tools/allowlist', (req, res) => {
+  const { pattern } = req.body;
+  if (!pattern) {
+    return res.status(400).json({ error: 'pattern required' });
+  }
+
+  toolPolicy.addToAllowlist(pattern);
+  res.json({ success: true, pattern });
+});
+
+// =============================================================================
+// VOICE ENDPOINTS (TTS/STT)
+// =============================================================================
+
+// Get voice status
+app.get('/api/voice/status', (req, res) => {
+  res.json(voiceManager.getStatus());
+});
+
+// Get available voices
+app.get('/api/voice/voices', (req, res) => {
+  res.json(voiceManager.getAvailableVoices());
+});
+
+// Text-to-Speech
+app.post('/api/voice/tts', async (req, res) => {
+  try {
+    const { text, voice, provider } = req.body;
+    if (!text) {
+      return res.status(400).json({ error: 'text required' });
+    }
+
+    const result = await voiceManager.textToSpeech(text, { voice, provider });
+
+    // Return audio file path (or could stream the audio)
+    res.json({
+      success: true,
+      audioPath: result.audioPath,
+      provider: result.provider,
+      textLength: result.textLength
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Speech-to-Text
+app.post('/api/voice/stt', async (req, res) => {
+  try {
+    // Expects audio file in request body or as multipart
+    const { audioPath, language } = req.body;
+    if (!audioPath) {
+      return res.status(400).json({ error: 'audioPath required' });
+    }
+
+    const result = await voiceManager.speechToText(audioPath, { language });
+    res.json({
+      success: true,
+      text: result.text,
+      language: result.language
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =============================================================================
+// BROADCAST GROUPS ENDPOINTS
+// =============================================================================
+
+// Get broadcast status
+app.get('/api/broadcast/status', (req, res) => {
+  res.json(broadcastManager.getStatus());
+});
+
+// Get available groups
+app.get('/api/broadcast/groups', (req, res) => {
+  res.json(broadcastManager.getGroups());
+});
+
+// Get available agents
+app.get('/api/broadcast/agents', (req, res) => {
+  res.json(broadcastManager.getAgents());
+});
+
+// Broadcast message to group
+app.post('/api/broadcast', async (req, res) => {
+  try {
+    const { groupId, message, maxTokens } = req.body;
+    if (!groupId || !message) {
+      return res.status(400).json({ error: 'groupId and message required' });
+    }
+
+    const responses = await broadcastManager.broadcast(groupId, message, { maxTokens });
+    const formatted = broadcastManager.formatResponses(responses);
+
+    res.json({
+      success: true,
+      groupId,
+      responseCount: responses.length,
+      responses,
+      formatted
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =============================================================================
+// CODING AGENT ORCHESTRATOR ENDPOINTS
+// =============================================================================
+
+// Get orchestrator status
+app.get('/api/coding/status', (req, res) => {
+  res.json(codingOrchestrator.getStatus());
+});
+
+// Get active processes
+app.get('/api/coding/active', (req, res) => {
+  res.json(codingOrchestrator.getActive());
+});
+
+// Spawn a coding agent
+app.post('/api/coding/spawn', async (req, res) => {
+  try {
+    const { agent, task, workdir, timeout, args } = req.body;
+    if (!task) {
+      return res.status(400).json({ error: 'task required' });
+    }
+
+    const result = await codingOrchestrator.spawn({
+      agent,
+      task,
+      workdir,
+      timeout,
+      args
+    });
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get process info
+app.get('/api/coding/process/:runId', (req, res) => {
+  const processInfo = codingOrchestrator.getProcess(req.params.runId);
+  if (!processInfo) {
+    return res.status(404).json({ error: 'Process not found' });
+  }
+  res.json(processInfo);
+});
+
+// Get process output
+app.get('/api/coding/output/:runId', (req, res) => {
+  const { tail, type } = req.query;
+  const output = codingOrchestrator.getOutput(req.params.runId, {
+    tail: tail ? parseInt(tail) : undefined,
+    type
+  });
+
+  if (!output) {
+    return res.status(404).json({ error: 'Process not found' });
+  }
+  res.json(output);
+});
+
+// Send input to process
+app.post('/api/coding/input/:runId', (req, res) => {
+  try {
+    const { input } = req.body;
+    if (!input) {
+      return res.status(400).json({ error: 'input required' });
+    }
+
+    codingOrchestrator.sendInput(req.params.runId, input);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Stop a process
+app.post('/api/coding/stop/:runId', (req, res) => {
+  const success = codingOrchestrator.stop(req.params.runId);
+  res.json({ success });
+});
+
+// Stop all processes
+app.post('/api/coding/stop-all', (req, res) => {
+  const stopped = codingOrchestrator.stopAll();
+  res.json({ success: true, stopped });
+});
+
+// Clear completed processes
+app.post('/api/coding/clear', (req, res) => {
+  const cleared = codingOrchestrator.clearCompleted();
+  res.json({ success: true, cleared });
+});
+
+// =============================================================================
+// MODEL FAILOVER API
+// =============================================================================
+
+// Get model failover status
+app.get('/api/models/status', (req, res) => {
+  res.json(modelFailover.getStatus());
+});
+
+// Send message with failover + thinking levels
+app.post('/api/models/send', async (req, res) => {
+  try {
+    const {
+      message,
+      system,
+      model,
+      maxTokens,
+      temperature,
+      preferProvider,
+      thinkingLevel,        // explicit: off, minimal, low, medium, high, xhigh
+      autoThinking = true   // auto-detect thinking level
+    } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ error: 'message is required' });
+    }
+
+    const result = await modelFailover.send({
+      message,
+      system,
+      model,
+      maxTokens,
+      temperature,
+      preferProvider,
+      thinkingLevel,
+      autoThinking
+    });
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get combined status (Model Failover + Thinking Levels)
+app.get('/api/models/combined-status', (req, res) => {
+  res.json(modelFailover.getCombinedStatus());
+});
+
+// Health check all providers
+app.post('/api/models/health-check', async (req, res) => {
+  try {
+    const results = await modelFailover.healthCheck();
+    res.json({ success: true, results });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reset stats
+app.post('/api/models/reset-stats', (req, res) => {
+  modelFailover.resetStats();
+  res.json({ success: true, message: 'Stats reset' });
+});
+
+// =============================================================================
+// WEBHOOK INGRESS API
+// =============================================================================
+
+// Get webhook status
+app.get('/api/webhooks/status', (req, res) => {
+  res.json(webhookIngress.getStatus());
+});
+
+// Get webhook history
+app.get('/api/webhooks/history', (req, res) => {
+  const { source, status, limit } = req.query;
+  const history = webhookIngress.getHistory({
+    source,
+    status,
+    limit: limit ? parseInt(limit) : 50
+  });
+  res.json({ history, count: history.length });
+});
+
+// Get specific webhook
+app.get('/api/webhooks/:webhookId', (req, res) => {
+  const webhook = webhookIngress.getWebhook(req.params.webhookId);
+  if (!webhook) {
+    return res.status(404).json({ error: 'Webhook not found' });
+  }
+  res.json(webhook);
+});
+
+// Clear webhook history
+app.post('/api/webhooks/clear', (req, res) => {
+  webhookIngress.clearHistory();
+  res.json({ success: true, message: 'History cleared' });
+});
+
+// Generic webhook endpoint
+app.post('/webhook/:source', async (req, res) => {
+  try {
+    const { source } = req.params;
+    const result = await webhookIngress.process(source, req.body, req.headers);
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Beds24 webhook endpoint
+app.post('/webhook/beds24', async (req, res) => {
+  try {
+    const result = await webhookIngress.process('beds24', req.body, req.headers);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Stripe webhook endpoint
+app.post('/webhook/stripe', async (req, res) => {
+  try {
+    const result = await webhookIngress.process('stripe', req.body, req.headers);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GitHub webhook endpoint
+app.post('/webhook/github', async (req, res) => {
+  try {
+    const result = await webhookIngress.process('github', req.body, req.headers);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =============================================================================
+// GMAIL PUB/SUB API
+// =============================================================================
+
+// Get Gmail status
+app.get('/api/gmail/status', (req, res) => {
+  res.json(gmailPubSub.getStatus());
+});
+
+// Gmail webhook (for Google Pub/Sub push)
+app.post('/webhook/gmail', async (req, res) => {
+  try {
+    // Decode Pub/Sub message if present
+    let payload = req.body;
+
+    if (req.body.message && req.body.message.data) {
+      // Pub/Sub push format
+      const data = Buffer.from(req.body.message.data, 'base64').toString();
+      payload = JSON.parse(data);
+    }
+
+    const result = await gmailPubSub.processWebhook(payload);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Process email manually (for testing)
+app.post('/api/gmail/process', async (req, res) => {
+  try {
+    const email = await gmailPubSub.processEmail(req.body);
+    res.json({ success: true, email });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reset Gmail stats
+app.post('/api/gmail/reset-stats', (req, res) => {
+  gmailPubSub.resetStats();
+  res.json({ success: true, message: 'Stats reset' });
+});
+
+// =============================================================================
+// QUEUE MANAGER API
+// =============================================================================
+
+// Get queue status
+app.get('/api/queue/status', (req, res) => {
+  res.json(queueManager.getStatus());
+});
+
+// Get specific lane status
+app.get('/api/queue/lane/:lane', (req, res) => {
+  const status = queueManager.getLaneStatus(req.params.lane);
+  if (!status.config) {
+    return res.status(404).json({ error: 'Lane not found' });
+  }
+  res.json(status);
+});
+
+// Enqueue message
+app.post('/api/queue/enqueue', async (req, res) => {
+  try {
+    const { message, lane, sessionId, priority } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ error: 'message is required' });
+    }
+
+    const result = await queueManager.enqueue(message, {
+      lane,
+      sessionId,
+      priority
+    });
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Format batched message (utility endpoint)
+app.post('/api/queue/format', (req, res) => {
+  try {
+    const formatted = queueManager.formatBatchedMessage(req.body);
+    res.json({ formatted });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update lane config
+app.post('/api/queue/lane/:lane/config', (req, res) => {
+  try {
+    const config = queueManager.updateLaneConfig(req.params.lane, req.body);
+    res.json({ success: true, config });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Clear lane
+app.post('/api/queue/lane/:lane/clear', (req, res) => {
+  const cleared = queueManager.clearLane(req.params.lane);
+  res.json({ success: true, cleared });
+});
+
+// Clear all queues
+app.post('/api/queue/clear-all', (req, res) => {
+  const cleared = queueManager.clearAll();
+  res.json({ success: true, cleared });
+});
+
+// Reset queue stats
+app.post('/api/queue/reset-stats', (req, res) => {
+  queueManager.resetStats();
+  res.json({ success: true, message: 'Stats reset' });
+});
+
+// =============================================================================
+// THINKING LEVELS API
+// =============================================================================
+
+// Get thinking levels status
+app.get('/api/thinking/status', (req, res) => {
+  res.json(thinkingLevels.getStatus());
+});
+
+// Get all available levels
+app.get('/api/thinking/levels', (req, res) => {
+  res.json(thinkingLevels.getLevels());
+});
+
+// Detect level for a message
+app.post('/api/thinking/detect', (req, res) => {
+  const { message, context } = req.body;
+
+  if (!message) {
+    return res.status(400).json({ error: 'message is required' });
+  }
+
+  const level = thinkingLevels.detectLevel(message, context);
+  const config = thinkingLevels.getConfig(level);
+
+  res.json({ level, config });
+});
+
+// Process message with thinking level
+app.post('/api/thinking/process', (req, res) => {
+  const { message, level, context } = req.body;
+
+  if (!message) {
+    return res.status(400).json({ error: 'message is required' });
+  }
+
+  const result = thinkingLevels.process(message, { level, context });
+  res.json(result);
+});
+
+// Estimate cost for a message
+app.post('/api/thinking/estimate-cost', (req, res) => {
+  const { message, model } = req.body;
+
+  if (!message) {
+    return res.status(400).json({ error: 'message is required' });
+  }
+
+  const estimate = thinkingLevels.estimateCost(message, model);
+  res.json(estimate);
+});
+
+// Toggle reasoning visibility
+app.post('/api/thinking/toggle-reasoning', (req, res) => {
+  const visible = thinkingLevels.toggleReasoning();
+  res.json({ success: true, reasoningVisible: visible });
+});
+
+// Set reasoning visibility
+app.post('/api/thinking/reasoning', (req, res) => {
+  const { visible } = req.body;
+  const result = thinkingLevels.setReasoning(visible);
+  res.json({ success: true, reasoningVisible: result });
+});
+
+// Reset thinking stats
+app.post('/api/thinking/reset-stats', (req, res) => {
+  thinkingLevels.resetStats();
+  res.json({ success: true, message: 'Stats reset' });
+});
+
+// =============================================================================
+// TIER 1: TYPING INDICATORS, VERBOSE, DEBUG, REACTIONS
+// =============================================================================
+
+// Typing Indicators
+app.get('/api/typing/status', (req, res) => {
+  res.json(typingIndicators.getStatus());
+});
+
+app.post('/api/typing/start', async (req, res) => {
+  const { channel, target, credentials } = req.body;
+  await typingIndicators.startTyping(channel, target, credentials);
+  res.json({ success: true });
+});
+
+app.post('/api/typing/stop', (req, res) => {
+  const { sessionId } = req.body;
+  typingIndicators.stopTyping(sessionId);
+  res.json({ success: true });
+});
+
+// Verbose Mode
+app.get('/api/verbose/status', (req, res) => {
+  res.json(verboseMode.getStatus());
+});
+
+app.post('/api/verbose/set', (req, res) => {
+  const { sessionId, mode } = req.body;
+  try {
+    const newMode = verboseMode.setMode(sessionId, mode);
+    res.json({ success: true, mode: newMode });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/verbose/calls/:sessionId', (req, res) => {
+  const calls = verboseMode.getToolCalls(req.params.sessionId, 20);
+  res.json({ calls });
+});
+
+// Debug Command
+app.get('/api/debug/status', (req, res) => {
+  res.json(debugCommand.getStatus());
+});
+
+app.post('/api/debug/command', (req, res) => {
+  const { sessionId, command } = req.body;
+  const result = debugCommand.handleCommand(sessionId, command);
+  if (result) {
+    res.json(result);
+  } else {
+    res.status(400).json({ error: 'Invalid debug command' });
+  }
+});
+
+app.get('/api/debug/keys', (req, res) => {
+  res.json(debugCommand._handleKeys());
+});
+
+// Reactions
+app.get('/api/reactions/status', (req, res) => {
+  res.json(reactions.getStatus());
+});
+
+app.get('/api/reactions/types', (req, res) => {
+  res.json({
+    types: reactions.getTypes(),
+    shortcuts: reactions.getShortcuts()
+  });
+});
+
+app.post('/api/reactions/add', async (req, res) => {
+  const { channel, messageId, emoji, credentials, context } = req.body;
+  const result = await reactions.addReaction(channel, messageId, emoji, credentials, context);
+  res.json(result);
+});
+
+app.post('/api/reactions/remove', async (req, res) => {
+  const { channel, messageId, emoji, credentials, context } = req.body;
+  const result = await reactions.removeReaction(channel, messageId, emoji, credentials, context);
+  res.json(result);
+});
+
+// =============================================================================
+// TIER 2: LOCAL MODELS, FIRECRAWL
+// =============================================================================
+
+// Local Models
+app.get('/api/local-models/status', (req, res) => {
+  res.json(localModels.getStatus());
+});
+
+app.get('/api/local-models/providers', (req, res) => {
+  res.json(localModels.getProviders());
+});
+
+app.post('/api/local-models/health', async (req, res) => {
+  const { provider } = req.body;
+  const health = await localModels.checkHealth(provider || 'ollama');
+  res.json(health);
+});
+
+app.get('/api/local-models/models/:provider', async (req, res) => {
+  try {
+    const models = await localModels.listModels(req.params.provider);
+    res.json({ models });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/local-models/send', async (req, res) => {
+  try {
+    const result = await localModels.send(req.body);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Firecrawl
+app.get('/api/firecrawl/status', (req, res) => {
+  res.json(firecrawl.getStatus());
+});
+
+app.post('/api/firecrawl/fetch', async (req, res) => {
+  try {
+    const { url, options } = req.body;
+    const result = await firecrawl.fetch(url, options);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/firecrawl/crawl', async (req, res) => {
+  try {
+    const { url, options } = req.body;
+    const result = await firecrawl.crawl(url, options);
+    res.json({ success: true, pages: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =============================================================================
+// TIER 3: LOBSTER, OPENTELEMETRY, PRESENCE
+// =============================================================================
+
+// Lobster Workflows
+app.get('/api/lobster/status', (req, res) => {
+  res.json(lobster.getStatus());
+});
+
+app.get('/api/lobster/workflows', (req, res) => {
+  res.json({ workflows: lobster.list() });
+});
+
+app.get('/api/lobster/workflow/:name', (req, res) => {
+  const workflow = lobster.get(req.params.name);
+  if (workflow) {
+    res.json(workflow);
+  } else {
+    res.status(404).json({ error: 'Workflow not found' });
+  }
+});
+
+app.post('/api/lobster/run', async (req, res) => {
+  try {
+    const { name, variables } = req.body;
+    const result = await lobster.run(name, variables);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/lobster/register', (req, res) => {
+  const { name, workflow } = req.body;
+  lobster.register(name, workflow);
+  res.json({ success: true, message: `Workflow ${name} registered` });
+});
+
+// OpenTelemetry
+app.get('/api/otel/status', (req, res) => {
+  res.json(otel.getStatus());
+});
+
+app.get('/api/otel/metrics', (req, res) => {
+  res.json(otel.getMetrics());
+});
+
+app.get('/api/otel/traces', (req, res) => {
+  const limit = parseInt(req.query.limit) || 50;
+  res.json({ traces: otel.getTraces(limit) });
+});
+
+// Presence
+app.get('/api/presence/status', (req, res) => {
+  res.json(presence.getStatus());
+});
+
+app.get('/api/presence/online', (req, res) => {
+  res.json({ users: presence.getOnlineUsers() });
+});
+
+app.get('/api/presence/user/:userId', (req, res) => {
+  res.json(presence.get(req.params.userId));
+});
+
+app.post('/api/presence/update', (req, res) => {
+  const { userId, deviceId, state, platform, metadata } = req.body;
+  presence.update(userId, deviceId, { state, platform, metadata });
+  res.json({ success: true });
+});
+
+app.post('/api/presence/activity', (req, res) => {
+  const { userId, deviceId } = req.body;
+  presence.activity(userId, deviceId);
+  res.json({ success: true });
 });
 
 // Force refresh local status
@@ -735,6 +1735,88 @@ app.post('/api/heartbeat/trigger', async (req, res) => {
 });
 
 // =============================================================================
+// PHASE 5: SUB-AGENT SPAWN ENDPOINTS
+// =============================================================================
+
+// Get sub-agent status
+app.get('/api/subagent/status', (req, res) => {
+  if (!subAgentManager) {
+    return res.json({ enabled: false, message: 'Sub-agent not initialized' });
+  }
+  res.json(subAgentManager.getStatus());
+});
+
+// Spawn a sub-agent
+app.post('/api/subagent/spawn', async (req, res) => {
+  if (!subAgentManager) {
+    return res.status(400).json({ error: 'Sub-agent not initialized' });
+  }
+
+  try {
+    const { task, label, model, runTimeoutSeconds, cleanup } = req.body;
+
+    if (!task) {
+      return res.status(400).json({ error: 'task is required' });
+    }
+
+    const result = await subAgentManager.spawn({
+      task,
+      label,
+      model,
+      runTimeoutSeconds,
+      cleanup
+    });
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get specific sub-agent run
+app.get('/api/subagent/runs/:runId', (req, res) => {
+  if (!subAgentManager) {
+    return res.status(400).json({ error: 'Sub-agent not initialized' });
+  }
+
+  const run = subAgentManager.getRun(req.params.runId);
+  if (!run) {
+    return res.status(404).json({ error: 'Run not found' });
+  }
+  res.json(run);
+});
+
+// Stop a specific sub-agent run
+app.post('/api/subagent/stop/:runId', (req, res) => {
+  if (!subAgentManager) {
+    return res.status(400).json({ error: 'Sub-agent not initialized' });
+  }
+
+  const success = subAgentManager.stop(req.params.runId);
+  res.json({ success, message: success ? 'Stopped' : 'Cannot stop (may be running)' });
+});
+
+// Stop all sub-agent runs
+app.post('/api/subagent/stop-all', (req, res) => {
+  if (!subAgentManager) {
+    return res.status(400).json({ error: 'Sub-agent not initialized' });
+  }
+
+  const stopped = subAgentManager.stopAll();
+  res.json({ success: true, stopped });
+});
+
+// Clear completed runs
+app.post('/api/subagent/clear', (req, res) => {
+  if (!subAgentManager) {
+    return res.status(400).json({ error: 'Sub-agent not initialized' });
+  }
+
+  const cleared = subAgentManager.clearCompleted();
+  res.json({ success: true, cleared });
+});
+
+// =============================================================================
 // PHASE 3.5: SESSION & PROMPT ENDPOINTS
 // =============================================================================
 
@@ -1063,9 +2145,54 @@ const server = app.listen(PORT, async () => {
     registerCleanup('heartbeat', () => heartbeatManager.stop(), { phase: 'cleanup', priority: 5 });
   }
 
+  // Initialize Sub-Agent System (Phase 5)
+  if (config.subagent?.enabled) {
+    subAgentManager = new SubAgentManager(config.subagent);
+
+    // Set announce callback to LINE
+    subAgentManager.setAnnounceCallback(async (message) => {
+      console.log('[SUBAGENT] Announcing result to LINE...');
+      await line.notifyOwner(message);
+      logSystemEvent('subagent', 'announce_sent', { length: message.length });
+    });
+
+    // Set complete callback for logging
+    subAgentManager.setCompleteCallback((run) => {
+      logSystemEvent('subagent', 'run_complete', {
+        runId: run.runId,
+        status: run.status,
+        runtime: run.runtime
+      });
+    });
+
+    // Register cleanup
+    registerCleanup('subagent', () => subAgentManager.stopAll(), { phase: 'cleanup', priority: 5 });
+
+    console.log('[SUBAGENT] Sub-Agent Manager initialized');
+  }
+
+  // Initialize Webhook Ingress (Phase 7)
+  // Register default handlers
+  webhookIngress.on('beds24', '*', createBeds24Handler({ notifyOwner: (msg) => line.notifyOwner(msg) }));
+  webhookIngress.on('stripe', '*', createStripeHandler({ notifyOwner: (msg) => line.notifyOwner(msg) }));
+  webhookIngress.on('github', '*', createGitHubHandler({ notifyOwner: (msg) => line.notifyOwner(msg) }));
+
+  // Log webhook events
+  webhookIngress.on('webhook', (webhook) => {
+    logSystemEvent('webhook', 'received', {
+      id: webhook.id,
+      source: webhook.source,
+      eventType: webhook.eventType,
+      status: webhook.status
+    });
+  });
+
+  console.log('[WEBHOOK] Webhook Ingress initialized');
+  console.log('[FAILOVER] Model Failover initialized');
+
   console.log('');
   console.log('╔════════════════════════════════════════════════════════════╗');
-  console.log('║        ORACLE AGENT v3.5 - AUTONOMOUS MODE                 ║');
+  console.log('║        ORACLE AGENT v5.2 - FULL OPENCLAW + PHASE 8         ║');
   console.log('╠════════════════════════════════════════════════════════════╣');
   console.log(`║  Status:  ONLINE                                           ║`);
   console.log(`║  Port:    ${PORT}                                              ║`);
@@ -1081,6 +2208,16 @@ const server = app.listen(PORT, async () => {
   console.log(`║  - Interval: ${config.heartbeat?.every || 'disabled'}                                       ║`);
   console.log(`║  - Active Hours: ${config.heartbeat?.activeHours ? config.heartbeat.activeHours.start + ':00-' + config.heartbeat.activeHours.end + ':00' : 'N/A'}                           ║`);
   console.log(`║  - Model: ${config.heartbeat?.model?.split('-')[2] || 'N/A'}                                         ║`);
+  console.log('║                                                            ║');
+  console.log('║  🚀 PHASE 5: SUB-AGENT SPAWN                               ║');
+  console.log(`║  - Max Concurrent: ${config.subagent?.maxConcurrent || 'disabled'}                                     ║`);
+  console.log(`║  - Default Model: ${config.subagent?.defaultModel?.split('-')[2] || 'N/A'}                               ║`);
+  console.log(`║  - Timeout: ${config.subagent?.defaultTimeoutSeconds || 'N/A'}s                                       ║`);
+  console.log('║                                                            ║');
+  console.log('║  🌐 PHASE 6: MULTI-CHANNEL GATEWAY                         ║');
+  console.log(`║  - LINE: ${config.line?.enabled !== false ? '✅ ENABLED' : '❌ DISABLED'}                                     ║`);
+  console.log(`║  - Telegram: ${config.telegram?.enabled ? '✅ ENABLED' : '❌ DISABLED'}                                  ║`);
+  console.log(`║  - WhatsApp: 🔜 PLANNED                                    ║`);
   console.log('║                                                            ║');
   console.log('║  🆕 PHASE 3.5: OPENCLAW UPGRADES                           ║');
   console.log(`║  - JSONL Logging: data/sessions/                           ║`);
@@ -1098,6 +2235,18 @@ const server = app.listen(PORT, async () => {
   console.log('║  - POST /api/autonomy/monitor    Run monitoring check      ║');
   console.log('║  - GET  /api/autonomy/market     Get market data           ║');
   console.log('║                                                            ║');
+  console.log('║  Sub-Agent Endpoints:                                      ║');
+  console.log('║  - GET  /api/subagent/status     Get status & stats        ║');
+  console.log('║  - POST /api/subagent/spawn      Spawn sub-agent           ║');
+  console.log('║  - GET  /api/subagent/runs/:id   Get run details           ║');
+  console.log('║  - POST /api/subagent/stop/:id   Stop specific run         ║');
+  console.log('║  - POST /api/subagent/stop-all   Stop all runs             ║');
+  console.log('║                                                            ║');
+  console.log('║  Gateway Endpoints:                                        ║');
+  console.log('║  - GET  /api/gateway/status      Channel status            ║');
+  console.log('║  - POST /api/gateway/notify      Notify owner              ║');
+  console.log('║  - POST /webhook/telegram        Telegram webhook          ║');
+  console.log('║                                                            ║');
   console.log('║  Phase 3.5 Endpoints:                                      ║');
   console.log('║  - GET  /api/sessions            List session logs         ║');
   console.log('║  - GET  /api/sessions/:id        Get session entries       ║');
@@ -1105,6 +2254,26 @@ const server = app.listen(PORT, async () => {
   console.log('║  - GET  /api/prompts/versions    List prompt versions      ║');
   console.log('║  - GET  /api/summaries           List summaries            ║');
   console.log('║  - POST /api/summarize           Trigger summarization     ║');
+  console.log('║                                                            ║');
+  console.log('║  Phase 7 Endpoints (Model Failover):                       ║');
+  console.log('║  - GET  /api/models/status       Provider status           ║');
+  console.log('║  - POST /api/models/send         Send with failover        ║');
+  console.log('║  - POST /api/models/health-check Check all providers       ║');
+  console.log('║                                                            ║');
+  console.log('║  Phase 7 Endpoints (Webhook Ingress):                      ║');
+  console.log('║  - GET  /api/webhooks/status     Webhook status            ║');
+  console.log('║  - GET  /api/webhooks/history    Webhook history           ║');
+  console.log('║  - POST /webhook/beds24          Beds24 webhook            ║');
+  console.log('║  - POST /webhook/stripe          Stripe webhook            ║');
+  console.log('║  - POST /webhook/github          GitHub webhook            ║');
+  console.log('║                                                            ║');
+  console.log('║  Phase 8 Endpoints (Gmail + Queue):                        ║');
+  console.log('║  - GET  /api/gmail/status        Gmail status              ║');
+  console.log('║  - POST /webhook/gmail           Gmail webhook             ║');
+  console.log('║  - POST /api/gmail/process       Process email             ║');
+  console.log('║  - GET  /api/queue/status        Queue status              ║');
+  console.log('║  - POST /api/queue/enqueue       Enqueue message           ║');
+  console.log('║  - GET  /api/queue/lane/:lane    Lane status               ║');
   console.log('║                                                            ║');
   console.log('║  Scheduled:                                                ║');
   console.log('║  - 07:00  Morning Briefing (Auto)                          ║');

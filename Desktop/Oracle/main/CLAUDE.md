@@ -1,4 +1,4 @@
-# CLAUDE.md - Oracle Agent Memory System v4.2
+# CLAUDE.md - Oracle Agent Memory System v4.3
 
 ## ⚡ MANDATORY BOOT SEQUENCE
 
@@ -95,6 +95,56 @@ cd /Users/tanakitchaithip/Desktop/Oracle/main/tools/vector-search
 
 ---
 
+## 📝 Auto-Documentation Protocol
+
+> **เมื่อสร้าง feature ใหม่ ให้ทำเอกสารอัตโนมัติ ไม่ต้องรอ user สั่ง**
+
+### เมื่อไหร่ต้องทำ:
+- สร้างไฟล์ใหม่ (lib, component, API)
+- เพิ่ม feature ใหม่
+- แก้ไขการทำงานสำคัญ
+
+### ต้องทำอะไรบ้าง:
+
+1. **อัพเดท FEATURES-GUIDE.md** (ถ้ามี)
+   - วิธีใช้ + curl commands
+   - Config ที่ต้องตั้ง
+
+2. **อัพเดท HOW-IT-WORKS.md** (ถ้ามี)
+   - ทำงานยังไง (diagram/flow)
+   - ดียังไง (business value)
+   - ตัวอย่างการใช้งานจริง
+
+3. **อัพเดท handoff.md**
+   - Files changed
+   - Status update
+
+4. **เพิ่ม inline comments** ในโค้ด
+   - Function documentation
+   - Usage examples
+
+### Template สำหรับ Feature ใหม่:
+
+```markdown
+### [Feature Name]
+
+**ทำงานยังไง:**
+[Diagram หรือ flow]
+
+**ดียังไง:**
+| ปัญหาเดิม | แก้ได้ยังไง |
+|-----------|------------|
+| ... | ... |
+
+**วิธีใช้:**
+[curl commands / code examples]
+
+**Config:**
+[Environment variables / config.json]
+```
+
+---
+
 ## 🛡️ Anti-Forgetting Protocol
 
 ### Every 30 Messages หรือเมื่อ Context รู้สึกเต็ม:
@@ -175,7 +225,7 @@ cd /Users/tanakitchaithip/Desktop/Oracle/main/tools/vector-search
 
 ## 🎯 Quick Reference
 
-### Current Version: v4.2 (Skills + Vector Search)
+### Current Version: v4.3 (Auto-Documentation)
 
 ### Key Principles
 1. **"ลืม" = "ยังไม่ได้โหลด"** - แก้ได้ทันทีโดยการอ่านไฟล์
@@ -208,5 +258,5 @@ POST /api/summarize             - Trigger summarization
 
 ---
 
-*Oracle Memory System v4.2 - Skills + Vector Search*
+*Oracle Memory System v4.3 - Auto-Documentation*
 *Last updated: 2026-02-04*

@@ -1,7 +1,7 @@
 {
   "agent": {
     "name": "Oracle Agent",
-    "version": "4.0.0",
+    "version": "5.4.0",
     "owner": "Tars",
     "timezone": "Asia/Bangkok",
     "description": "Digital Partner ของ Tars - ช่วยทุกอย่างในชีวิต ไม่ใช่แค่ธุรกิจเดียว"
@@ -13,9 +13,27 @@
   },
 
   "line": {
+    "enabled": true,
     "channel_token": "fqjSuzhMaMEIv2GY84Vi+rmysaItfOWHUtn8KLew3jqZc99Xl3GdW3NQMy2slD12YlOFpWjGQBR8TEGwwHoamZNgho8c1r4ZVRKr0usmLSESjzQkfD2EJVbNFTgx4mbD28ZDt/9yEgxZMeDIiDrrxwdB04t89/1O/w1cDnyilFU=",
     "channel_secret": "2e10a85c338be323dad8af95ca06db2d",
     "owner_id": "Uba2ae89ff15d0ca1ea673058844f287c"
+  },
+
+  "telegram": {
+    "enabled": false,
+    "bot_token": "",
+    "owner_id": "",
+    "webhook_path": "/webhook/telegram"
+  },
+
+  "voice": {
+    "enabled": false,
+    "ttsProvider": "openai",
+    "ttsVoice": "nova",
+    "ttsModel": "tts-1",
+    "sttModel": "whisper-1",
+    "autoTTS": false,
+    "maxTextLength": 4096
   },
 
   "domains": {
@@ -97,6 +115,69 @@
     "activeHours": { "start": 8, "end": 22 },
     "ackMaxChars": 300,
     "skipIfBusy": true
+  },
+
+  "subagent": {
+    "enabled": true,
+    "maxConcurrent": 8,
+    "defaultModel": "claude-3-haiku-20240307",
+    "defaultTimeoutSeconds": 300,
+    "archiveAfterMinutes": 60
+  },
+
+  "modelFailover": {
+    "enabled": true,
+    "fallbackChain": ["anthropic", "openai", "groq"],
+    "stickySession": true,
+    "timeout": 30000
+  },
+
+  "webhooks": {
+    "enabled": true,
+    "secrets": {
+      "beds24": "",
+      "stripe": "",
+      "github": ""
+    }
+  },
+
+  "gmail": {
+    "enabled": true,
+    "autoProcess": true,
+    "autoDraft": false,
+    "notifyOwner": true,
+    "projectId": "",
+    "topicName": "gmail-notifications",
+    "subscriptionName": "gmail-oracle-sub"
+  },
+
+  "queue": {
+    "enabled": true,
+    "defaultLane": "main",
+    "lanes": {
+      "main": {
+        "concurrency": 1,
+        "mode": "steer",
+        "collectWindow": 3000,
+        "maxBatchSize": 10
+      },
+      "subagent": {
+        "concurrency": 8,
+        "mode": "fifo"
+      },
+      "webhook": {
+        "concurrency": 4,
+        "mode": "fifo"
+      }
+    }
+  },
+
+  "thinking": {
+    "enabled": true,
+    "defaultLevel": "medium",
+    "autoDetect": true,
+    "showReasoning": false,
+    "costTracking": true
   },
 
   "apis": {
