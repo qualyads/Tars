@@ -83,6 +83,12 @@ import lobster from './lib/lobster.js';
 import otel from './lib/opentelemetry.js';
 import presence from './lib/presence.js';
 
+// Phase 5.4: Self-Improvement Features
+import mistakeTracker from './lib/mistake-tracker.js';
+import selfReflection from './lib/self-reflection.js';
+import sentimentAnalysis from './lib/sentiment-analysis.js';
+import qualityTracker from './lib/quality-tracker.js';
+
 // Phase 3.5: OpenClaw Upgrades
 import {
   initSessionLogger,
@@ -1398,6 +1404,134 @@ app.post('/api/presence/activity', (req, res) => {
   const { userId, deviceId } = req.body;
   presence.activity(userId, deviceId);
   res.json({ success: true });
+});
+
+// =============================================================================
+// PHASE 5.4: SELF-IMPROVEMENT ENDPOINTS
+// =============================================================================
+
+// Mistake Tracker
+app.get('/api/mistakes/status', (req, res) => {
+  res.json(mistakeTracker.getStatus());
+});
+
+app.get('/api/mistakes/recent', (req, res) => {
+  const limit = parseInt(req.query.limit) || 10;
+  res.json(mistakeTracker.getRecent(limit));
+});
+
+app.get('/api/mistakes/stats', (req, res) => {
+  res.json(mistakeTracker.getStats());
+});
+
+app.get('/api/mistakes/weak-areas', (req, res) => {
+  res.json(mistakeTracker.getWeakAreas());
+});
+
+app.get('/api/mistakes/rules', (req, res) => {
+  res.json(mistakeTracker.getPreventionRules());
+});
+
+app.post('/api/mistakes/record', (req, res) => {
+  const mistake = req.body;
+  const entry = mistakeTracker.record(mistake);
+  res.json({ success: true, entry });
+});
+
+app.post('/api/mistakes/check', (req, res) => {
+  const intent = req.body;
+  const result = mistakeTracker.checkBeforeResponding(intent);
+  res.json(result);
+});
+
+// Self-Reflection
+app.get('/api/reflection/status', (req, res) => {
+  res.json(selfReflection.getStatus());
+});
+
+app.get('/api/reflection/stats', (req, res) => {
+  res.json(selfReflection.getStats());
+});
+
+app.get('/api/reflection/recent', (req, res) => {
+  const limit = parseInt(req.query.limit) || 10;
+  res.json(selfReflection.getRecent(limit));
+});
+
+app.post('/api/reflection/check', (req, res) => {
+  const { response, context } = req.body;
+  const result = selfReflection.check(response, context);
+  res.json(result);
+});
+
+app.post('/api/reflection/improve', (req, res) => {
+  const { response } = req.body;
+  const improved = selfReflection.improve(response);
+  res.json({ original: response, improved, changed: response !== improved });
+});
+
+// Sentiment Analysis
+app.get('/api/sentiment/status', (req, res) => {
+  res.json(sentimentAnalysis.getStatus());
+});
+
+app.get('/api/sentiment/stats', (req, res) => {
+  res.json(sentimentAnalysis.getStats());
+});
+
+app.get('/api/sentiment/history/:userId', (req, res) => {
+  const limit = parseInt(req.query.limit) || 10;
+  res.json(sentimentAnalysis.getHistory(req.params.userId, limit));
+});
+
+app.get('/api/sentiment/mood/:userId', (req, res) => {
+  res.json(sentimentAnalysis.getMood(req.params.userId));
+});
+
+app.post('/api/sentiment/analyze', (req, res) => {
+  const { message, userId } = req.body;
+  const result = sentimentAnalysis.analyze(message, userId);
+  res.json(result);
+});
+
+app.post('/api/sentiment/is-upset', (req, res) => {
+  const { userId } = req.body;
+  res.json({ upset: sentimentAnalysis.isUpset(userId) });
+});
+
+// Quality Tracker
+app.get('/api/quality/status', (req, res) => {
+  res.json(qualityTracker.getStatus());
+});
+
+app.get('/api/quality/stats', (req, res) => {
+  res.json(qualityTracker.getStats());
+});
+
+app.get('/api/quality/report', (req, res) => {
+  res.json(qualityTracker.getReport());
+});
+
+app.get('/api/quality/trend', (req, res) => {
+  const days = parseInt(req.query.days) || 7;
+  res.json(qualityTracker.getTrend(days));
+});
+
+app.get('/api/quality/recent', (req, res) => {
+  const limit = parseInt(req.query.limit) || 10;
+  res.json(qualityTracker.getRecent(limit));
+});
+
+app.post('/api/quality/score', (req, res) => {
+  const { response, context, feedback } = req.body;
+  const result = qualityTracker.score(response, context, feedback);
+  res.json(result);
+});
+
+app.post('/api/quality/feedback', (req, res) => {
+  const { recordId, feedback } = req.body;
+  const record = qualityTracker.addFeedback(recordId, feedback);
+  res.json({ success: !!record, record });
 });
 
 // Force refresh local status
