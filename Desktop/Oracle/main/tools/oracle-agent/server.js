@@ -1,5 +1,5 @@
 /**
- * Oracle Agent - Main Server v5.4 (Full OpenClaw + Tier 1-3 Features)
+ * Oracle Agent - Main Server v5.5 (Beds24 Integration Fixed)
  * Digital Partner for Tars - ALL aspects of life
  *
  * Features:
