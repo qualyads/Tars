@@ -8,9 +8,18 @@
  * - Either can work independently
  */
 
-const https = require('https');
-const fs = require('fs');
-const path = require('path');
+import https from 'https';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
+
+// ES module __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// For JSON imports
+const require = createRequire(import.meta.url);
 
 // Paths
 const CONFIG_PATH = path.join(__dirname, '..', 'shared-config.json');
@@ -647,7 +656,14 @@ async function initialize() {
 // EXPORTS
 // =============================================================================
 
-module.exports = {
+const paths = {
+  memory: MASTER_MEMORY_FILE,
+  conversations: CONVERSATIONS_FILE,
+  knowledge: KNOWLEDGE_FILE,
+  psiMemory: PSI_MEMORY_PATH
+};
+
+export {
   initialize,
   loadLocalMemory,
   saveLocalMemory,
@@ -662,19 +678,33 @@ module.exports = {
   setContext,
   getStats,
   config,
-
-  // Knowledge System (Phase 3)
   autoExtractKnowledge,
   saveImportantKnowledge,
   getKnowledgeByCategory,
   searchKnowledge,
   KNOWLEDGE_CATEGORIES,
+  paths
+};
 
-  // Paths (for reference)
-  paths: {
-    memory: MASTER_MEMORY_FILE,
-    conversations: CONVERSATIONS_FILE,
-    knowledge: KNOWLEDGE_FILE,
-    psiMemory: PSI_MEMORY_PATH
-  }
+export default {
+  initialize,
+  loadLocalMemory,
+  saveLocalMemory,
+  syncWithRailway,
+  saveConversation,
+  addKnowledge,
+  getMemory,
+  getConversations,
+  getLearnings,
+  getKnowledge,
+  getContext,
+  setContext,
+  getStats,
+  config,
+  autoExtractKnowledge,
+  saveImportantKnowledge,
+  getKnowledgeByCategory,
+  searchKnowledge,
+  KNOWLEDGE_CATEGORIES,
+  paths
 };

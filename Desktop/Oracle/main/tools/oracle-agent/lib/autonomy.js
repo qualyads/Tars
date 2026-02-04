@@ -9,16 +9,28 @@
  * - Learns from Tars's decisions
  */
 
-const https = require('https');
-const http = require('http');
-const memorySync = require('./memory-sync');
-const path = require('path');
-const fs = require('fs');
+import https from 'https';
+import http from 'http';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
+
+// ES module __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// For JSON imports
+const require = createRequire(import.meta.url);
+
+// Import memory-sync
+import memorySync from './memory-sync.js';
 
 // LINE module (may not exist when running from Terminal)
 let line = null;
 try {
-  line = require('./line');
+  const lineModule = await import('./line.js');
+  line = lineModule.default || lineModule;
 } catch (e) {
   console.log('[AUTONOMY] LINE module not available, using direct API');
 }
@@ -27,7 +39,8 @@ try {
 let beds24 = null;
 let beds24Available = false;
 try {
-  beds24 = require('./beds24');
+  const beds24Module = await import('./beds24.js');
+  beds24 = beds24Module.default || beds24Module;
   // Check if beds24 has valid config by checking if token functions exist
   if (beds24 && beds24.getTokenStatus) {
     const status = beds24.getTokenStatus();
@@ -846,32 +859,38 @@ function analyzeOpportunity(topic) {
 // EXPORTS
 // =============================================================================
 
-module.exports = {
+export {
   initialize,
   stop,
-
-  // Goals & Triggers
   GOALS,
   TRIGGERS,
-
-  // Monitoring
   monitoringLoop,
   sendMorningBriefing,
   fetchCryptoData,
   fetchHotelStatus,
-
-  // Approval Queue
   addToApprovalQueue,
   processApproval,
   getPendingApprovals,
-
-  // Learning
   learnFromDecision,
-
-  // Proactive
   getProactiveSuggestions,
   analyzeOpportunity,
+  sendLineAlert
+};
 
-  // Alerts
+export default {
+  initialize,
+  stop,
+  GOALS,
+  TRIGGERS,
+  monitoringLoop,
+  sendMorningBriefing,
+  fetchCryptoData,
+  fetchHotelStatus,
+  addToApprovalQueue,
+  processApproval,
+  getPendingApprovals,
+  learnFromDecision,
+  getProactiveSuggestions,
+  analyzeOpportunity,
   sendLineAlert
 };

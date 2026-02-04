@@ -6,8 +6,13 @@
  * Phase 2: Intelligence - Context Awareness
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ES module __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const MEMORY_FILE = path.join(__dirname, '..', 'memory.json');
 
@@ -402,7 +407,7 @@ async function getIntelligentContext() {
   };
 }
 
-module.exports = {
+export {
   load,
   save,
   getAll,
@@ -416,7 +421,31 @@ module.exports = {
   addNote,
   updateStats,
   getContextForClaude,
-  // Phase 2: New exports
+  getSyncStatus,
+  fullSync,
+  queueChange,
+  getSyncQueue,
+  updateHotelStatus,
+  addMarketAlert,
+  setCurrentFocus,
+  trackApiCall,
+  getIntelligentContext
+};
+
+export default {
+  load,
+  save,
+  getAll,
+  update,
+  getConversation,
+  saveConversation,
+  getRecentConversations,
+  addPendingApproval,
+  getPendingApprovals,
+  resolveApproval,
+  addNote,
+  updateStats,
+  getContextForClaude,
   getSyncStatus,
   fullSync,
   queueChange,

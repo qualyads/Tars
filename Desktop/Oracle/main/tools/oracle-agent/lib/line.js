@@ -3,7 +3,9 @@
  * Handles LINE bot communication
  */
 
-const https = require('https');
+import https from 'https';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
 const config = require('../config.json');
 
 /**
@@ -129,9 +131,5 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-module.exports = {
-  reply,
-  push,
-  pushLong,
-  notifyOwner
-};
+export { reply, push, pushLong, notifyOwner };
+export default { reply, push, pushLong, notifyOwner };

@@ -3,7 +3,10 @@
  * Handles communication with Anthropic's Claude API
  */
 
-const Anthropic = require('@anthropic-ai/sdk');
+import Anthropic from '@anthropic-ai/sdk';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
 const config = require('../config.json');
 
 // Initialize client
@@ -112,8 +115,5 @@ ${JSON.stringify(data, null, 2)}
   });
 }
 
-module.exports = {
-  chat,
-  think,
-  generateReport
-};
+export { chat, think, generateReport };
+export default { chat, think, generateReport };

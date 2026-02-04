@@ -76,6 +76,8 @@ import hotelNotify from './lib/hotel-notifications.js';
 
 // Phase 5.3: Tier 1-3 OpenClaw Features
 import typingIndicators from './lib/typing-indicators.js';
+import flexBuilder from './lib/flex-builder.js';
+import { smartChunk, getChunkLimit } from './lib/smart-chunking.js';
 import verboseMode from './lib/verbose-mode.js';
 import debugCommand from './lib/debug-command.js';
 import reactions from './lib/reactions.js';
@@ -595,8 +597,21 @@ app.post('/webhook/line', async (req, res) => {
           reflectionOk: reflection.ok
         });
 
-        // Reply via LINE
-        await line.reply(replyToken, response);
+        // Reply via LINE with smart chunking
+        const chunks = smartChunk(response, { provider: 'line', markdown: true });
+
+        if (chunks.length === 1) {
+          // Single message - use reply
+          await line.reply(replyToken, chunks[0]);
+        } else {
+          // Multiple chunks - reply first, then push remaining
+          await line.reply(replyToken, chunks[0]);
+          for (let i = 1; i < chunks.length; i++) {
+            await new Promise(r => setTimeout(r, 300)); // Small delay between messages
+            await line.push(userId, chunks[i]);
+          }
+          console.log(`[LINE] Sent ${chunks.length} chunks (smart-chunking)`);
+        }
 
         // Stop typing indicator after response sent
         typingIndicators.stopTyping(typingSessionId);
@@ -705,8 +720,16 @@ app.post('/webhook/telegram', async (req, res) => {
         isOwner
       });
 
-      // Reply via Telegram
-      await telegram.send(chatId, response);
+      // Reply via Telegram with smart chunking
+      const telegramChunks = smartChunk(response, { provider: 'telegram', markdown: true });
+
+      for (let i = 0; i < telegramChunks.length; i++) {
+        if (i > 0) await new Promise(r => setTimeout(r, 300));
+        await telegram.send(chatId, telegramChunks[i]);
+      }
+      if (telegramChunks.length > 1) {
+        console.log(`[TELEGRAM] Sent ${telegramChunks.length} chunks (smart-chunking)`);
+      }
 
       console.log(`[TELEGRAM] Replied to ${msg.from.username || userId}: ${response.substring(0, 50)}...`);
     }

@@ -9,15 +9,26 @@
  * - เสนอ action แล้วรอ approve ใน LINE
  */
 
-const https = require('https');
-const fs = require('fs');
-const path = require('path');
+import https from 'https';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
+
+// ES module __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// For JSON imports
+const require = createRequire(import.meta.url);
 
 // Load configs
 let config = {};
 let sharedConfig = {};
 try {
   config = require('../config.json');
+} catch (e) {}
+try {
   sharedConfig = require('../shared-config.json');
 } catch (e) {}
 
@@ -762,24 +773,14 @@ async function triggerMarketCheck() {
 // EXPORTS
 // =============================================================================
 
-module.exports = {
+export {
   start,
   stop,
-
-  // Manual triggers
   triggerBriefing,
   triggerSummary,
   triggerMarketCheck,
-
-  // Approval handling
   processApproval,
   suggestAction,
-
-  // State access
-  getState: () => state,
-  getPendingApprovals: () => state.pendingApprovals.filter(p => p.status === 'pending'),
-
-  // OpenClaw-inspired Heartbeat features
   HEARTBEAT_OK,
   shouldSendHeartbeat,
   isActiveHours,
@@ -789,15 +790,40 @@ module.exports = {
   markConversationActive,
   markConversationInactive,
   sendLineCritical,
+  ACTIVE_HOURS
+};
 
-  // Active Hours config
+// Getter functions
+const getState = () => state;
+const getPendingApprovals = () => state.pendingApprovals.filter(p => p.status === 'pending');
+const getHeartbeatStats = () => ({
+  skipped_quiet_hours: state.dailyStats.skipped_quiet_hours,
+  skipped_dedup: state.dailyStats.skipped_dedup,
+  skipped_heartbeat_ok: state.dailyStats.skipped_heartbeat_ok,
+  alerts_sent: state.dailyStats.alerts_sent
+});
+
+export { getState, getPendingApprovals, getHeartbeatStats };
+
+export default {
+  start,
+  stop,
+  triggerBriefing,
+  triggerSummary,
+  triggerMarketCheck,
+  processApproval,
+  suggestAction,
+  getState,
+  getPendingApprovals,
+  HEARTBEAT_OK,
+  shouldSendHeartbeat,
+  isActiveHours,
+  isQuietHours,
+  isDuplicateMessage,
+  hasActiveConversation,
+  markConversationActive,
+  markConversationInactive,
+  sendLineCritical,
   ACTIVE_HOURS,
-
-  // Stats
-  getHeartbeatStats: () => ({
-    skipped_quiet_hours: state.dailyStats.skipped_quiet_hours,
-    skipped_dedup: state.dailyStats.skipped_dedup,
-    skipped_heartbeat_ok: state.dailyStats.skipped_heartbeat_ok,
-    alerts_sent: state.dailyStats.alerts_sent
-  })
+  getHeartbeatStats
 };
