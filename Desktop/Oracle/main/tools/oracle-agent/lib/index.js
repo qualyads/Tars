@@ -81,6 +81,17 @@ export * as browserCdp from './browser-cdp.js';
 export * as memoryIndex from './memory-index.js';
 export * as embeddings from './embeddings.js';
 
+// === Phase 3.5: OpenClaw Discussion Upgrades ===
+
+// Session JSONL Logging
+export * as sessionJsonl from './session-jsonl.js';
+
+// Prompt Versioning
+export * as promptLoader from './prompt-loader.js';
+
+// Graceful Shutdown
+export * as gracefulShutdown from './graceful-shutdown.js';
+
 // Re-export commonly used functions
 export { analyzeContext, compactMessages } from './compaction.js';
 export { runBoot, registerTask, getBootStatus } from './boot-system.js';
@@ -178,6 +189,22 @@ export { createSessionStore, createDeltaTracker, createToolCallTracker, inferToo
 export { createCdpClient, captureScreenshot, navigate, waitFor } from './browser-cdp.js';
 export { getPageText, getPageHtml, querySelector, evaluate } from './browser-cdp.js';
 export { findChromeExecutable, launchChrome, stopChrome } from './browser-cdp.js';
+
+// === Phase 3.5: OpenClaw Discussion Upgrades Exports ===
+
+// Session JSONL exports
+export { initSessionLogger, logUserMessage, logAssistantMessage, logSystemEvent } from './session-jsonl.js';
+export { logToolCall, logToolResult, logError, readSessionLog, getSessionStats } from './session-jsonl.js';
+export { listSessionLogs, closeAllStreams, cleanupOldLogs, EntryType } from './session-jsonl.js';
+
+// Prompt Loader exports
+export { initPromptLoader, loadPrompt, renderPrompt, composePrompts } from './prompt-loader.js';
+export { setVersion as setPromptVersion, getVersion as getPromptVersion, listVersions } from './prompt-loader.js';
+export { savePrompt, listPrompts, createVersion, clearCache as clearPromptCache } from './prompt-loader.js';
+
+// Graceful Shutdown exports
+export { registerCleanup, unregisterCleanup, shutdown, isShutdownInProgress } from './graceful-shutdown.js';
+export { setupSignalHandlers, registerHttpServer, registerDatabase, registerWriteStream } from './graceful-shutdown.js';
 
 /**
  * Initialize all systems

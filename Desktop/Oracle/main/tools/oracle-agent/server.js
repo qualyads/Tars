@@ -1,5 +1,5 @@
 /**
- * Oracle Agent - Main Server v3.0 (Autonomous Mode)
+ * Oracle Agent - Main Server v3.5 (Autonomous Mode + OpenClaw Upgrades)
  * Digital Partner for Tars - ALL aspects of life
  *
  * Features:
@@ -11,24 +11,59 @@
  *   - Pattern detection & opportunity alerts
  *   - Approval queue for decisions
  *   - Learning from Tars's decisions
+ * - Phase 3.5: OPENCLAW UPGRADES
+ *   - JSONL Session Logging
+ *   - Prompt Versioning
+ *   - Graceful Shutdown
  * - Shared memory system with learnings
  */
 
-require('dotenv').config();
-const express = require('express');
-const cron = require('node-cron');
-const https = require('https');
-const http = require('http');
+import 'dotenv/config';
+import express from 'express';
+import cron from 'node-cron';
+import https from 'https';
+import http from 'http';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
 const config = require('./config.json');
 
-// Import modules
-const claude = require('./lib/claude');
-const line = require('./lib/line');
-const memory = require('./lib/memory');
-const memorySync = require('./lib/memory-sync');
-const heartbeat = require('./lib/heartbeat');
-const beds24 = require('./lib/beds24');
-const autonomy = require('./lib/autonomy');
+// Import core modules
+import claude from './lib/claude.js';
+import line from './lib/line.js';
+import memory from './lib/memory.js';
+import memorySync from './lib/memory-sync.js';
+import heartbeat from './lib/heartbeat.js';
+import beds24 from './lib/beds24.js';
+import autonomy from './lib/autonomy.js';
+
+// Phase 3.5: OpenClaw Upgrades
+import {
+  initSessionLogger,
+  logUserMessage,
+  logAssistantMessage,
+  logSystemEvent,
+  logError,
+  closeAllStreams,
+  readSessionLog,
+  listSessionLogs,
+  getSessionStats
+} from './lib/session-jsonl.js';
+
+import {
+  initPromptLoader,
+  renderPrompt,
+  loadPrompt,
+  listPrompts,
+  listVersions,
+  getVersion as getPromptVersion,
+  setVersion as setPromptVersion
+} from './lib/prompt-loader.js';
+
+import {
+  setupSignalHandlers,
+  registerCleanup,
+  registerHttpServer
+} from './lib/graceful-shutdown.js';
 
 const app = express();
 app.use(express.json());
@@ -244,8 +279,16 @@ app.post('/webhook/line', async (req, res) => {
         const userId = event.source.userId;
         const userMessage = event.message.text;
         const replyToken = event.replyToken;
+        const sessionId = `line:${userId}`;
 
         console.log(`[LINE] Message from ${userId}: ${userMessage}`);
+
+        // Phase 3.5: Log user message to JSONL
+        logUserMessage(sessionId, userMessage, {
+          channel: 'line',
+          replyToken,
+          timestamp: event.timestamp
+        });
 
         // Load conversation history
         const history = await memory.getConversation(userId);
@@ -297,6 +340,13 @@ app.post('/webhook/line', async (req, res) => {
         // Save to memory
         await memory.saveConversation(userId, userMessage, response);
 
+        // Phase 3.5: Log assistant response to JSONL
+        logAssistantMessage(sessionId, response, {
+          channel: 'line',
+          model: 'claude-sonnet',
+          isOwner
+        });
+
         // Reply via LINE
         await line.reply(replyToken, response);
 
@@ -307,6 +357,8 @@ app.post('/webhook/line', async (req, res) => {
     res.status(200).send('OK');
   } catch (error) {
     console.error('[LINE] Webhook error:', error);
+    // Phase 3.5: Log error to JSONL
+    logError('system', error, { source: 'webhook' });
     res.status(500).send('Error');
   }
 });
@@ -654,6 +706,108 @@ app.get('/api/autonomy/market', async (req, res) => {
 });
 
 // =============================================================================
+// PHASE 3.5: SESSION & PROMPT ENDPOINTS
+// =============================================================================
+
+// Get session logs
+app.get('/api/sessions', (req, res) => {
+  try {
+    const { date } = req.query;
+    const sessions = listSessionLogs({ date });
+    res.json({
+      count: sessions.length,
+      sessions
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get specific session log
+app.get('/api/sessions/:sessionId', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { date, limit } = req.query;
+    const entries = readSessionLog(sessionId, {
+      date,
+      limit: limit ? parseInt(limit) : undefined
+    });
+    const stats = getSessionStats(sessionId, date);
+    res.json({
+      sessionId,
+      stats,
+      entries
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// List prompt versions
+app.get('/api/prompts/versions', (req, res) => {
+  try {
+    const versions = listVersions();
+    const current = getPromptVersion();
+    res.json({
+      current,
+      available: versions
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// List prompts in current version
+app.get('/api/prompts', (req, res) => {
+  try {
+    const { version } = req.query;
+    const prompts = listPrompts(version);
+    res.json({
+      version: version || getPromptVersion(),
+      prompts
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get specific prompt
+app.get('/api/prompts/:name', (req, res) => {
+  try {
+    const { name } = req.params;
+    const { version } = req.query;
+    const content = loadPrompt(name, version);
+    if (!content) {
+      return res.status(404).json({ error: 'Prompt not found' });
+    }
+    res.json({
+      name,
+      version: version || getPromptVersion(),
+      content
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Switch prompt version
+app.post('/api/prompts/version', (req, res) => {
+  try {
+    const { version } = req.body;
+    if (!version) {
+      return res.status(400).json({ error: 'version required' });
+    }
+    const success = setPromptVersion(version);
+    res.json({
+      success,
+      current: getPromptVersion()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =============================================================================
 // SCHEDULED TASKS (Heartbeat)
 // =============================================================================
 
@@ -685,7 +839,26 @@ if (config.autonomy.auto_rank_report) {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, async () => {
+// Phase 3.5: Setup graceful shutdown BEFORE starting server
+setupSignalHandlers({ timeout: 30000 });
+
+// Register cleanup handlers
+registerCleanup('session-logs', closeAllStreams, { phase: 'drain', priority: 0 });
+registerCleanup('memory-save', () => memory.saveAll?.(), { phase: 'cleanup', priority: 10 });
+
+const server = app.listen(PORT, async () => {
+  // Phase 3.5: Register HTTP server for graceful shutdown
+  registerHttpServer(server, 'express-server');
+
+  // Phase 3.5: Initialize Session Logger
+  initSessionLogger({ dir: 'data/sessions' });
+
+  // Phase 3.5: Initialize Prompt Loader
+  initPromptLoader({ dir: 'prompts', version: 'v1.0' });
+
+  // Log server start event
+  logSystemEvent('system', 'server_start', { port: PORT, version: '3.5.0' });
+
   // Check local status on startup
   const localOnline = LOCAL_TUNNEL_URL ? await checkLocalHealth() : false;
 
@@ -694,7 +867,7 @@ app.listen(PORT, async () => {
 
   console.log('');
   console.log('╔════════════════════════════════════════════════════════════╗');
-  console.log('║        ORACLE AGENT v3.0 - AUTONOMOUS MODE                 ║');
+  console.log('║        ORACLE AGENT v3.5 - AUTONOMOUS MODE                 ║');
   console.log('╠════════════════════════════════════════════════════════════╣');
   console.log(`║  Status:  ONLINE                                           ║`);
   console.log(`║  Port:    ${PORT}                                              ║`);
@@ -706,6 +879,11 @@ app.listen(PORT, async () => {
   console.log('║  - Triggers: Price alerts, Occupancy, Opportunities        ║');
   console.log('║  - Learning: From Tars decisions                           ║');
   console.log('║                                                            ║');
+  console.log('║  🆕 PHASE 3.5: OPENCLAW UPGRADES                           ║');
+  console.log(`║  - JSONL Logging: data/sessions/                           ║`);
+  console.log(`║  - Prompts: ${getPromptVersion()} (prompts/)                              ║`);
+  console.log('║  - Graceful Shutdown: ENABLED                              ║');
+  console.log('║                                                            ║');
   console.log('║  🔄 FAILOVER MODE:                                         ║');
   console.log(`║  Local:   ${LOCAL_TUNNEL_URL ? (localOnline ? '✅ ONLINE (FREE)' : '❌ OFFLINE') : '⚠️  NOT CONFIGURED'}              ║`);
   console.log('║  Railway: ✅ ALWAYS-ON (API)                               ║');
@@ -716,6 +894,12 @@ app.listen(PORT, async () => {
   console.log('║  - POST /api/autonomy/briefing   Send morning briefing     ║');
   console.log('║  - POST /api/autonomy/monitor    Run monitoring check      ║');
   console.log('║  - GET  /api/autonomy/market     Get market data           ║');
+  console.log('║                                                            ║');
+  console.log('║  Phase 3.5 Endpoints:                                      ║');
+  console.log('║  - GET  /api/sessions            List session logs         ║');
+  console.log('║  - GET  /api/sessions/:id        Get session entries       ║');
+  console.log('║  - GET  /api/prompts             List prompts              ║');
+  console.log('║  - GET  /api/prompts/versions    List prompt versions      ║');
   console.log('║                                                            ║');
   console.log('║  Scheduled:                                                ║');
   console.log('║  - 07:00  Morning Briefing (Auto)                          ║');
