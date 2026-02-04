@@ -70,6 +70,7 @@ import memorySync from './lib/memory-sync.js';
 import HeartbeatManager from './lib/heartbeat.js';
 import SubAgentManager from './lib/subagent.js';
 import beds24 from './lib/beds24.js';
+import imageGen from './lib/image-gen.js';
 import autonomy from './lib/autonomy.js';
 
 // Phase 5.3: Tier 1-3 OpenClaw Features
@@ -475,6 +476,39 @@ app.post('/webhook/line', async (req, res) => {
           } catch (apiError) {
             console.error('[LINE] Beds24 API error:', apiError.message);
             contextString += `\n[⚠️ Beds24 API error: ${apiError.message}]`;
+          }
+        }
+
+        // =====================================================================
+        // IMAGE GENERATION - ถ้า user ขอ gen รูป ให้ทำเลย
+        // =====================================================================
+        if (imageGen.isImageRequest(userMessage)) {
+          console.log('[LINE] Detected image generation request');
+          try {
+            const prompt = imageGen.extractPrompt(userMessage);
+            console.log(`[LINE] Generating image: "${prompt}"`);
+
+            // Send "กำลังสร้างรูป..." first
+            await line.reply(replyToken, `🎨 กำลังสร้างรูป: "${prompt}"...\nรอสักครู่นะ (ประมาณ 30 วินาที)`);
+
+            const result = await imageGen.generate(prompt);
+
+            if (result.success) {
+              // Send image via LINE
+              await line.pushImage(userId, result.hostedUrl);
+              await line.push(userId, `✅ สร้างรูปเสร็จแล้ว!\n\nPrompt: ${prompt}\n\n🔗 ${result.hostedUrl}`);
+              console.log(`[LINE] Image sent: ${result.hostedUrl}`);
+            } else {
+              await line.push(userId, `❌ สร้างรูปไม่สำเร็จ: ${result.error}\n\nลองใหม่อีกครั้งนะ`);
+            }
+
+            // Save to memory
+            await memory.saveConversation(userId, userMessage, `[Generated image: ${result.hostedUrl || 'failed'}]`);
+            res.status(200).send('OK');
+            return; // Exit early - don't go to Claude
+          } catch (imgError) {
+            console.error('[LINE] Image generation error:', imgError.message);
+            // Fall through to Claude if image gen fails
           }
         }
 
