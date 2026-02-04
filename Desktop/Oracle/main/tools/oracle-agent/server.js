@@ -348,11 +348,29 @@ app.post('/webhook/line', async (req, res) => {
 
         console.log(`[LINE] Message from ${userId}: ${userMessage}`);
 
+        // =====================================================================
+        // PHASE 5.4: SENTIMENT ANALYSIS - วิเคราะห์อารมณ์ user
+        // =====================================================================
+        const sentiment = sentimentAnalysis.analyze(userMessage, userId);
+        console.log(`[SENTIMENT] ${userId}: ${sentiment.mood} (${Math.round(sentiment.confidence * 100)}%) urgency=${sentiment.urgency}`);
+
+        // =====================================================================
+        // PHASE 5.5: MEMORY CONSOLIDATION - บันทึก short-term memory
+        // =====================================================================
+        memoryConsolidation.addShortTerm({
+          type: 'conversation',
+          content: userMessage,
+          context: { channel: 'line', userId, sentiment: sentiment.mood },
+          importance: sentiment.urgency === 'high' ? 4 : 3,
+          tags: ['line', sentiment.mood]
+        });
+
         // Phase 3.5: Log user message to JSONL
         logUserMessage(sessionId, userMessage, {
           channel: 'line',
           replyToken,
-          timestamp: event.timestamp
+          timestamp: event.timestamp,
+          sentiment: sentiment.mood
         });
 
         // Load conversation history
@@ -367,6 +385,18 @@ app.post('/webhook/line', async (req, res) => {
         // Phase 3: Get autonomy suggestions
         const suggestions = autonomy.getProactiveSuggestions();
         const pendingApprovals = autonomy.getPendingApprovals();
+
+        // =====================================================================
+        // PHASE 5.4: MISTAKE TRACKER - เช็คก่อนตอบ
+        // =====================================================================
+        const mistakeCheck = mistakeTracker.checkBeforeResponding({
+          action: 'reply',
+          topic: 'line_message',
+          askingPermission: false
+        });
+        if (!mistakeCheck.ok) {
+          console.log(`[MISTAKE] Warnings: ${mistakeCheck.warnings.map(w => w.message).join(', ')}`);
+        }
 
         // Build context string for Claude
         let contextString = '';
@@ -387,6 +417,18 @@ app.post('/webhook/line', async (req, res) => {
           contextString += `\n[Proactive Suggestions: ${suggestions.map(s => s.message).join('; ')}]`;
         }
 
+        // Add sentiment-based context
+        if (sentiment.mood === 'angry' || sentiment.mood === 'frustrated') {
+          contextString += `\n[⚠️ User Mood: ${sentiment.mood} - ตอบอย่างใจเย็น เน้น solution]`;
+        } else if (sentiment.mood === 'urgent') {
+          contextString += `\n[🚨 Urgent: ตอบเร็วและตรงประเด็น]`;
+        }
+
+        // Add mistake prevention rules
+        if (mistakeCheck.rulesToFollow.length > 0) {
+          contextString += `\n[Rules: ${mistakeCheck.rulesToFollow.join('; ')}]`;
+        }
+
         // Build messages for Claude
         const messages = [
           ...history.slice(-10), // Last 10 messages for context
@@ -398,9 +440,27 @@ app.post('/webhook/line', async (req, res) => {
           (isOwner ? '\n\nนี่คือข้อความจาก Tars (เจ้าของ) - สามารถพูดคุยได้ตรงๆ' : '\n\nนี่คือข้อความจากลูกค้า - ตอบอย่างสุภาพและเป็นมืออาชีพ') +
           contextString;
 
-        const response = await claude.chat(messages, {
+        let response = await claude.chat(messages, {
           system: systemPrompt
         });
+
+        // =====================================================================
+        // PHASE 5.4: SELF-REFLECTION - เช็คคำตอบก่อนส่ง
+        // =====================================================================
+        const reflection = selfReflection.check(response, {
+          emojiAllowed: !isOwner, // Owner ไม่ต้อง emoji
+          previousMistake: mistakeCheck.warnings.length > 0 ? mistakeCheck.warnings[0]?.message : null
+        });
+
+        if (reflection.blocked) {
+          console.log(`[REFLECTION] BLOCKED: ${reflection.issues.map(i => i.message).join(', ')}`);
+          // Don't send blocked response, use a safe fallback
+          response = 'ขอโทษครับ มีปัญหาในการประมวลผล กรุณาลองใหม่อีกครั้ง';
+        } else if (!reflection.ok) {
+          console.log(`[REFLECTION] Issues: ${reflection.issues.map(i => i.message).join(', ')}`);
+          // Try to auto-improve
+          response = selfReflection.improve(response);
+        }
 
         // Save to memory
         await memory.saveConversation(userId, userMessage, response);
@@ -409,11 +469,23 @@ app.post('/webhook/line', async (req, res) => {
         logAssistantMessage(sessionId, response, {
           channel: 'line',
           model: 'claude-sonnet',
-          isOwner
+          isOwner,
+          sentiment: sentiment.mood,
+          reflectionOk: reflection.ok
         });
 
         // Reply via LINE
         await line.reply(replyToken, response);
+
+        // =====================================================================
+        // PHASE 5.4: QUALITY TRACKER - วัดคุณภาพคำตอบ
+        // =====================================================================
+        qualityTracker.score(response, {
+          type: 'line_reply',
+          topic: userMessage.substring(0, 50),
+          expectedLength: sentiment.urgency === 'high' ? 200 : 500,
+          formal: !isOwner
+        });
 
         console.log(`[LINE] Replied to ${userId}: ${response.substring(0, 50)}...`);
       }
@@ -2542,9 +2614,87 @@ const server = app.listen(PORT, async () => {
   console.log('[WEBHOOK] Webhook Ingress initialized');
   console.log('[FAILOVER] Model Failover initialized');
 
+  // =========================================================================
+  // PHASE 5.5: REMINDER SYSTEM - Set notification callback
+  // =========================================================================
+  reminderSystem.setNotifyCallback(async (reminder) => {
+    console.log(`[REMINDER] Sending notification: ${reminder.message}`);
+
+    const message = `🔔 Reminder\n\n${reminder.message}\n\n⏰ ${reminder.timeFormatted}`;
+
+    // Send via appropriate channel
+    if (reminder.channel === 'telegram' && config.telegram?.enabled) {
+      // await telegram.sendMessage(reminder.userId, message);
+      console.log('[REMINDER] Telegram not fully configured, sending via LINE');
+      await line.notifyOwner(message);
+    } else {
+      // Default to LINE
+      await line.notifyOwner(message);
+    }
+
+    logSystemEvent('reminder', 'sent', {
+      id: reminder.id,
+      message: reminder.message.substring(0, 50)
+    });
+  });
+
+  // Register cleanup
+  registerCleanup('reminder-system', () => reminderSystem.stop(), { phase: 'cleanup', priority: 5 });
+  console.log('[REMINDER] Reminder System initialized');
+
+  // =========================================================================
+  // PHASE 5.5: DAILY DIGEST - Schedule morning and evening
+  // =========================================================================
+  // Morning Briefing at 7:00 AM
+  cron.schedule('0 7 * * *', async () => {
+    console.log('[DIGEST] Generating morning briefing...');
+    try {
+      const digest = await dailyDigest.generateMorning();
+      if (digest.output && digest.output !== '✅ ไม่มีอะไรต้องรายงาน') {
+        await line.notifyOwner(`📬 Morning Briefing\n\n${digest.output}`);
+        logSystemEvent('digest', 'morning_sent', { id: digest.id });
+      }
+    } catch (err) {
+      console.error('[DIGEST] Morning briefing failed:', err.message);
+    }
+  }, { timezone: config.agent?.timezone || 'Asia/Bangkok' });
+
+  // Evening Summary at 6:00 PM
+  cron.schedule('0 18 * * *', async () => {
+    console.log('[DIGEST] Generating evening summary...');
+    try {
+      const digest = await dailyDigest.generateEvening();
+      if (digest.output && digest.output !== '✅ ไม่มีอะไรต้องรายงาน') {
+        await line.notifyOwner(`📊 Evening Summary\n\n${digest.output}`);
+        logSystemEvent('digest', 'evening_sent', { id: digest.id });
+      }
+    } catch (err) {
+      console.error('[DIGEST] Evening summary failed:', err.message);
+    }
+  }, { timezone: config.agent?.timezone || 'Asia/Bangkok' });
+
+  console.log('[DIGEST] Daily Digest scheduled (7:00 morning, 18:00 evening)');
+
+  // =========================================================================
+  // PHASE 5.5: MEMORY CONSOLIDATION - Schedule daily consolidation
+  // =========================================================================
+  // Consolidate memories at midnight
+  cron.schedule('0 0 * * *', async () => {
+    console.log('[MEMORY] Running daily consolidation...');
+    try {
+      const result = await memoryConsolidation.consolidate();
+      logSystemEvent('memory', 'consolidation', result);
+      console.log(`[MEMORY] Consolidated ${result.consolidated} items into ${result.summaries} summaries`);
+    } catch (err) {
+      console.error('[MEMORY] Consolidation failed:', err.message);
+    }
+  }, { timezone: config.agent?.timezone || 'Asia/Bangkok' });
+
+  console.log('[MEMORY] Memory Consolidation scheduled (midnight daily)');
+
   console.log('');
   console.log('╔════════════════════════════════════════════════════════════╗');
-  console.log('║        ORACLE AGENT v5.2 - FULL OPENCLAW + PHASE 8         ║');
+  console.log('║        ORACLE AGENT v5.6 - PROACTIVE PARTNER               ║');
   console.log('╠════════════════════════════════════════════════════════════╣');
   console.log(`║  Status:  ONLINE                                           ║`);
   console.log(`║  Port:    ${PORT}                                              ║`);
@@ -2575,6 +2725,18 @@ const server = app.listen(PORT, async () => {
   console.log(`║  - JSONL Logging: data/sessions/                           ║`);
   console.log(`║  - Prompts: ${getPromptVersion()} (prompts/)                              ║`);
   console.log('║  - Graceful Shutdown: ENABLED                              ║');
+  console.log('║                                                            ║');
+  console.log('║  🧠 PHASE 5.4: SELF-IMPROVEMENT                            ║');
+  console.log('║  - Sentiment Analysis: ✅ AUTO (every message)             ║');
+  console.log('║  - Self-Reflection: ✅ AUTO (before reply)                 ║');
+  console.log('║  - Quality Tracker: ✅ AUTO (after reply)                  ║');
+  console.log('║  - Mistake Tracker: ✅ AUTO (prevention rules)             ║');
+  console.log('║                                                            ║');
+  console.log('║  🤝 PHASE 5.5: PROACTIVE PARTNER                           ║');
+  console.log('║  - Reminder System: ✅ ENABLED (notify via LINE)           ║');
+  console.log('║  - Daily Digest: ✅ 7:00 morning, 18:00 evening            ║');
+  console.log('║  - Memory Consolidation: ✅ midnight daily                 ║');
+  console.log('║  - Google Calendar: ⚠️  needs credentials                  ║');
   console.log('║                                                            ║');
   console.log('║  🔄 FAILOVER MODE:                                         ║');
   console.log(`║  Local:   ${LOCAL_TUNNEL_URL ? (localOnline ? '✅ ONLINE (FREE)' : '❌ OFFLINE') : '⚠️  NOT CONFIGURED'}              ║`);
