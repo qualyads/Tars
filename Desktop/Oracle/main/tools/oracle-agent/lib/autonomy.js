@@ -26,21 +26,15 @@ const require = createRequire(import.meta.url);
 // Import memory-sync
 import memorySync from './memory-sync.js';
 
-// LINE module (may not exist when running from Terminal)
-let line = null;
-try {
-  const lineModule = await import('./line.js');
-  line = lineModule.default || lineModule;
-} catch (e) {
-  console.log('[AUTONOMY] LINE module not available, using direct API');
-}
+// LINE module - static import
+import * as lineModule from './line.js';
+const line = lineModule.default || lineModule;
 
-// Beds24 module (may not exist or may not have valid tokens)
-let beds24 = null;
+// Beds24 module - static import with error handling at runtime
+import * as beds24Module from './beds24.js';
+let beds24 = beds24Module.default || beds24Module;
 let beds24Available = false;
 try {
-  const beds24Module = await import('./beds24.js');
-  beds24 = beds24Module.default || beds24Module;
   // Check if beds24 has valid config by checking if token functions exist
   if (beds24 && beds24.getTokenStatus) {
     const status = beds24.getTokenStatus();
@@ -50,7 +44,7 @@ try {
     }
   }
 } catch (e) {
-  console.log('[AUTONOMY] Beds24 module not available:', e.message);
+  console.log('[AUTONOMY] Beds24 module error:', e.message);
 }
 
 // Load config for LINE token
