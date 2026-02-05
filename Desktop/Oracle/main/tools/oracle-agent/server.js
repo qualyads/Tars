@@ -596,6 +596,37 @@ app.post('/webhook/line', async (req, res) => {
         }
 
         // =====================================================================
+        // MEMORY CONSOLIDATION CONTEXT - ดึงข้อมูลจาก long-term memory
+        // =====================================================================
+        // Check for personal items / memory-related queries
+        const memoryKeywords = ['rog', 'ซ่อม', 'synnex', 'ally', 'gaming', 'เครื่องเกม', 'เกมส์', 'repair'];
+        const isMemoryQuery = memoryKeywords.some(kw => lowerMessage.includes(kw));
+
+        if (isMemoryQuery) {
+          console.log('[LINE] Detected memory query, fetching consolidated memory...');
+          try {
+            // Search for relevant memories
+            const memories = memoryConsolidation.query({ search: userMessage, limit: 5 });
+
+            if (memories && memories.length > 0) {
+              contextString += `\n\n📝 **ข้อมูลจาก Memory:**`;
+              memories.forEach((mem, i) => {
+                if (mem.topic) {
+                  contextString += `\n${i+1}. **${mem.topic}**: ${mem.insight}`;
+                } else if (mem.subject) {
+                  contextString += `\n${i+1}. **${mem.subject}** (${mem.predicate}): ${mem.object}`;
+                } else if (mem.key) {
+                  contextString += `\n${i+1}. **${mem.key}**: ${mem.value}`;
+                }
+              });
+              console.log(`[LINE] Found ${memories.length} relevant memories`);
+            }
+          } catch (memErr) {
+            console.error('[LINE] Memory query error:', memErr.message);
+          }
+        }
+
+        // =====================================================================
         // IMAGE GENERATION - ถ้า user ขอ gen รูป ให้ทำเลย
         // =====================================================================
         if (imageGen.isImageRequest(userMessage)) {
