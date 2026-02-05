@@ -1459,9 +1459,42 @@ ${shouldDeploy ? '- จะ deploy ขึ้น Railway เมื่อเสร�
           console.log(`[TYPING] Could not start: ${typingErr.message}`);
         }
 
-        let response = await claude.chat(messages, {
-          system: systemPrompt
-        });
+        // Try Local Claude (FREE) first, fallback to API
+        let response;
+        let usedProvider = 'api';
+
+        // Check if local is online and try it first
+        const localAvailable = LOCAL_TUNNEL_URL && await checkLocalHealth();
+
+        if (localAvailable) {
+          try {
+            console.log('[LINE] Trying Local Claude (FREE)...');
+            const localResult = await forwardToLocal('/chat', {
+              message: userMessage,
+              system: systemPrompt,
+              context: contextString
+            });
+
+            if (localResult.status === 200) {
+              const localData = JSON.parse(localResult.data);
+              response = localData.text;
+              usedProvider = 'local-claude-max';
+              console.log('[LINE] Using Local Claude Max (FREE)');
+            } else {
+              throw new Error(`Local returned ${localResult.status}`);
+            }
+          } catch (localError) {
+            console.log(`[LINE] Local failed: ${localError.message}, using API`);
+            response = await claude.chat(messages, { system: systemPrompt });
+            usedProvider = claude.getProviderStatus().currentProvider;
+          }
+        } else {
+          // Local not available, use API (with failover)
+          response = await claude.chat(messages, { system: systemPrompt });
+          usedProvider = claude.getProviderStatus().currentProvider;
+        }
+
+        console.log(`[LINE] Provider used: ${usedProvider}`);
 
         // =====================================================================
         // PHASE 5.4: SELF-REFLECTION - เช็คคำตอบก่อนส่ง
