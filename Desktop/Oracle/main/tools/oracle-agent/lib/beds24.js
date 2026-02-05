@@ -548,7 +548,15 @@ async function getOccupancyForDate(date) {
     const result = await apiGet(`/bookings?arrivalTo=${date}&departureFrom=${date}`);
     const bookings = extractDataArray(result).map(enrichBooking);
 
-    const occupiedRooms = new Set(bookings.map(b => b.roomId));
+    // Filter: only count bookings where guest is STAYING that night
+    // departure = date means checkout morning, room is available that night
+    // So we need: arrival <= date AND departure > date
+    const stayingOvernight = bookings.filter(b => {
+      const departure = b.departure || b.lastNight;
+      return departure > date;
+    });
+
+    const occupiedRooms = new Set(stayingOvernight.map(b => b.roomId));
     const occupiedCount = occupiedRooms.size;
     const availableCount = TOTAL_ROOMS - occupiedCount;
 
@@ -558,8 +566,10 @@ async function getOccupancyForDate(date) {
       occupied: occupiedCount,
       available: availableCount,
       occupancyRate: Math.round((occupiedCount / TOTAL_ROOMS) * 100),
-      bookings,
-      occupiedRoomIds: Array.from(occupiedRooms)
+      bookings: stayingOvernight,
+      occupiedRoomIds: Array.from(occupiedRooms),
+      // Also include checkout info for reference
+      checkouts: bookings.filter(b => (b.departure || b.lastNight) === date)
     };
   } catch (error) {
     return { error: error.message };
