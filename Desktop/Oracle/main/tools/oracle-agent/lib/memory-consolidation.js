@@ -283,21 +283,30 @@ class MemoryConsolidation {
 
   /**
    * Consolidate old short-term memories
+   * @param {object} options - { force: boolean } - force consolidate all items regardless of age
    */
-  async consolidate() {
+  async consolidate(options = {}) {
     console.log('[MEMORY] Starting consolidation...');
 
     const now = Date.now();
     const threshold = now - this.config.consolidationThreshold;
 
-    // Get old, unconsolidated items
-    const toConsolidate = this.shortTerm.filter(m =>
-      !m.consolidated && m.timestamp < threshold
-    );
+    // Get items to consolidate
+    let toConsolidate;
+    if (options.force) {
+      // Force: consolidate all unconsolidated items
+      toConsolidate = this.shortTerm.filter(m => !m.consolidated);
+      console.log(`[MEMORY] Force mode: ${toConsolidate.length} items`);
+    } else {
+      // Normal: only old items
+      toConsolidate = this.shortTerm.filter(m =>
+        !m.consolidated && m.timestamp < threshold
+      );
+    }
 
     if (toConsolidate.length === 0) {
       console.log('[MEMORY] Nothing to consolidate');
-      return { consolidated: 0 };
+      return { consolidated: 0, summaries: 0 };
     }
 
     // Group by type

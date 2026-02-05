@@ -1,0 +1,110 @@
+{
+  "mistakes": [
+    {
+      "id": "m_1770307200000_init1",
+      "timestamp": "2026-02-05T00:00:00.000Z",
+      "description": "บอกว่าทำไปแค่ 16 features ทั้งที่มี 30+ features",
+      "correction": "เช็ค lib/ folder ก่อน จะได้เห็นว่ามีอะไรบ้าง",
+      "category": "underclaim",
+      "severity": "high",
+      "context": {},
+      "rootCause": "ไม่ได้เช็คโค้ดจริง เชื่อ memory ของตัวเอง",
+      "prevention": "ls tools/oracle-agent/lib/ ก่อนบอกจำนวน features",
+      "repeated": false,
+      "correctedBy": "Tars"
+    },
+    {
+      "id": "m_1770307200000_init2",
+      "timestamp": "2026-02-05T00:00:00.000Z",
+      "description": "บอกว่าอยากได้ features ที่จริงๆ มีอยู่แล้ว (self-learning, proactive)",
+      "correction": "autonomy.js มี learnFromDecision และ getProactiveSuggestions อยู่แล้ว",
+      "category": "assumption",
+      "severity": "medium",
+      "context": {},
+      "rootCause": "ไม่ได้ grep หา features ก่อนบอกว่าไม่มี",
+      "prevention": "grep -l \"keyword\" lib/*.js ก่อนบอกว่าไม่มี feature",
+      "repeated": false,
+      "correctedBy": "Tars"
+    },
+    {
+      "id": "m_1770307200000_deploy",
+      "timestamp": "2026-02-05T00:00:00.000Z",
+      "description": "Push ไป Railway โดยไม่ test local ก่อน",
+      "correction": "Test ด้วย RAILWAY_ENVIRONMENT=production node server.js ก่อน push",
+      "category": "deployment",
+      "severity": "critical",
+      "context": {
+        "issues": ["CommonJS vs ES modules", "Top-level await", "Hardcoded paths"]
+      },
+      "rootCause": "ไม่ได้ test บน environment ที่เหมือน production",
+      "prevention": "RAILWAY_ENVIRONMENT=production node server.js && curl localhost:3000/",
+      "repeated": false,
+      "correctedBy": "Tars"
+    }
+  ],
+  "preventionRules": [
+    {
+      "id": "pr_1770307200001",
+      "trigger": "assumption",
+      "rule": "เช็คโค้ดจริงก่อนพูด - ls, grep, head ก่อนอ้าง",
+      "fromMistake": "m_1770307200000_init2",
+      "createdAt": "2026-02-05T00:00:00.000Z",
+      "timesApplied": 0
+    },
+    {
+      "id": "pr_1770307200002",
+      "trigger": "underclaim",
+      "rule": "นับไฟล์จริง ls | wc -l ก่อนบอกจำนวน",
+      "fromMistake": "m_1770307200000_init1",
+      "createdAt": "2026-02-05T00:00:00.000Z",
+      "timesApplied": 0
+    },
+    {
+      "id": "pr_1770307200003",
+      "trigger": "permission",
+      "rule": "Tars ไม่ชอบถูกถาม - ทำเลย ไม่ต้องขออนุญาต",
+      "fromMistake": null,
+      "createdAt": "2026-02-05T00:00:00.000Z",
+      "timesApplied": 0
+    },
+    {
+      "id": "pr_1770307200004",
+      "trigger": "deployment",
+      "rule": "Test local ด้วย RAILWAY_ENVIRONMENT=production ก่อน push",
+      "fromMistake": "m_1770307200000_deploy",
+      "createdAt": "2026-02-05T00:00:00.000Z",
+      "timesApplied": 0
+    }
+  ],
+  "patterns": [
+    {
+      "category": "assumption",
+      "count": 1,
+      "percentage": 33,
+      "recentExamples": ["บอกว่าอยากได้ features ที่จริงๆ มีอยู่แล้ว"]
+    },
+    {
+      "category": "underclaim",
+      "count": 1,
+      "percentage": 33,
+      "recentExamples": ["บอกว่าทำไปแค่ 16 features ทั้งที่มี 30+"]
+    }
+  ],
+  "neverRepeat": [],
+  "stats": {
+    "totalMistakes": 3,
+    "byCategory": {
+      "underclaim": 1,
+      "assumption": 1,
+      "deployment": 1
+    },
+    "bySeverity": {
+      "high": 1,
+      "medium": 1,
+      "critical": 1
+    },
+    "repeatedMistakes": 0,
+    "preventedMistakes": 0
+  },
+  "lastUpdated": "2026-02-05T10:00:00.000Z"
+}

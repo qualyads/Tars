@@ -847,6 +847,16 @@ app.get('/', (req, res) => {
   });
 });
 
+// Dedicated /health endpoint for Railway healthcheck
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    version: config.agent.version,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Router status
 app.get('/api/router/status', async (req, res) => {
   const localOnline = await checkLocalHealth();
@@ -2091,7 +2101,8 @@ app.post('/api/memory-consolidation/add-fact', (req, res) => {
 
 app.post('/api/memory-consolidation/consolidate', async (req, res) => {
   try {
-    const result = await memoryConsolidation.consolidate();
+    const { force = false } = req.body || {};
+    const result = await memoryConsolidation.consolidate({ force });
     res.json({ success: true, result });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

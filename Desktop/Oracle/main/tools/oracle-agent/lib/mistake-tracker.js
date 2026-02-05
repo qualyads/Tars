@@ -462,42 +462,26 @@ class MistakeTracker {
 // Singleton instance
 const mistakeTracker = new MistakeTracker();
 
-// Record today's mistakes (from this session)
-mistakeTracker.record({
-  description: 'บอกว่าทำไปแค่ 16 features ทั้งที่มี 30+ features',
-  correction: 'เช็ค lib/ folder ก่อน จะได้เห็นว่ามีอะไรบ้าง',
-  category: CATEGORIES.UNDERCLAIM,
-  severity: SEVERITY.HIGH,
-  rootCause: 'ไม่ได้เช็คโค้ดจริง เชื่อ memory ของตัวเอง',
-  prevention: 'ls tools/oracle-agent/lib/ ก่อนบอกจำนวน features',
-  neverRepeat: false
-});
+// Only add initial prevention rules if they don't exist yet
+// (Check if already loaded from storage)
+if (mistakeTracker.preventionRules.length === 0) {
+  console.log('[MISTAKE] Adding initial prevention rules...');
 
-mistakeTracker.record({
-  description: 'บอกว่าอยากได้ features ที่จริงๆ มีอยู่แล้ว (self-learning, proactive)',
-  correction: 'autonomy.js มี learnFromDecision และ getProactiveSuggestions อยู่แล้ว',
-  category: CATEGORIES.ASSUMPTION,
-  severity: SEVERITY.MEDIUM,
-  rootCause: 'ไม่ได้ grep หา features ก่อนบอกว่าไม่มี',
-  prevention: 'grep -l "keyword" lib/*.js ก่อนบอกว่าไม่มี feature',
-  neverRepeat: false
-});
+  mistakeTracker.addPreventionRule({
+    trigger: CATEGORIES.ASSUMPTION,
+    rule: 'เช็คโค้ดจริงก่อนพูด - ls, grep, head ก่อนอ้าง'
+  });
 
-// Add critical prevention rules
-mistakeTracker.addPreventionRule({
-  trigger: CATEGORIES.ASSUMPTION,
-  rule: 'เช็คโค้ดจริงก่อนพูด - ls, grep, head ก่อนอ้าง'
-});
+  mistakeTracker.addPreventionRule({
+    trigger: CATEGORIES.UNDERCLAIM,
+    rule: 'นับไฟล์จริง ls | wc -l ก่อนบอกจำนวน'
+  });
 
-mistakeTracker.addPreventionRule({
-  trigger: CATEGORIES.UNDERCLAIM,
-  rule: 'นับไฟล์จริง ls | wc -l ก่อนบอกจำนวน'
-});
-
-mistakeTracker.addPreventionRule({
-  trigger: CATEGORIES.PERMISSION,
-  rule: 'Tars ไม่ชอบถูกถาม - ทำเลย ไม่ต้องขออนุญาต'
-});
+  mistakeTracker.addPreventionRule({
+    trigger: CATEGORIES.PERMISSION,
+    rule: 'Tars ไม่ชอบถูกถาม - ทำเลย ไม่ต้องขออนุญาต'
+  });
+}
 
 export default mistakeTracker;
 export { MistakeTracker, CATEGORIES, SEVERITY };
