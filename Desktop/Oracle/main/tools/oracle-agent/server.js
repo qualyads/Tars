@@ -1526,8 +1526,19 @@ ${shouldDeploy ? '- จะ deploy ขึ้น Railway เมื่อเสร�
           reflectionOk: reflection.ok
         });
 
+        // Add provider indicator for owner (Tars only)
+        const providerIcons = {
+          'local-claude-max': '🖥️', // Local Mac
+          'anthropic': '🟣',         // Claude API
+          'openai': '🟢',            // ChatGPT
+          'groq': '⚡'               // Groq
+        };
+        const providerIcon = providerIcons[usedProvider] || '🤖';
+        const providerSuffix = isOwner ? `\n\n${providerIcon} ${usedProvider}` : '';
+
         // Reply via LINE with smart chunking
-        const chunks = smartChunk(response, { provider: 'line', markdown: true });
+        const finalResponse = response + providerSuffix;
+        const chunks = smartChunk(finalResponse, { provider: 'line', markdown: true });
 
         if (chunks.length === 1) {
           // Single message - use reply
