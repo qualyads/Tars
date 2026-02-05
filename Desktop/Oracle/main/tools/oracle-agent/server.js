@@ -681,6 +681,9 @@ app.post('/webhook/line', async (req, res) => {
 - เปิด browser → ตอบ: {"action":"open_browser","app":"Chrome/Safari/Firefox"}
 - ดูไฟล์ใน Desktop → ตอบ: {"action":"ls"}
 - git command → ตอบ: {"action":"git","cmd":"status/pull/etc"}
+- เช็ค RAM/memory/ความจำ → ตอบ: {"action":"system_info"}
+- สร้างโปรเจค/เว็บ/app ให้เสร็จ → ตอบ: {"action":"workflow","projectName":"ชื่อโปรเจค","prompt":"รายละเอียดที่ต้องทำ","deploy":true}
+- เปิด Terminal → ตอบ: {"action":"open_terminal","command":"คำสั่งที่ต้องรัน (ถ้ามี)"}
 - ไม่เกี่ยวกับการทำงานบนคอม → ตอบ: {"action":"none"}
 
 ตอบ JSON เท่านั้น ไม่ต้องอธิบาย:`;
@@ -739,6 +742,55 @@ app.post('/webhook/line', async (req, res) => {
               localAgentResult = await localAgentServer.executeShell(`open -a "${appName}"`);
               if (localAgentResult.success) {
                 contextString += `\n\n[LOCAL_AGENT_RESULT: เปิด ${appName} สำเร็จแล้ว ✅]`;
+              } else {
+                contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error}]`;
+              }
+            }
+            // เช็ค system info (RAM, Disk)
+            else if (localAgentIntent.action === 'system_info') {
+              localAgentResult = await localAgentServer.getSystemInfo();
+              if (localAgentResult.success) {
+                const info = localAgentResult.info;
+                contextString += `\n\n[LOCAL_AGENT_RESULT: System Info]
+- RAM: ${info.memory?.total || 'N/A'} (Free: ${info.memory?.free || 'N/A'})
+- CPU: ${info.cpus || 'N/A'} cores
+- Uptime: ${info.uptime || 'N/A'}
+- Platform: ${info.platform || 'N/A'} ${info.arch || ''}`;
+              }
+            }
+            // เปิด Terminal พร้อม command
+            else if (localAgentIntent.action === 'open_terminal') {
+              const termCommand = localAgentIntent.command || '';
+              localAgentResult = await localAgentServer.openTerminal(termCommand);
+              if (localAgentResult.success) {
+                contextString += `\n\n[LOCAL_AGENT_RESULT: เปิด Terminal สำเร็จแล้ว ✅${termCommand ? ` (รัน: ${termCommand})` : ''}]`;
+              } else {
+                contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error}]`;
+              }
+            }
+            // Workflow: สร้างโปรเจคเต็มรูปแบบ + Deploy
+            else if (localAgentIntent.action === 'workflow') {
+              const projectName = localAgentIntent.projectName || 'new-project';
+              const prompt = localAgentIntent.prompt || userMessage;
+              const shouldDeploy = localAgentIntent.deploy !== false;
+
+              console.log('[WORKFLOW] Starting:', { projectName, prompt: prompt.slice(0, 50), deploy: shouldDeploy });
+
+              localAgentResult = await localAgentServer.executeWorkflow({
+                projectName,
+                prompt,
+                model: 'opus',
+                deploy: shouldDeploy,
+                notifyLine: true
+              });
+
+              if (localAgentResult.success) {
+                contextString += `\n\n[LOCAL_AGENT_RESULT: 🚀 Workflow เริ่มแล้ว!
+- Terminal จะเปิดขึ้นมาให้ดู progress
+- Project: ${projectName}
+- Claude Opus จะทำงานให้
+${shouldDeploy ? '- จะ deploy ขึ้น Railway เมื่อเสร็จ' : '- ไม่ deploy'}
+- เสร็จแล้วจะแจ้งใน LINE พร้อมลิงค์]`;
               } else {
                 contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error}]`;
               }
@@ -2022,6 +2074,142 @@ app.post('/api/local-agent/approve/:approvalId', async (req, res) => {
 app.post('/api/local-agent/reject/:approvalId', async (req, res) => {
   try {
     const result = await localAgentServer.rejectCommand(req.params.approvalId);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =============================================================================
+// WORKFLOW API (Terminal + Claude Code + Deploy)
+// =============================================================================
+
+// Active workflows storage
+const activeWorkflows = new Map();
+
+// Execute workflow - เปิด Terminal รัน Claude + Deploy
+app.post('/api/local-agent/workflow', async (req, res) => {
+  const { projectName, prompt, model = 'opus', deploy = true, notifyLine = true, projectPath } = req.body;
+
+  if (!projectName || !prompt) {
+    return res.status(400).json({ success: false, error: 'projectName and prompt are required' });
+  }
+
+  try {
+    const result = await localAgentServer.executeWorkflow({
+      projectName,
+      prompt,
+      model,
+      deploy,
+      notifyLine,
+      projectPath
+    });
+
+    if (result.success && result.workflowId) {
+      activeWorkflows.set(result.workflowId, {
+        projectName,
+        prompt,
+        status: 'started',
+        startedAt: new Date().toISOString()
+      });
+    }
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Workflow status update (called by workflow script)
+app.post('/api/workflow/status', (req, res) => {
+  const { id, status, message, projectName } = req.body;
+  console.log(`[WORKFLOW] Status update: ${id} → ${status}`, message || '');
+
+  if (activeWorkflows.has(id)) {
+    const workflow = activeWorkflows.get(id);
+    workflow.status = status;
+    workflow.lastUpdate = new Date().toISOString();
+    if (message) workflow.lastMessage = message;
+  } else {
+    activeWorkflows.set(id, {
+      projectName: projectName || 'Unknown',
+      status,
+      lastUpdate: new Date().toISOString()
+    });
+  }
+
+  res.json({ success: true });
+});
+
+// Workflow complete (called by workflow script when done)
+app.post('/api/workflow/complete', async (req, res) => {
+  const { id, status, projectName, projectPath, url, notifyLine } = req.body;
+  console.log(`[WORKFLOW] Complete: ${id}`, { projectName, url });
+
+  // Update workflow status
+  if (activeWorkflows.has(id)) {
+    const workflow = activeWorkflows.get(id);
+    workflow.status = status;
+    workflow.completedAt = new Date().toISOString();
+    workflow.url = url;
+  }
+
+  // Send LINE notification if requested
+  if (notifyLine && config.line.owner_id) {
+    try {
+      let message = `✅ Workflow เสร็จแล้ว!\n\n`;
+      message += `📁 Project: ${projectName}\n`;
+      if (projectPath) message += `📂 Path: ${projectPath}\n`;
+      if (url) message += `🔗 URL: ${url}\n`;
+      message += `\n🕐 ${new Date().toLocaleString('th-TH')}`;
+
+      await line.pushMessage(config.line.owner_id, message);
+      console.log('[WORKFLOW] LINE notification sent');
+    } catch (err) {
+      console.error('[WORKFLOW] Failed to send LINE notification:', err.message);
+    }
+  }
+
+  res.json({ success: true });
+});
+
+// Get workflow status
+app.get('/api/workflow/:id', (req, res) => {
+  const workflow = activeWorkflows.get(req.params.id);
+  if (!workflow) {
+    return res.status(404).json({ error: 'Workflow not found' });
+  }
+  res.json(workflow);
+});
+
+// List all workflows
+app.get('/api/workflows', (req, res) => {
+  const workflows = [];
+  for (const [id, workflow] of activeWorkflows.entries()) {
+    workflows.push({ id, ...workflow });
+  }
+  res.json({ workflows });
+});
+
+// Open Terminal with command
+app.post('/api/local-agent/open-terminal', async (req, res) => {
+  const { command } = req.body;
+  try {
+    const result = await localAgentServer.openTerminal(command);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Open application on Mac
+app.post('/api/local-agent/open-app', async (req, res) => {
+  const { appName } = req.body;
+  if (!appName) {
+    return res.status(400).json({ success: false, error: 'appName is required' });
+  }
+  try {
+    const result = await localAgentServer.openApp(appName);
     res.json(result);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

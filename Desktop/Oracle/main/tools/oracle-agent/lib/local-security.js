@@ -36,6 +36,7 @@ const ALLOWED_COMMANDS = [
 
   // macOS - open applications/files
   'open',
+  'osascript',  // AppleScript for Terminal control
 
   // Network (read-only)
   'curl', 'wget', 'ping',
@@ -86,6 +87,7 @@ const DANGEROUS_PATTERNS = [
  */
 const ALLOWED_PATHS = [
   '/Users/tanakitchaithip/Desktop',
+  '/Users/tanakitchaithip/Desktop/projects',  // สำหรับ workflow projects
   '/Users/tanakitchaithip/Documents',
   '/Users/tanakitchaithip/Downloads',
   '/Users/tanakitchaithip/projects',

@@ -141,6 +141,9 @@ function handleMessage(ws, message) {
     case 'claude_code_response':
     case 'file_response':
     case 'system_info_response':
+    case 'workflow_response':
+    case 'open_app_response':
+    case 'open_terminal_response':
       // Handle command response
       const pending = pendingCommands.get(data.id);
       if (pending) {
@@ -267,6 +270,27 @@ async function rejectCommand(approvalId, options = {}) {
   return sendCommand('reject', { approvalId }, options);
 }
 
+/**
+ * Execute workflow (เปิด Terminal + Claude Code + Deploy)
+ */
+async function executeWorkflow(workflowOptions, options = {}) {
+  return sendCommand('workflow', workflowOptions, { ...options, timeout: 10000 });
+}
+
+/**
+ * Open Terminal with command
+ */
+async function openTerminal(command, options = {}) {
+  return sendCommand('open_terminal', { command }, options);
+}
+
+/**
+ * Open application on Mac
+ */
+async function openApp(appName, options = {}) {
+  return sendCommand('open_app', { appName }, options);
+}
+
 // =============================================================================
 // STATUS & UTILITIES
 // =============================================================================
@@ -350,6 +374,11 @@ export default {
   getSystemInfo,
   approveCommand,
   rejectCommand,
+
+  // Workflow (Terminal + Claude + Deploy)
+  executeWorkflow,
+  openTerminal,
+  openApp,
 
   // Status
   getStatus,

@@ -43,6 +43,15 @@ try {
   };
 }
 
+// Dynamic import for workflow-executor
+let workflow;
+try {
+  workflow = (await import('./lib/workflow-executor.js')).default;
+} catch (e) {
+  console.error('Warning: Could not load workflow module:', e.message);
+  workflow = null;
+}
+
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
@@ -433,6 +442,40 @@ async function handleMessage(message) {
 
       case 'reject':
         result = rejectCommand(payload.approvalId);
+        break;
+
+      case 'workflow':
+        // เปิด Terminal.app รัน workflow (Claude Code + Deploy)
+        if (!workflow) {
+          result = { success: false, error: 'Workflow module not available' };
+        } else {
+          result = workflow.executeWorkflow({
+            projectName: payload.projectName,
+            prompt: payload.prompt,
+            model: payload.model || 'opus',
+            deploy: payload.deploy !== false,
+            notifyLine: payload.notifyLine !== false,
+            projectPath: payload.projectPath
+          });
+        }
+        break;
+
+      case 'open_app':
+        // เปิด application บน Mac
+        result = await executeShell(`open -a "${payload.appName}"`, { approved: true });
+        break;
+
+      case 'open_terminal':
+        // เปิด Terminal พร้อม command
+        if (payload.command) {
+          const appleScript = `tell application "Terminal"
+            activate
+            do script "${payload.command.replace(/"/g, '\\"')}"
+          end tell`;
+          result = await executeShell(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`, { approved: true });
+        } else {
+          result = await executeShell('open -a Terminal', { approved: true });
+        }
         break;
 
       default:
