@@ -70,6 +70,7 @@ import memorySync from './lib/memory-sync.js';
 import HeartbeatManager from './lib/heartbeat.js';
 import SubAgentManager from './lib/subagent.js';
 import beds24 from './lib/beds24.js';
+import pricing from './lib/pricing.js';
 import imageGen from './lib/image-gen.js';
 import autonomy from './lib/autonomy.js';
 import hotelNotify from './lib/hotel-notifications.js';
@@ -624,6 +625,16 @@ app.post('/webhook/line', async (req, res) => {
                   const roomInfo = b.roomSystemId ? `${b.roomSystemId}` : `Room ${b.roomId}`;
                   contextString += `\n- ${roomInfo}: ${guestName}`;
                 });
+              }
+
+              // Add pricing recommendations if occupancy is low
+              if (occupancy.available > 0 && occupancy.occupancyRate < 80) {
+                try {
+                  const pricingAdvice = await pricing.generatePricingAdvice(dateStr);
+                  contextString += `\n\n${pricingAdvice}`;
+                } catch (pricingError) {
+                  console.error('[Pricing] Error generating advice:', pricingError.message);
+                }
               }
             }
 
