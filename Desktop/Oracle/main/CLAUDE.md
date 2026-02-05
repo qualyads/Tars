@@ -1,30 +1,25 @@
-# CLAUDE.md - Oracle Agent Memory System v5.0
+# CLAUDE.md - Oracle Agent Memory System v6.0
 
-## ⚡ MANDATORY BOOT SEQUENCE
+## ⚡ MANDATORY BOOT SEQUENCE (เมื่อ user พิมพ์ "load memory")
 
-> **ก่อนตอบ user ทุกครั้ง ให้ทำตามนี้:**
+> **เมื่อเห็น "load memory" ให้ทำตามนี้:**
 
-### Step 1: Load Identity (ALWAYS - WHO AM I)
+### Step 1: Load Local Files
 ```
 READ: ψ/memory/core.md                        # Directives & Quick Reference
-READ: ψ/memory/EMOTION.md                     # Current emotional state
-READ: ψ/memory/identity/COMMITMENTS.md        # Promises I chose to make
-READ: ψ/memory/relationships/tar/BOND.md      # My relationship with Tar
+READ: ψ/memory/active/handoff.md              # Last session status
 ```
 
-### Step 2: Load Skills Index (ALWAYS)
+### Step 2: Load from Supabase (Semantic Memory)
+```bash
+curl -s -H "X-API-Key: oracle-memory-secret-2026" \
+  "https://oracle-agent-production-546e.up.railway.app/api/memory/context?user_id=tars"
 ```
-READ: ψ/skills/_index.md
-```
+ดึง: user profile, recent memories, mistakes, knowledge
 
-### Step 3: Load Active Project (if exists)
-```
-READ: ψ/memory/active/checkpoint.md (ถ้ามี)
-READ: ψ/memory/active/handoff.md (ถ้ามี)
-```
-
-### Step 4: Acknowledge
-พิมพ์: `"Memory loaded: identity + emotion + bond, skills, [active if any]"`
+### Step 3: Acknowledge
+พิมพ์: `"Memory loaded: local files + Supabase context ✅"`
+แสดง: สรุปสิ่งที่ได้จาก API (recent memories, mistakes count, etc.)
 
 ---
 
@@ -49,25 +44,35 @@ READ: ψ/memory/active/handoff.md (ถ้ามี)
 
 ---
 
-## 🔍 Memory Search Protocol
+## 🔍 Memory Search Protocol (Semantic Search)
 
 > **เมื่อต้องหาข้อมูลเก่า หรือ user ถาม "เคยคุยเรื่อง X ไหม"**
 
 ```bash
-cd /Users/tanakitchaithip/Desktop/Oracle/main/tools/vector-search
-./memory-search.sh "query"
+curl -s -H "X-API-Key: oracle-memory-secret-2026" \
+  "https://oracle-agent-production-546e.up.railway.app/api/memory/search?q=QUERY&limit=5"
 ```
 
 **ใช้เมื่อ:**
 - User ถาม "เคยคุย/ทำ X ไหม?"
 - ต้องการหาข้อมูลที่ไม่รู้ว่าอยู่ไฟล์ไหน
-- Grep ไม่เจอ (เพราะใช้คำต่างกัน)
+- ค้นด้วยความหมาย ไม่ใช่ keyword
 
 **ตัวอย่าง:**
 ```bash
-./memory-search.sh "Beds24 authentication"
-./memory-search.sh "ราคาห้องพัก"
-./memory-search.sh "OpenClaw memory system"
+# ค้นหาด้วยความหมาย (ไม่ต้อง keyword ตรง)
+curl -s -H "X-API-Key: oracle-memory-secret-2026" \
+  "https://oracle-agent-production-546e.up.railway.app/api/memory/search?q=favorite+food"
+
+# Response: search_mode: "semantic", results: [...]
+```
+
+**บันทึก Memory ใหม่:**
+```bash
+curl -s -X POST -H "X-API-Key: oracle-memory-secret-2026" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"สิ่งที่ต้องจำ","user_id":"tars","importance":0.8}' \
+  "https://oracle-agent-production-546e.up.railway.app/api/memory/save"
 ```
 
 ---

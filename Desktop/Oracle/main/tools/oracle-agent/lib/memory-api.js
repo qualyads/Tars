@@ -111,9 +111,12 @@ router.post('/save', async (req, res) => {
     if (isVectorEnabled()) {
       try {
         embedding = await generateEmbedding(content);
+        console.log('[Memory API] Embedding generated:', embedding ? 'YES' : 'NO');
       } catch (e) {
-        console.log('[Memory API] Embedding generation skipped:', e.message);
+        console.log('[Memory API] Embedding generation failed:', e.message);
       }
+    } else {
+      console.log('[Memory API] Vector not enabled, skipping embedding');
     }
 
     // Create search text for full-text search
@@ -131,7 +134,8 @@ router.post('/save', async (req, res) => {
       status: 'ok',
       id: result.rows[0].id,
       message: 'Memory saved successfully',
-      vector_enabled: isVectorEnabled()
+      vector_enabled: isVectorEnabled(),
+      embedding_created: !!embedding
     });
   } catch (error) {
     console.error('[Memory API] Save error:', error);
@@ -518,6 +522,77 @@ router.get('/self-model', async (req, res) => {
   } catch (error) {
     console.error('[Memory API] Self-model error:', error);
     res.status(500).json({ error: 'Failed to get self-model', message: error.message });
+  }
+});
+
+/**
+ * POST /api/memory/backfill-embeddings
+ * Generate embeddings for memories that don't have one
+ */
+router.post('/backfill-embeddings', async (req, res) => {
+  const pool = getPool();
+  if (!pool) {
+    return res.json({ status: 'no_database' });
+  }
+
+  try {
+    // Get memories without embeddings
+    const result = await query(`
+      SELECT id, content
+      FROM episodic_memory
+      WHERE embedding IS NULL
+      ORDER BY importance DESC, created_at DESC
+      LIMIT 100
+    `);
+
+    const memories = result.rows;
+    if (memories.length === 0) {
+      return res.json({ status: 'ok', message: 'All memories have embeddings', processed: 0 });
+    }
+
+    console.log(`[Backfill] Processing ${memories.length} memories...`);
+
+    let success = 0;
+    let failed = 0;
+
+    for (const memory of memories) {
+      try {
+        const embedding = await generateEmbedding(memory.content);
+        if (embedding) {
+          await query(
+            'UPDATE episodic_memory SET embedding = $1 WHERE id = $2',
+            [embedding, memory.id]
+          );
+          success++;
+        } else {
+          failed++;
+        }
+        // Small delay for rate limit
+        await new Promise(r => setTimeout(r, 150));
+      } catch (e) {
+        console.log(`[Backfill] Failed ${memory.id}: ${e.message}`);
+        failed++;
+      }
+    }
+
+    // Get updated stats
+    const statsResult = await query(`
+      SELECT COUNT(*) as total, COUNT(embedding) as with_embedding
+      FROM episodic_memory
+    `);
+    const stats = statsResult.rows[0];
+
+    res.json({
+      status: 'ok',
+      processed: memories.length,
+      success,
+      failed,
+      remaining: parseInt(stats.total) - parseInt(stats.with_embedding),
+      coverage: ((stats.with_embedding / stats.total) * 100).toFixed(1) + '%'
+    });
+  } catch (error) {
+    console.error('[Memory API] Backfill error:', error);
+    res.status(500).json({ error: 'Backfill failed', message: error.message });
   }
 });
 

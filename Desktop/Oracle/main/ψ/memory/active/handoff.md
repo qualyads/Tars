@@ -1,6 +1,6 @@
 # Session Handoff
 
-**From:** Session 2026-02-05 (Evening)
+**From:** Session 2026-02-05 (pgvector + Semantic Search Complete!)
 **To:** Next Session
 
 ---
@@ -8,132 +8,149 @@
 ## Current Status
 
 ```
-Oracle Agent v5.18.0
-├── Local: ✅ v5.18.0
-├── Railway: ✅ v5.18.0 (deployed)
-├── GitHub: ✅ pushed
-└── Local Agent: ✅ Running (launchd auto-start)
+Oracle Agent v6.0.1 - FULL SEMANTIC SEARCH!
+├── Local: ✅ v6.0.1
+├── Railway: ✅ Deployed & Running
+├── Supabase: ✅ Connected (pgvector enabled)
+├── Embeddings: ✅ 100% coverage (151+ memories)
+├── Semantic Search: ✅ Working!
+├── MCP Server: ✅ Ready
+└── All Tasks: ✅ DONE!
 ```
 
 ---
 
-## What We Did This Session (2026-02-05 Evening)
+## What We Completed This Session
 
-### 🚀 Major Feature: Local Agent Remote Execution System
+### 1. Supabase Migration (pgvector)
+- [x] Created Supabase project with pgvector extension
+- [x] Migrated DATABASE_URL to Supabase pooler
+- [x] Schema created with vector columns
 
-**เป้าหมาย:** ให้ Oracle ทำงานบน Mac ของ Tars ได้จาก LINE โดยไม่ต้องสั่ง
+### 2. OpenAI Embeddings
+- [x] Added valid OPENAI_API_KEY to Railway
+- [x] text-embedding-3-small model (1536 dimensions)
+- [x] Embeddings generated on memory save
 
-#### 1. Local Agent System (v2.1)
-| Feature | Description |
-|---------|-------------|
-| WebSocket | เชื่อม Railway ↔ Mac real-time |
-| Security | whitelist, blacklist, path restrictions |
-| Lock File | ป้องกันรันซ้ำ |
-| Auto-start | launchd service |
+### 3. Backfill Existing Memories
+- [x] Created backfill endpoint: `POST /api/memory/backfill-embeddings`
+- [x] Processed 151 memories → 100% have embeddings
+- [x] All memories now searchable semantically
 
-#### 2. Terminal Workflow System
-- เปิด Terminal.app รัน Claude Opus
-- สร้างโปรเจคแล้ว deploy Railway อัตโนมัติ
-- แจ้งผลกลับ LINE พร้อม URL
-
-#### 3. AI-Powered Features
-- **Intent Detection** - ใช้ Claude Haiku แทน regex (รองรับ typo!)
-- **Result Validator** - AI เช็คว่าคำสั่งทำงานจริง
-
-#### 4. Autonomous Systems
-| System | Cron | Function |
-|--------|------|----------|
-| **Idea Engine** | ทุก 6 ชม. | คิด idea, score, auto-execute |
-| **API Hunter** | ทุก 8 ชม. | หา API, test, analyze |
+### 4. Semantic Search Working
+- [x] Query "when is his birthday" → finds "birthday in September"
+- [x] Query "favorite dessert" → finds "chocolate cake"
+- [x] Fulltext fallback still works
 
 ---
 
-## Files Created This Session
+## Database Stats (Supabase)
 
-| File | Type | Description |
-|------|------|-------------|
-| `local-agent.js` | Modified | v2.1 + lock file |
-| `lib/local-agent-server.js` | Modified | workflow, openTerminal |
-| `lib/local-security.js` | Modified | open, osascript allowed |
-| `lib/workflow-executor.js` | **NEW** | สร้าง workflow scripts |
-| `lib/autonomous-ideas.js` | **NEW** | Idea generation |
-| `lib/api-hunter.js` | **NEW** | API discovery |
-| `com.oracle.local-agent.plist` | **NEW** | launchd auto-start |
-| `ψ/memory/knowledge/local-agent-system.md` | **NEW** | Documentation |
-
----
-
-## LINE Commands Available
-
-| คำสั่ง | Action |
-|--------|--------|
-| สร้างโฟลเดอร์ X | สร้างบน Desktop |
-| เปิด browser | เปิด Chrome/Safari |
-| เช็ค RAM | ดู system info |
-| สร้างโปรเจค X | Terminal + Claude + Deploy |
-| คิด idea | Oracle brainstorm |
-| ล่า API | หา API ใหม่ |
+```
+PostgreSQL + pgvector
+├── user_profiles: 3 records
+├── learnings: 6 records
+├── episodic_memory: 151+ records (100% with embeddings)
+├── semantic_memory: 0 records (ready)
+├── sessions: 0 records (ready)
+├── reasoning_logs: 0 records (ready)
+└── performance_metrics: 0 records (ready)
+```
 
 ---
 
-## Terminal Aliases (in ~/.zshrc)
+## Architecture (Final)
+
+```
+                Supabase (pgvector)
+                        │
+        ┌───────────────┼───────────────┐
+        │               │               │
+        ▼               ▼               ▼
+   Oracle Agent    Memory API     ψ/memory/
+     (LINE)       (/api/memory)   (Markdown)
+   Direct DB         REST          Backup
+        │               │
+        └───────┬───────┘
+                │
+                ▼
+          Claude Code
+          (MCP Server)
+```
+
+---
+
+## How Semantic Search Works
+
+```
+User Query: "favorite dessert"
+     │
+     ▼
+Generate Embedding (OpenAI)
+     │
+     ▼
+Vector Search (pgvector)
+embedding <=> query_embedding
+     │
+     ▼
+Results: "chocolate cake" (similarity: 0.37)
+```
+
+**Key:** ไม่ต้องมี keyword ตรงกัน แค่ความหมายใกล้เคียงก็เจอ!
+
+---
+
+## Environment Variables (Railway)
+
+```
+DATABASE_URL=postgresql://postgres.xxx@pooler.supabase.com:5432/postgres
+OPENAI_API_KEY=sk-proj-xxx (valid)
+MEMORY_API_KEY=oracle-memory-secret-2026
+ANTHROPIC_API_KEY=sk-ant-xxx
+```
+
+---
+
+## API Endpoints
 
 ```bash
-loadmemory      # รัน local agent manual
-oracle-status   # เช็คสถานะ
-oracle-logs     # ดู log
-oracle-restart  # restart service
+# Save memory (auto-generates embedding)
+POST /api/memory/save
+{"content": "...", "user_id": "tars", "importance": 0.8}
+Response: {"embedding_created": true}
+
+# Semantic search
+GET /api/memory/search?q=query&limit=5
+Response: {"search_mode": "semantic", "results": [...]}
+
+# Backfill embeddings
+POST /api/memory/backfill-embeddings
+Response: {"success": 100, "coverage": "100.0%"}
 ```
 
 ---
 
-## Scheduled Tasks (Updated)
-
-| เวลา | Task |
-|------|------|
-| 0:00, 6:00, 12:00, 18:00 | 🧠 Idea Engine |
-| 2:00, 10:00, 18:00 | 🔍 API Hunter |
-| 07:00 | Morning Briefing |
-| 08:00 & 17:00 | Hotel Briefing (นิว) |
-| 18:00 | Evening Summary |
-
----
-
-## Key Insights
-
-<!-- PERSIST -->
-**สำคัญมาก - จำไว้:**
-
-1. **ใช้ AI แทน regex** - คนพิมพ์ผิดบ่อย "สร้งโฟลเดอร์" ขาด า, AI เข้าใจได้
-
-2. **AI Result Validator** - ไม่ใช่แค่ดู exit code, ให้ AI เช็คว่าทำจริง
-
-3. **Lock file ป้องกันรันซ้ำ** - `/tmp/oracle-local-agent.lock`
-
-4. **Projects folder แยก** - `~/Desktop/projects/` ไม่ปนกับ Oracle
-
-5. **WebSocket ดีกว่า HTTP polling** - real-time, ไม่หนักเซิร์ฟเวอร์
-<!-- /PERSIST -->
-
----
-
-## Next Session Should
-
-1. **ทดสอบ full flow** - ลองสั่ง "คิด idea" หรือ "ล่า API" จาก LINE
-2. **ดู logs** - `oracle-logs` เช็คว่า cron ทำงาน
-3. **อาจเพิ่ม** - Approval flow ก่อน auto-execute
-
----
-
-## Version History Today
+## Files Changed/Created
 
 ```
-v5.15.0 → Local Agent WebSocket
-v5.16.0 → Terminal Workflow System
-v5.17.0 → Autonomous Idea Engine
-v5.18.0 → API Hunter + Full System
+Modified:
+├── lib/embedding.js           # Added logging
+├── lib/memory-api.js          # Backfill endpoint, embedding_created field
+
+Created:
+├── scripts/backfill-embeddings.js  # Standalone backfill script
+├── scripts/migrate-to-supabase.js  # Supabase migration
 ```
 
 ---
 
-*Handoff updated: 2026-02-05 16:40 - v5.18.0*
+## What's Next (Optional)
+
+1. **Build semantic_memory table** - Extract knowledge from conversations
+2. **Memory consolidation job** - Scheduled pattern extraction
+3. **Improve search relevance** - Tune similarity thresholds
+4. **MCP testing** - Use oracle_recall from Claude Code
+
+---
+
+*Handoff updated: 2026-02-05 - SEMANTIC SEARCH COMPLETE!*

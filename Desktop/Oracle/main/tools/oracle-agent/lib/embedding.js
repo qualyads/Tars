@@ -10,9 +10,13 @@ let openai = null;
 function getOpenAI() {
   if (!openai && process.env.OPENAI_API_KEY) {
     openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    console.log('[Embedding] OpenAI client initialized');
   }
   return openai;
 }
+
+// Log status at startup
+console.log('[Embedding] OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET');
 
 /**
  * Generate embedding vector for text
