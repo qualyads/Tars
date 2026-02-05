@@ -1,6 +1,6 @@
 # Session Handoff
 
-**From:** Session 2026-02-05 20:30 (Memory Sync Fix)
+**From:** Session 2026-02-05 (AGI Framework v1.0)
 **To:** Next Session
 
 ---
@@ -8,124 +8,183 @@
 ## Current Status
 
 ```
-Oracle Agent v6.0.3 (local) / v6.0.0 (Railway - ยังไม่ deploy!)
-├── Local: ✅ Updated
-├── Railway: ⚠️ NEEDS MANUAL REDEPLOY
-├── Supabase: ✅ Working (semantic search)
-├── Git: ✅ Pushed (fa097f3)
-└── Issue: Railway ไม่ auto-deploy
+Oracle AGI Framework v1.0
+├── Memory System v6.1.0: ✅ 200+ memories
+├── Auto-Recall: ✅ NEW - Retrieves context before every response
+├── Goal Tracker: ✅ NEW - Tracks goals with priorities
+├── Heartbeat v4.0: ✅ UPGRADED - Now includes goal reminders
+├── Memory Consolidation: ✅ NEW - Duplicate detection
+├── Long-term Planner: ✅ NEW - Weekly planning
+└── AGI Level: ~45-50%
 ```
-
----
-
-## PENDING ACTION - Railway Redeploy!
-
-```
-1. Go to Railway Dashboard
-2. Select oracle-agent project
-3. Click "Redeploy" or "Deploy"
-4. Verify version = 6.0.3
-```
-
-**After redeploy, test:**
-> LINE: "นินสวิซผมถึงไหนหล่ะ"
 
 ---
 
 ## What We Did This Session
 
-### 1. Nintendo Switch Kerry Tracking
-- [x] Tracking: `SOE3355A0004917`
-- [x] Status: กำลังส่ง - ถึง DC สารภี เชียงใหม่แล้ว (5 ก.พ. 09:07)
-- [x] Saved to Supabase memory ✅
-- [x] Created `parcel-watchlist.json` ✅
-- [x] TrackingMore API working ✅
+### 1. Full Memory Sync ✅
+Synced **56 files** to Supabase with embeddings:
 
-### 2. Memory Sync Issue Found & Fixed
-- [x] Terminal saves to Supabase ✅
-- [x] Added Supabase semantic search to server.js LINE handler
-- [x] Query episodic_memory with vector embeddings
-- [ ] **Railway ยังไม่ deploy code ใหม่!**
+| Category | Files |
+|----------|-------|
+| Core Identity | 5 (core, emotion, commitments, bond, goals) |
+| Skills | 18 (beds24, investment, tm30, n8n, etc.) |
+| Tools | 5 categories (105 modules) |
+| Knowledge | 28 (checkin, btrade, openclaw, etc.) |
 
-### 3. Code Changes (pending deploy)
-```javascript
-// server.js - Added after line 1275
-const embedding = await generateEmbedding(userMessage);
-const searchResult = await dbQuery(`
-  SELECT content FROM episodic_memory
-  WHERE embedding IS NOT NULL
-  ORDER BY embedding <=> $1
-  LIMIT 5
-`, [embedding, 'tars']);
+### 2. MCP Server Created ✅
+**Location:** `~/.claude/mcp-servers/oracle-memory/`
+
+**Tools Available:**
+- `oracle_remember` - บันทึกลง Supabase
+- `oracle_recall` - ค้นหา semantic
+- `oracle_context` - ดึง user context
+- `oracle_learn` - บันทึก mistake/lesson
+
+**Config:** `~/.claude/mcp.json`
+
+### 3. Auto-Save Hook Updated ✅
+**File:** `~/.claude/hooks/save-memory.sh`
+
+- Triggers on Stop event
+- Saves only meaningful conversations (4+ messages)
+- Auto-creates embeddings
+
+### 4. MEMORY.md Updated ✅
+**File:** `~/.claude/projects/-Users-tanakitchaithip/memory/MEMORY.md`
+
+### 5. AGI Framework v1.0 ✅ NEW!
+**สร้าง 5 modules ใหม่:**
+
+| Module | File | Description |
+|--------|------|-------------|
+| Auto-Recall | `lib/auto-recall.js` | ดึง memories อัตโนมัติก่อนตอบ |
+| Goal Tracker | `lib/goal-tracker.js` | Track goals + priorities |
+| Heartbeat v4.0 | `lib/heartbeat.js` | เพิ่ม goal reminders |
+| Memory Consolidation | `lib/memory-consolidation.js` | ลบ duplicates |
+| Long-term Planner | `lib/long-term-planner.js` | วางแผนระยะยาว |
+
+**Documentation:** `ψ/memory/knowledge/agi-framework.md`
+
+---
+
+## Memory Architecture (Complete)
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    SUPABASE                          │
+│  ┌─────────────────────────────────────────────┐    │
+│  │  episodic_memory (200+ records)              │    │
+│  │  + pgvector embeddings (1536 dims)           │    │
+│  │  + semantic search (cosine similarity)       │    │
+│  └─────────────────────────────────────────────┘    │
+└───────────────────────┬─────────────────────────────┘
+                        │
+        ┌───────────────┼───────────────┐
+        │               │               │
+        ▼               ▼               ▼
+┌───────────────┐ ┌───────────────┐ ┌───────────────┐
+│  Oracle LINE  │ │  Claude Code  │ │  Local Agent  │
+│  (Railway)    │ │  (MCP Server) │ │  (Mac)        │
+│               │ │               │ │               │
+│  Direct DB    │ │  API → DB     │ │  WebSocket    │
+└───────────────┘ └───────────────┘ └───────────────┘
 ```
 
 ---
 
-## Key Tracking Info
+## Test Semantic Search
 
-### Nintendo Switch (Kerry)
-| Item | Value |
-|------|-------|
-| Tracking | `SOE3355A0004917` |
-| Status | กำลังส่ง |
-| Location | สารภี, เชียงใหม่ |
-| Updated | 5 ก.พ. 09:07 |
-| Destination | ปาย |
-
-### ROG Ally (Synnex)
-| Item | Value |
-|------|-------|
-| Repair No. | `MT521260100101/1` |
-| Status | ส่งซ่อม ASUS Vendor |
-| Duration | 9 วันแล้ว (ตั้งแต่ 27 ม.ค.) |
-
-### TrackingMore API
 ```bash
-curl -s "https://api.trackingmore.com/v4/trackings/get?tracking_numbers=SOE3355A0004917" \
-  -H "Tracking-Api-Key: ffdipqwt-clf7-xzri-a8gn-q92kst37617r"
+# ค้นหา personal items
+curl -s -H "X-API-Key: oracle-memory-secret-2026" \
+  "https://oracle-agent-production-546e.up.railway.app/api/memory/search?q=ROG+Ally+gaming"
+
+# ค้นหา hotel pricing
+curl -s -H "X-API-Key: oracle-memory-secret-2026" \
+  "https://oracle-agent-production-546e.up.railway.app/api/memory/search?q=hotel+room+pricing"
+
+# ค้นหา AI emotions
+curl -s -H "X-API-Key: oracle-memory-secret-2026" \
+  "https://oracle-agent-production-546e.up.railway.app/api/memory/search?q=VAD+emotional+state"
 ```
 
 ---
 
-## Files Changed This Session
+## Files Created/Modified
 
 ```
+Created (AGI Framework):
+├── tools/oracle-agent/lib/auto-recall.js      # Auto-Recall System
+├── tools/oracle-agent/lib/goal-tracker.js     # Goal Tracking
+├── tools/oracle-agent/lib/memory-consolidation.js  # Memory Health
+├── tools/oracle-agent/lib/long-term-planner.js     # Planning System
+├── ψ/memory/knowledge/agi-framework.md        # Documentation
+
 Modified:
-├── tools/oracle-agent/server.js     # Added Supabase semantic search
-├── tools/oracle-agent/config.json   # Version 6.0.3
-
-Created:
-├── tools/oracle-agent/data/parcel-watchlist.json
-├── ψ/memory/knowledge/personal-items.md
+├── tools/oracle-agent/lib/claude.js           # Added auto-recall
+├── tools/oracle-agent/lib/heartbeat.js        # v4.0 with goals
+├── ψ/memory/goals.md                          # API integration goals
+├── ψ/memory/active/handoff.md
 ```
 
 ---
 
-## Git Commits
-
-```
-fa097f3 Bump version to 6.0.3 - trigger Railway redeploy
-953d325 Add Supabase semantic search to LINE message context
-b39a32b Add Nintendo Switch to parcel watchlist
-9ca12cc Fix: Add current date/year to Oracle system prompt
-```
-
----
-
-## Memory API
+## Quick Start (Next Session)
 
 ```bash
-# Save memory
-curl -s -X POST -H "X-API-Key: oracle-memory-secret-2026" \
+cd ~/Desktop/Oracle
+claude --model opus
+```
+
+**Auto-load (ไม่ต้องทำอะไร):**
+- MEMORY.md → โหลดเข้า system prompt อัตโนมัติ
+- MCP Server → พร้อมใช้ `oracle_recall`, `oracle_remember`
+- Auto-Save Hook → บันทึกทุก session ที่มี 4+ messages
+
+**ถ้าอยากให้จำ context ล่าสุด:**
+```
+พิมพ์: "load memory" หรือ "ดึงความจำ"
+```
+
+**Quick commands:**
+- `"ดึงความจำ"` → โหลด context ทั้งหมด
+- `"จำว่า X"` → บันทึก X ลง Supabase
+- `"ค้นหาความจำ X"` → semantic search
+
+---
+
+## MCP Tools (after restart Claude Code)
+```
+Use oracle_remember to save important info
+Use oracle_recall to search memories
+Use oracle_context to get user context
+Use oracle_learn for mistakes/lessons
+```
+
+### Manual API
+```bash
+# Save
+curl -X POST -H "X-API-Key: oracle-memory-secret-2026" \
   -H "Content-Type: application/json" \
-  -d '{"content":"...","user_id":"tars","importance":0.8}' \
+  -d '{"content":"...", "user_id":"tars"}' \
   "https://oracle-agent-production-546e.up.railway.app/api/memory/save"
 
-# Semantic search
-curl -s -H "X-API-Key: oracle-memory-secret-2026" \
-  "https://oracle-agent-production-546e.up.railway.app/api/memory/search?q=query"
+# Search
+curl -H "X-API-Key: oracle-memory-secret-2026" \
+  "https://oracle-agent-production-546e.up.railway.app/api/memory/search?q=..."
 ```
 
 ---
 
-*Handoff updated: 2026-02-05 20:30 - RAILWAY REDEPLOY NEEDED!*
+## Known Items
+
+### Parcel Tracking
+| Item | Tracking | Status |
+|------|----------|--------|
+| Nintendo Switch | SOE3355A0004917 | ถึง DC สารภี แล้ว |
+| ROG Ally | MT521260100101/1 | ซ่อมที่ ASUS Vendor |
+
+---
+
+*Handoff updated: 2026-02-05 - AGI Framework v1.0 Complete!*

@@ -1,6 +1,12 @@
 /**
- * Oracle Heartbeat System v3.0
- * AI ตื่นมาเองทุก X นาที + ดึงข้อมูลจริงจาก Beds24 API
+ * Oracle Heartbeat System v4.0
+ * AI ตื่นมาเองทุก X นาที + ดึงข้อมูลจริง + Goal Tracking + Auto-Actions
+ *
+ * v4.0 Changes:
+ * - Added Goal Tracker integration
+ * - Reminds about stale/pending goals
+ * - Proactive task suggestions
+ * - Auto-execute simple tasks when possible
  *
  * v3.0 Changes:
  * - Fetch REAL data from Beds24 API before analysis
@@ -21,6 +27,9 @@ import {
   getAllActiveBookings,
   getOccupancyForDate
 } from './beds24.js';
+
+// Import Goal Tracker
+import { runGoalCheck, touchGoal, formatGoalReminder } from './goal-tracker.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HEARTBEAT_FILE = join(__dirname, '../HEARTBEAT.md');
@@ -110,17 +119,18 @@ class HeartbeatManager {
   }
 
   /**
-   * Fetch REAL data from Beds24 API
+   * Fetch REAL data from Beds24 API + Goals from Supabase
    * Returns structured data for analysis
    */
   async fetchRealData() {
-    console.log('[HEARTBEAT] Fetching real data from Beds24 API...');
+    console.log('[HEARTBEAT] Fetching real data from Beds24 API + Goals...');
 
     const data = {
       checkIns: [],
       checkOuts: [],
       recentBookings: [],
       occupancy: null,
+      goals: null,  // NEW: Goal tracking data
       errors: []
     };
 
@@ -181,6 +191,16 @@ class HeartbeatManager {
       data.errors.push(`Occupancy error: ${e.message}`);
     }
 
+    try {
+      // 5. NEW: Get goals from Supabase
+      const goalResult = await runGoalCheck('tars');
+      data.goals = goalResult;
+      console.log(`[HEARTBEAT] Goals: ${goalResult.activeGoals} active, ${goalResult.staleGoals} stale`);
+    } catch (e) {
+      console.log(`[HEARTBEAT] Goal check skipped: ${e.message}`);
+      data.goals = null;
+    }
+
     return data;
   }
 
@@ -197,10 +217,14 @@ class HeartbeatManager {
       return true;
     });
 
+    // NEW: Check for stale goals that need reminder
+    const hasStaleGoals = data.goals?.staleGoals > 0;
+
     return (
       newBookings.length > 0 ||
       pendingCheckIns.length > 0 ||
-      data.checkOuts.length > 0
+      data.checkOuts.length > 0 ||
+      hasStaleGoals  // NEW: Include stale goals
     );
   }
 
@@ -274,6 +298,26 @@ class HeartbeatManager {
       dataSection += `- ไม่มี check-in/check-out วันนี้\n\n`;
     }
 
+    // NEW: Goals section
+    if (data.goals) {
+      dataSection += `### 🎯 เป้าหมายและ Tasks\n`;
+      dataSection += `- Active goals: ${data.goals.activeGoals}\n`;
+      dataSection += `- API integration goals: ${data.goals.apiGoals}\n`;
+      dataSection += `- Stale goals (ต้องเตือน): ${data.goals.staleGoals}\n`;
+
+      if (data.goals.topGoals?.length > 0) {
+        dataSection += `\n**Top Priority Goals:**\n`;
+        data.goals.topGoals.forEach((g, i) => {
+          dataSection += `${i + 1}. ${g.content.substring(0, 100)}... (priority: ${g.priority})\n`;
+        });
+      }
+
+      if (data.goals.reminder) {
+        dataSection += `\n${data.goals.reminder}\n`;
+      }
+      dataSection += '\n';
+    }
+
     return `You are Oracle, a proactive AI assistant for Tars (hotel operator).
 
 ## เวลาปัจจุบัน
@@ -284,10 +328,12 @@ class HeartbeatManager {
 ${dataSection}
 
 ## คำแนะนำ
-1. วิเคราะห์ข้อมูลด้านบน (ข้อมูลจริงจาก Beds24 API)
+1. วิเคราะห์ข้อมูลด้านบน (ข้อมูลจริงจาก Beds24 API + Goals)
 2. ถ้ามี booking ใหม่ → แจ้ง Tars พร้อมรายละเอียด
 3. ถ้ามี check-in วันนี้ → เตือนให้เตรียมห้อง
-4. ถ้าไม่มีอะไรต้องทำ → ตอบ HEARTBEAT_OK
+4. ถ้ามี stale goals → เตือนให้ Tars ทำ
+5. ถ้ามี API goals ที่รอทำ → แนะนำให้เริ่ม
+6. ถ้าไม่มีอะไรต้องทำ → ตอบ HEARTBEAT_OK
 
 ## กฎสำคัญ
 ✅ ใช้เฉพาะข้อมูลที่แสดงด้านบนเท่านั้น
@@ -397,7 +443,7 @@ HEARTBEAT_OK`;
     }
 
     const intervalMs = this.parseInterval(this.config.every);
-    console.log(`[HEARTBEAT] Starting v3.0 (Real Data) with interval: ${this.config.every} (${intervalMs}ms)`);
+    console.log(`[HEARTBEAT] Starting v4.0 (Real Data + Goals) with interval: ${this.config.every} (${intervalMs}ms)`);
     console.log(`[HEARTBEAT] Active hours: ${this.config.activeHours.start}:00 - ${this.config.activeHours.end}:00`);
     console.log(`[HEARTBEAT] Model: ${this.config.model}`);
 
@@ -455,7 +501,7 @@ HEARTBEAT_OK`;
       isActiveNow: this.isActiveHours(),
       queueBusy: this.mainQueueBusy,
       notifiedCount: this.notifiedBookings.size,
-      version: '3.0'
+      version: '4.0'
     };
   }
 

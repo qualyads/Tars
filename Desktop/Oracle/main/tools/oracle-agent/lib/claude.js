@@ -1,12 +1,14 @@
 /**
- * Claude API Wrapper with Auto-Failover
+ * Claude API Wrapper with Auto-Failover + Auto-Recall
  * Handles communication with AI APIs with automatic failover
  *
  * v2.0: Added failover to OpenAI/Groq when Claude fails
+ * v2.1: Added Auto-Recall System - retrieves relevant memories before responding
  */
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createRequire } from 'module';
+import { autoRecall, formatRecalledContext, needsDeepRecall } from './auto-recall.js';
 
 const require = createRequire(import.meta.url);
 const config = require('../config.json');
@@ -193,7 +195,7 @@ ${isCreditError({ message: reason }) ? '\n💳 **Token หมดแล้ว!** 
 }
 
 /**
- * Send a chat message with automatic failover
+ * Send a chat message with automatic failover + auto-recall
  * @param {Array} messages - Array of {role, content} objects
  * @param {Object} options - Additional options (system prompt, etc.)
  * @returns {string} - AI response
@@ -202,6 +204,34 @@ async function chat(messages, options = {}) {
   const providers = ['anthropic', 'openai', 'groq'];
   let lastError = null;
 
+  // Auto-Recall: Get relevant memories before responding
+  let recalledContext = '';
+  if (!options.skipAutoRecall) {
+    try {
+      const lastUserMessage = messages.filter(m => m.role === 'user').pop()?.content || '';
+
+      // Only do deep recall for relevant messages
+      if (needsDeepRecall(lastUserMessage) || options.forceRecall) {
+        const recalled = await autoRecall(lastUserMessage, options.userId || 'tars');
+        recalledContext = formatRecalledContext(recalled);
+
+        if (recalledContext) {
+          console.log('[CLAUDE] Auto-recalled context:', recalledContext.length, 'chars');
+        }
+      }
+    } catch (recallError) {
+      console.error('[CLAUDE] Auto-recall failed:', recallError.message);
+    }
+  }
+
+  // Enhance system prompt with recalled context
+  const enhancedSystem = recalledContext
+    ? `${options.system || ''}\n\n---\n**Auto-Recalled Context:**\n${recalledContext}`
+    : options.system || '';
+
+  // Use enhanced system prompt with recalled context
+  const enhancedOptions = { ...options, system: enhancedSystem };
+
   for (const provider of providers) {
     try {
       console.log(`[CLAUDE] Trying provider: ${provider}`);
@@ -209,13 +239,13 @@ async function chat(messages, options = {}) {
       let response;
       switch (provider) {
         case 'anthropic':
-          response = await sendToAnthropic(messages, options);
+          response = await sendToAnthropic(messages, enhancedOptions);
           break;
         case 'openai':
-          response = await sendToOpenAI(messages, options);
+          response = await sendToOpenAI(messages, enhancedOptions);
           break;
         case 'groq':
-          response = await sendToGroq(messages, options);
+          response = await sendToGroq(messages, enhancedOptions);
           break;
       }
 

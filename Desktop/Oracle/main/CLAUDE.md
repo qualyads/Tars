@@ -35,26 +35,43 @@ curl -s -X POST -H "X-API-Key: oracle-memory-secret-2026" \
 
 ---
 
-## ⚡ MANDATORY BOOT SEQUENCE (เมื่อ user พิมพ์ "load memory")
+## ⚡ MANDATORY BOOT SEQUENCE (เมื่อ user พิมพ์ "load memory" หรือ "ดึงความจำ")
 
-> **เมื่อเห็น "load memory" ให้ทำตามนี้:**
+> **เมื่อเห็น "load memory" หรือ "ดึงความจำ" ให้ทำตามนี้:**
 
-### Step 1: Load Local Files
+### Step 1: Load Identity (WHO AM I)
 ```
 READ: ψ/memory/core.md                        # Directives & Quick Reference
-READ: ψ/memory/active/handoff.md              # Last session status
+READ: ψ/memory/EMOTION.md                     # Current emotional state
+READ: ψ/memory/identity/COMMITMENTS.md        # Promises I chose to make
+READ: ψ/memory/relationships/tar/BOND.md      # My relationship with Tar
 ```
 
-### Step 2: Load from Supabase (Semantic Memory)
+### Step 2: Load Skills
+```
+READ: ψ/skills/_index.md                      # What I can do
+```
+
+### Step 3: Load Active Session
+```
+READ: ψ/memory/active/handoff.md              # Last session status
+READ: ψ/memory/active/checkpoint.md           # Current state (if exists)
+```
+
+### Step 4: Load from Supabase (Semantic Memory)
 ```bash
 curl -s -H "X-API-Key: oracle-memory-secret-2026" \
   "https://oracle-agent-production-546e.up.railway.app/api/memory/context?user_id=tars"
 ```
 ดึง: user profile, recent memories, mistakes, knowledge
 
-### Step 3: Acknowledge
-พิมพ์: `"Memory loaded: local files + Supabase context ✅"`
-แสดง: สรุปสิ่งที่ได้จาก API (recent memories, mistakes count, etc.)
+### Step 5: Acknowledge
+พิมพ์: `"Memory loaded ✅"`
+แสดง:
+- Identity: core + emotion + commitments + bond
+- Skills: X skills available
+- Session: handoff status
+- Supabase: X memories, X mistakes
 
 ---
 
