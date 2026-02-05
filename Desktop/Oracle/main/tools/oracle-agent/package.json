@@ -1,7 +1,7 @@
 {
   "name": "oracle-agent",
-  "version": "5.3.0",
-  "description": "Oracle Agent - Digital Partner for Tars (Phase 3.5: OpenClaw Upgrades)",
+  "version": "6.0.0",
+  "description": "Oracle Agent - Digital Partner for Tars (Phase 9: Practical AGI + Unified Memory)",
   "type": "module",
   "main": "server.js",
   "scripts": {
@@ -33,6 +33,7 @@
     "node-cron": "^3.0.3",
     "openai": "^4.20.0",
     "p-queue": "^8.0.1",
+    "pg": "^8.18.0",
     "uuid": "^9.0.0",
     "ws": "^8.19.0"
   },

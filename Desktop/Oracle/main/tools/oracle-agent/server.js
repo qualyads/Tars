@@ -116,6 +116,13 @@ import autonomousIdeas from './lib/autonomous-ideas.js';
 // Phase 8: API Hunter - หา API, ทดสอบ, วิเคราะห์โอกาส
 import apiHunter from './lib/api-hunter.js';
 
+// Phase 9: Unified Memory & Practical AGI
+import memoryApiRouter from './lib/memory-api.js';
+import { initUnifiedMemory } from './lib/unified-memory.js';
+import { initPostgres } from './lib/db-postgres.js';
+import practicalAgi from './lib/practical-agi.js';
+import selfAwareness from './lib/self-awareness.js';
+
 // Phase 3.5: OpenClaw Upgrades
 import {
   initSessionLogger,
@@ -3326,6 +3333,41 @@ app.get('/api/memory', async (req, res) => {
   res.json(mem);
 });
 
+// =============================================================================
+// PHASE 9: UNIFIED MEMORY API (PostgreSQL + pgvector)
+// Provides endpoints for Claude Code MCP Server
+// =============================================================================
+app.use('/api/memory', memoryApiRouter);
+
+// Self-awareness endpoints
+app.get('/api/self-awareness/status', async (req, res) => {
+  try {
+    const status = await selfAwareness.getSelfAwarenessStatus();
+    res.json({ status: 'ok', ...status });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/self-awareness/model', async (req, res) => {
+  try {
+    const model = await selfAwareness.loadSelfModel();
+    res.json({ status: 'ok', model });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Goal tracking endpoint
+app.get('/api/goals/progress', async (req, res) => {
+  try {
+    const progress = await practicalAgi.trackGoalProgress();
+    res.json({ status: 'ok', ...progress });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Manual trigger for testing
 app.post('/api/briefing', async (req, res) => {
   try {
@@ -4028,6 +4070,30 @@ cron.schedule('30 23 * * *', async () => {
 }, { timezone: config.agent.timezone });
 
 // =============================================================================
+// DAILY SELF-REFLECTION - Oracle ทบทวนตัวเอง
+// =============================================================================
+
+// Daily reflection at 23:45 Bangkok time
+cron.schedule('45 23 * * *', async () => {
+  console.log('[SELF-AWARENESS] 🪞 Daily Self-Reflection triggered');
+  logSystemEvent('system', 'self_reflection_start', {});
+
+  try {
+    const reflection = await selfAwareness.dailyReflection(claude.client);
+    if (reflection) {
+      console.log('[SELF-AWARENESS] Reflection completed:', reflection.reflection_summary);
+      logSystemEvent('system', 'self_reflection_complete', {
+        self_awareness_level: reflection.self_awareness_level,
+        lessons_count: reflection.remember_tomorrow?.length || 0
+      });
+    }
+  } catch (error) {
+    console.error('[SELF-AWARENESS] Reflection error:', error);
+    logError('system', error, { source: 'self-reflection' });
+  }
+}, { timezone: config.agent.timezone });
+
+// =============================================================================
 // AUTONOMOUS IDEA ENGINE - Oracle คิดเอง ทำเอง
 // =============================================================================
 
@@ -4132,6 +4198,14 @@ const server = app.listen(PORT, async () => {
   // Initialize User Profiles System (Phase 5.6)
   userProfiles.init(config);
   console.log('[USER-PROFILES] System initialized');
+
+  // Initialize Unified Memory System (Phase 9: Practical AGI)
+  try {
+    await initUnifiedMemory();
+    console.log('[UNIFIED-MEMORY] System initialized');
+  } catch (error) {
+    console.log('[UNIFIED-MEMORY] Running without PostgreSQL:', error.message);
+  }
 
   // Initialize Local Agent WebSocket Server (Phase 6: Remote Execution)
   localAgentServer.initialize(server);
