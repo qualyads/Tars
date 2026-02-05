@@ -9,6 +9,8 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { query, getPool } from './db-postgres.js';
+import { generateEmbedding } from './embedding.js';
 
 // ES module __dirname equivalent
 const __filename = fileURLToPath(import.meta.url);
@@ -146,6 +148,49 @@ async function saveConversation(userId, userMessage, agentResponse) {
 
   memory.stats.messages_handled++;
   save(memory);
+
+  // =========================================
+  // AUTO-SAVE TO SUPABASE (100% Memory)
+  // =========================================
+  saveToSupabase(userId, userMessage, agentResponse).catch(err => {
+    console.log('[MEMORY] Supabase sync failed:', err.message);
+  });
+}
+
+/**
+ * Save conversation to Supabase for 100% memory
+ */
+async function saveToSupabase(userId, userMessage, agentResponse) {
+  const pool = getPool();
+  if (!pool) return;
+
+  try {
+    // Combine user + bot as single memory entry
+    const content = `User: ${userMessage}\nOracle: ${agentResponse}`;
+    const importance = 0.6; // Default importance
+
+    // Generate embedding
+    let embedding = null;
+    try {
+      embedding = await generateEmbedding(content);
+    } catch (e) {
+      // Continue without embedding
+    }
+
+    const searchText = content.toLowerCase().substring(0, 1000);
+
+    await query(`
+      INSERT INTO episodic_memory (user_id, content, context, memory_type, importance, search_text${embedding ? ', embedding' : ''})
+      VALUES ($1, $2, $3, $4, $5, $6${embedding ? ', $7' : ''})
+    `, embedding
+      ? [userId, content, { channel: 'line' }, 'conversation', importance, searchText, embedding]
+      : [userId, content, { channel: 'line' }, 'conversation', importance, searchText]
+    );
+
+    console.log('[MEMORY] Conversation saved to Supabase');
+  } catch (error) {
+    console.error('[MEMORY] Supabase error:', error.message);
+  }
 }
 
 /**

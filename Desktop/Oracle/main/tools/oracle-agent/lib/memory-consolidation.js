@@ -19,6 +19,8 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { query, getPool } from './db-postgres.js';
+import { generateEmbedding } from './embedding.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -130,6 +132,13 @@ class MemoryConsolidation {
     }
 
     this._saveShortTerm();
+
+    // =========================================
+    // AUTO-SAVE TO SUPABASE (Real-time sync)
+    // =========================================
+    this._saveToSupabase(memory).catch(err => {
+      console.log('[MEMORY] Supabase save failed (non-blocking):', err.message);
+    });
 
     return memory;
   }
@@ -430,6 +439,43 @@ class MemoryConsolidation {
       // Increase importance with mentions
       if (e.mentions > 10) e.importance = IMPORTANCE.HIGH;
       if (e.mentions > 50) e.importance = IMPORTANCE.CRITICAL;
+    }
+  }
+
+  /**
+   * Save memory to Supabase (async, non-blocking)
+   */
+  async _saveToSupabase(memory) {
+    const pool = getPool();
+    if (!pool) return;
+
+    try {
+      const userId = memory.context?.userId || 'tars';
+      const content = memory.content;
+      const memoryType = memory.type || 'conversation';
+      const importance = memory.importance / 5; // Convert 1-5 to 0-1
+
+      // Generate embedding for semantic search
+      let embedding = null;
+      try {
+        embedding = await generateEmbedding(content);
+      } catch (e) {
+        // Skip embedding if failed
+      }
+
+      const searchText = content.toLowerCase().substring(0, 1000);
+
+      await query(`
+        INSERT INTO episodic_memory (user_id, content, context, memory_type, importance, search_text${embedding ? ', embedding' : ''})
+        VALUES ($1, $2, $3, $4, $5, $6${embedding ? ', $7' : ''})
+      `, embedding
+        ? [userId, content, memory.context || {}, memoryType, importance, searchText, embedding]
+        : [userId, content, memory.context || {}, memoryType, importance, searchText]
+      );
+
+      console.log('[MEMORY] Auto-saved to Supabase:', content.substring(0, 50) + '...');
+    } catch (error) {
+      console.error('[MEMORY] Supabase save error:', error.message);
     }
   }
 
