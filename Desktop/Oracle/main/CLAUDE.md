@@ -1,5 +1,40 @@
 # CLAUDE.md - Oracle Agent Memory System v6.0
 
+## 💾 AUTO-SAVE PROTOCOL (ทุก Session - บังคับ!)
+
+> **ก่อนจบ session หรือเมื่อทำงานสำคัญเสร็จ ต้อง save ลง Supabase!**
+
+### เมื่อไหร่ต้อง Save:
+- ✅ เรียนรู้สิ่งใหม่ (preference, fact, decision)
+- ✅ ทำงานสำคัญเสร็จ (deploy, fix bug, create feature)
+- ✅ User บอกข้อมูลส่วนตัว (birthday, preferences, etc.)
+- ✅ ก่อนจบ session ยาวๆ
+
+### วิธี Save:
+```bash
+curl -s -X POST -H "X-API-Key: oracle-memory-secret-2026" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"สิ่งที่ต้องจำ","user_id":"tars","importance":0.8}' \
+  "https://oracle-agent-production-546e.up.railway.app/api/memory/save"
+```
+
+### ตัวอย่าง:
+```bash
+# บันทึก decision
+curl -s -X POST -H "X-API-Key: oracle-memory-secret-2026" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"Tars decided to use Supabase for pgvector instead of Railway PostgreSQL","user_id":"tars","memory_type":"decision","importance":0.9}' \
+  "https://oracle-agent-production-546e.up.railway.app/api/memory/save"
+
+# บันทึก preference
+curl -s -X POST -H "X-API-Key: oracle-memory-secret-2026" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"Tars prefers Thai language responses, concise and direct","user_id":"tars","memory_type":"preference","importance":0.8}' \
+  "https://oracle-agent-production-546e.up.railway.app/api/memory/save"
+```
+
+---
+
 ## ⚡ MANDATORY BOOT SEQUENCE (เมื่อ user พิมพ์ "load memory")
 
 > **เมื่อเห็น "load memory" ให้ทำตามนี้:**
