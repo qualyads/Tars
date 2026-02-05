@@ -113,6 +113,9 @@ import localAgentServer from './lib/local-agent-server.js';
 // Phase 7: Autonomous Idea Engine
 import autonomousIdeas from './lib/autonomous-ideas.js';
 
+// Phase 8: API Hunter - หา API, ทดสอบ, วิเคราะห์โอกาส
+import apiHunter from './lib/api-hunter.js';
+
 // Phase 3.5: OpenClaw Upgrades
 import {
   initSessionLogger,
@@ -690,6 +693,9 @@ app.post('/webhook/line', async (req, res) => {
 - คิด idea/หาโอกาส/brainstorm → ตอบ: {"action":"think_ideas"}
 - ดู ideas ที่คิดไว้ → ตอบ: {"action":"list_ideas"}
 - ทำ idea ชื่อ X → ตอบ: {"action":"execute_idea","name":"ชื่อ idea"}
+- หา API/ล่า API/research API → ตอบ: {"action":"hunt_apis"}
+- ดู API ที่หาเจอ → ตอบ: {"action":"list_apis"}
+- ค้นหา API เรื่อง X → ตอบ: {"action":"search_api","query":"หัวข้อที่ค้น"}
 - ไม่เกี่ยวกับการทำงาน → ตอบ: {"action":"none"}
 
 ตอบ JSON เท่านั้น ไม่ต้องอธิบาย:`;
@@ -906,6 +912,61 @@ ${shouldDeploy ? '- จะ deploy ขึ้น Railway เมื่อเสร�
               }).catch(err => {
                 console.error('[IDEAS] Execute error:', err);
               });
+            }
+            // =================================================================
+            // API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส
+            // =================================================================
+            else if (localAgentIntent.action === 'hunt_apis') {
+              console.log('[API-HUNTER] Manual hunt triggered from LINE');
+              contextString += `\n\n[API-HUNTER: 🔍 Oracle กำลังล่า API... รอสักครู่จะแจ้งผลทาง LINE]`;
+
+              // Run hunt in background
+              apiHunter.huntNow(config).then(result => {
+                console.log('[API-HUNTER] Hunt complete:', result.success);
+              }).catch(err => {
+                console.error('[API-HUNTER] Hunt error:', err);
+              });
+            }
+            else if (localAgentIntent.action === 'list_apis') {
+              const status = apiHunter.getStatus();
+
+              let apiList = `[API-HUNTER: 🔍 API ที่ Oracle หาเจอ]\n\n`;
+              apiList += `Total APIs: ${status.totalApis}\n`;
+              apiList += `Tested: ${status.totalTested}\n`;
+              apiList += `Opportunities: ${status.totalOpportunities}\n`;
+              apiList += `Last Hunt: ${status.lastHunt || 'Never'}\n\n`;
+
+              if (status.topOpportunities && status.topOpportunities.length > 0) {
+                apiList += `Top opportunities:\n`;
+                status.topOpportunities.forEach((opp, i) => {
+                  apiList += `${i + 1}. ${opp.api} (${opp.score}/100)\n`;
+                  apiList += `   ${opp.recommendation} - ${opp.projectIdea || 'No idea yet'}\n`;
+                });
+              } else {
+                apiList += `ยังไม่มี API - บอก "ล่า API หน่อย" เพื่อให้ Oracle ไปหา`;
+              }
+
+              contextString += `\n\n${apiList}`;
+            }
+            else if (localAgentIntent.action === 'search_api' && localAgentIntent.query) {
+              console.log(`[API-HUNTER] Search requested: ${localAgentIntent.query}`);
+
+              try {
+                const results = await apiHunter.searchApis(localAgentIntent.query);
+                if (results.length > 0) {
+                  let searchResult = `[API-HUNTER: 🔍 ค้นหา "${localAgentIntent.query}"]\n\n`;
+                  searchResult += `พบ ${results.length} APIs:\n`;
+                  results.slice(0, 5).forEach((api, i) => {
+                    searchResult += `${i + 1}. ${api.name}\n`;
+                    searchResult += `   ${api.description?.slice(0, 50) || 'No description'}...\n`;
+                  });
+                  contextString += `\n\n${searchResult}`;
+                } else {
+                  contextString += `\n\n[API-HUNTER: ไม่พบ API ที่เกี่ยวกับ "${localAgentIntent.query}"]`;
+                }
+              } catch (searchErr) {
+                contextString += `\n\n[API-HUNTER: Error searching - ${searchErr.message}]`;
+              }
             }
 
             console.log('[LOCAL-AGENT] Result:', localAgentResult?.success ? 'success' : 'failed');
@@ -2377,6 +2438,79 @@ app.get('/api/ideas/research/:category', async (req, res) => {
   try {
     const trends = await autonomousIdeas.researchTrends(category);
     res.json({ category, trends });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =============================================================================
+// API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส
+// =============================================================================
+
+// Get API Hunter status
+app.get('/api/hunt/status', (req, res) => {
+  res.json(apiHunter.getStatus());
+});
+
+// Get all discovered APIs
+app.get('/api/hunt/discoveries', (req, res) => {
+  const data = apiHunter.getDiscoveries();
+  res.json({
+    totalApis: data.apis.length,
+    apis: data.apis.slice(0, 30),
+    opportunities: data.opportunities.slice(0, 10),
+    lastHunt: data.lastHunt
+  });
+});
+
+// Force API hunt now
+app.post('/api/hunt/now', async (req, res) => {
+  console.log('[API-HUNTER] Manual hunt triggered');
+  try {
+    const result = await apiHunter.huntNow(config);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Search for specific APIs
+app.get('/api/hunt/search', async (req, res) => {
+  const { q } = req.query;
+  if (!q) {
+    return res.status(400).json({ error: 'Query parameter q is required' });
+  }
+  try {
+    const results = await apiHunter.searchApis(q);
+    res.json({ query: q, results });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Test a specific API
+app.post('/api/hunt/test', async (req, res) => {
+  const { name, url, testEndpoint } = req.body;
+  if (!name || !testEndpoint) {
+    return res.status(400).json({ error: 'name and testEndpoint are required' });
+  }
+  try {
+    const result = await apiHunter.testApi({ name, url, testEndpoint });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Analyze an API for opportunities
+app.post('/api/hunt/analyze', async (req, res) => {
+  const { api, testResult } = req.body;
+  if (!api) {
+    return res.status(400).json({ error: 'api object is required' });
+  }
+  try {
+    const analysis = await apiHunter.analyzeOpportunity(api, testResult);
+    res.json(analysis);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -3913,6 +4047,47 @@ cron.schedule('0 0,6,12,18 * * *', async () => {
   } catch (error) {
     console.error('[IDEAS] Thinking cycle error:', error);
     logError('system', error, { source: 'autonomous-ideas' });
+  }
+}, { timezone: config.agent.timezone });
+
+// =============================================================================
+// API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส
+// =============================================================================
+
+// Hunt every 8 hours: 2:00, 10:00, 18:00 Bangkok time (offset from ideas)
+cron.schedule('0 2,10,18 * * *', async () => {
+  console.log('[API-HUNTER] 🔍 API Hunt Cycle triggered');
+  logSystemEvent('system', 'api_hunt_start', {});
+
+  try {
+    const result = await apiHunter.runHuntCycle(config);
+    console.log('[API-HUNTER] Hunt cycle result:', result.success ? 'success' : 'failed');
+    logSystemEvent('system', 'api_hunt_complete', {
+      success: result.success,
+      discovered: result.discovered,
+      opportunities: result.opportunities
+    });
+
+    // Notify Tars if found good opportunity
+    if (result.bestOpportunity && result.bestOpportunity.analysis?.score?.total >= 70) {
+      const opp = result.bestOpportunity;
+      let message = `🔍 **API Hunter พบโอกาส!**\n\n`;
+      message += `API: ${opp.api}\n`;
+      message += `Score: ${opp.analysis.score.total}/100\n`;
+      message += `Recommendation: ${opp.analysis.recommendation}\n\n`;
+      if (opp.analysis.projectIdea) {
+        message += `💡 Project Idea: ${opp.analysis.projectIdea.name}\n`;
+        message += `${opp.analysis.projectIdea.description}\n`;
+      }
+      message += `\nต้องการให้ทำไหมครับ?`;
+
+      if (config.line?.owner_id) {
+        await line.pushMessage(config.line.owner_id, message);
+      }
+    }
+  } catch (error) {
+    console.error('[API-HUNTER] Hunt cycle error:', error);
+    logError('system', error, { source: 'api-hunter' });
   }
 }, { timezone: config.agent.timezone });
 
