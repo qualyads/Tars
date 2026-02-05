@@ -1463,6 +1463,51 @@ app.post('/webhook/github', async (req, res) => {
   }
 });
 
+// TrackingMore webhook endpoint - แจ้งเตือน LINE เมื่อสถานะพัสดุเปลี่ยน
+app.post('/webhook/trackingmore', async (req, res) => {
+  try {
+    const data = req.body;
+    console.log('[TRACKINGMORE] Webhook received:', JSON.stringify(data).slice(0, 500));
+
+    // TrackingMore sends array of tracking updates
+    const updates = Array.isArray(data) ? data : [data];
+
+    for (const update of updates) {
+      const trackingNumber = update.tracking_number;
+      const status = update.delivery_status;
+      const latestEvent = update.latest_event;
+      const location = update.origin_info?.trackinfo?.[0]?.location;
+
+      // Status translations
+      const statusTh = {
+        'transit': 'กำลังจัดส่ง',
+        'pickup': 'รับพัสดุแล้ว',
+        'delivered': 'จัดส่งแล้ว ✅',
+        'undelivered': 'นำจ่ายไม่สำเร็จ ❌',
+        'exception': 'มีปัญหา ⚠️',
+        'expired': 'หมดอายุ'
+      }[status] || status;
+
+      // Build LINE message
+      let message = `📦 **พัสดุ ${trackingNumber}**\n`;
+      message += `📍 สถานะ: ${statusTh}\n`;
+      if (location) message += `📍 ตำแหน่ง: ${location}\n`;
+      if (latestEvent) message += `💬 ${latestEvent}`;
+
+      // Send LINE notification to owner
+      if (config.line?.owner_id) {
+        await line.pushMessage(config.line.owner_id, message);
+        console.log('[TRACKINGMORE] Sent LINE notification for', trackingNumber);
+      }
+    }
+
+    res.json({ success: true, processed: updates.length });
+  } catch (error) {
+    console.error('[TRACKINGMORE] Webhook error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // =============================================================================
 // GMAIL PUB/SUB API
 // =============================================================================
