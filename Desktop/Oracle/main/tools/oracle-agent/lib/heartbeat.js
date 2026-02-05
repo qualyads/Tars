@@ -1,20 +1,26 @@
 /**
- * Oracle Heartbeat System v2.0
- * AI ตื่นมาเองทุก X นาที + ตัดสินใจว่าจะแจ้งหรือไม่
+ * Oracle Heartbeat System v3.0
+ * AI ตื่นมาเองทุก X นาที + ดึงข้อมูลจริงจาก Beds24 API
  *
- * Features:
- * - Periodic tick (default 30m)
- * - HEARTBEAT.md checklist
- * - HEARTBEAT_OK protocol (silent when nothing urgent)
- * - Active hours (08:00-22:00)
- * - Model override (Haiku for heartbeat)
- * - Queue priority (user messages first)
+ * v3.0 Changes:
+ * - Fetch REAL data from Beds24 API before analysis
+ * - No more hallucinated data (12345, John Doe)
+ * - Skip AI call if no actionable data
+ * - Data-driven alerts only
  */
 
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import Anthropic from '@anthropic-ai/sdk';
+
+// Import Beds24 API functions
+import {
+  getCheckInsToday,
+  getCheckOutsToday,
+  getAllActiveBookings,
+  getOccupancyForDate
+} from './beds24.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HEARTBEAT_FILE = join(__dirname, '../HEARTBEAT.md');
@@ -36,7 +42,7 @@ class HeartbeatManager {
     this.isRunning = false;
     this.mainQueueBusy = false;
     this.lastRun = null;
-    this.notifiedItems = new Map(); // Track what we've notified to avoid duplicates
+    this.notifiedBookings = new Set(); // Track notified booking IDs
     this.onNotify = null; // Callback for notifications
 
     // Initialize Anthropic client
@@ -71,7 +77,7 @@ class HeartbeatManager {
   }
 
   /**
-   * Read HEARTBEAT.md file
+   * Read HEARTBEAT.md file (for reference only)
    */
   readHeartbeatFile() {
     if (!existsSync(HEARTBEAT_FILE)) {
@@ -87,29 +93,6 @@ class HeartbeatManager {
   }
 
   /**
-   * Check if file content is effectively empty
-   */
-  isEffectivelyEmpty(content) {
-    if (!content) return true;
-
-    // Remove comments, headers, and whitespace
-    const stripped = content
-      .split('\n')
-      .filter(line => {
-        const trimmed = line.trim();
-        return trimmed &&
-               !trimmed.startsWith('#') &&
-               !trimmed.startsWith('//') &&
-               !trimmed.startsWith('---') &&
-               !trimmed.startsWith('*');
-      })
-      .join('')
-      .trim();
-
-    return stripped.length === 0;
-  }
-
-  /**
    * Check if response indicates nothing urgent (HEARTBEAT_OK)
    */
   isHeartbeatOk(response) {
@@ -117,7 +100,7 @@ class HeartbeatManager {
 
     const text = response.trim();
 
-    // Check if starts or ends with HEARTBEAT_OK
+    // Check if contains HEARTBEAT_OK
     if (text.includes('HEARTBEAT_OK')) {
       const remaining = text.replace(/HEARTBEAT_OK/g, '').trim();
       return remaining.length <= this.config.ackMaxChars;
@@ -127,50 +110,209 @@ class HeartbeatManager {
   }
 
   /**
-   * Build prompt for heartbeat
+   * Fetch REAL data from Beds24 API
+   * Returns structured data for analysis
    */
-  buildPrompt(heartbeatContent) {
-    const now = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+  async fetchRealData() {
+    console.log('[HEARTBEAT] Fetching real data from Beds24 API...');
 
-    return `You are Oracle, a proactive AI assistant for Tars.
+    const data = {
+      checkIns: [],
+      checkOuts: [],
+      recentBookings: [],
+      occupancy: null,
+      errors: []
+    };
 
-Current time: ${now}
+    const today = new Date().toISOString().split('T')[0];
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
 
-Read the following HEARTBEAT.md checklist and determine if there's anything that needs Tars's attention.
+    try {
+      // 1. Get today's check-ins
+      const checkIns = await getCheckInsToday();
+      if (!checkIns.error) {
+        data.checkIns = checkIns;
+        console.log(`[HEARTBEAT] Found ${checkIns.length} check-ins today`);
+      } else {
+        data.errors.push(`Check-ins: ${checkIns.error}`);
+      }
+    } catch (e) {
+      data.errors.push(`Check-ins error: ${e.message}`);
+    }
 
----
-${heartbeatContent}
----
+    try {
+      // 2. Get today's check-outs
+      const checkOuts = await getCheckOutsToday();
+      if (!checkOuts.error) {
+        data.checkOuts = checkOuts;
+        console.log(`[HEARTBEAT] Found ${checkOuts.length} check-outs today`);
+      } else {
+        data.errors.push(`Check-outs: ${checkOuts.error}`);
+      }
+    } catch (e) {
+      data.errors.push(`Check-outs error: ${e.message}`);
+    }
 
-CRITICAL RULES:
-🚫 ห้ามแต่งข้อมูลขึ้นมาเอง - ใช้เฉพาะข้อมูลที่มีใน checklist เท่านั้น
-🚫 ถ้าไม่มี booking ID จริง → อย่าใส่ตัวเลขมั่ว (เช่น 12345)
-🚫 ถ้าไม่มีชื่อแขกจริง → อย่าใส่ "John Doe" หรือชื่อปลอม
-🚫 ถ้าไม่มีข้อมูลเพียงพอ → ตอบ HEARTBEAT_OK
+    try {
+      // 3. Get recent bookings (filter for new ones)
+      const allBookings = await getAllActiveBookings();
+      if (!allBookings.error) {
+        // Filter bookings created in last 30 minutes
+        data.recentBookings = allBookings.filter(b => {
+          const createdAt = new Date(b.bookingTime || b.createdAt || 0);
+          return createdAt >= thirtyMinutesAgo;
+        });
+        console.log(`[HEARTBEAT] Found ${data.recentBookings.length} new bookings in last 30min`);
+      } else {
+        data.errors.push(`Bookings: ${allBookings.error}`);
+      }
+    } catch (e) {
+      data.errors.push(`Bookings error: ${e.message}`);
+    }
 
-Instructions:
-1. Go through each check in the checklist
-2. ONLY report items that have REAL data in the checklist
-3. If data is missing or incomplete, skip that item
-4. If nothing concrete needs attention, reply with just: HEARTBEAT_OK
-5. Keep responses concise - Tars is busy
+    try {
+      // 4. Get today's occupancy
+      const occupancy = await getOccupancyForDate(today);
+      if (!occupancy.error) {
+        data.occupancy = occupancy;
+        console.log(`[HEARTBEAT] Occupancy: ${occupancy.occupied}/${occupancy.totalRooms}`);
+      }
+    } catch (e) {
+      data.errors.push(`Occupancy error: ${e.message}`);
+    }
 
-Response format for alerts (ONLY if real data exists):
-🔔 Oracle Alert
-
-[Brief summary based on ACTUAL data]
-
-Details:
-- [Only include real data from checklist]
-
-Recommended action:
-- ...
-
-If nothing urgent OR no real data: HEARTBEAT_OK`;
+    return data;
   }
 
   /**
-   * Run heartbeat check
+   * Check if there's anything actionable in the data
+   */
+  hasActionableData(data) {
+    // New bookings that haven't been notified yet
+    const newBookings = data.recentBookings.filter(b => !this.notifiedBookings.has(b.id));
+
+    // Check-ins that need preparation
+    const pendingCheckIns = data.checkIns.filter(b => {
+      // You could add more logic here to check if room is prepared
+      return true;
+    });
+
+    return (
+      newBookings.length > 0 ||
+      pendingCheckIns.length > 0 ||
+      data.checkOuts.length > 0
+    );
+  }
+
+  /**
+   * Build prompt with REAL data
+   */
+  buildPromptWithRealData(data) {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('th-TH', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      weekday: 'long'
+    });
+    const timeStr = now.toLocaleTimeString('th-TH', {
+      timeZone: 'Asia/Bangkok',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    // Format booking data for prompt
+    const formatBooking = (b) => {
+      return `  - ID: ${b.id}, Guest: ${b.guestName || `${b.firstName} ${b.lastName}`.trim()}, Room: ${b.roomSystemId || b.roomId}, Arrival: ${b.arrival}, Departure: ${b.departure}`;
+    };
+
+    let dataSection = '## ข้อมูลจาก Beds24 API (ข้อมูลจริง)\n\n';
+
+    // New bookings
+    if (data.recentBookings.length > 0) {
+      const newBookings = data.recentBookings.filter(b => !this.notifiedBookings.has(b.id));
+      if (newBookings.length > 0) {
+        dataSection += `### Booking ใหม่ (30 นาทีที่ผ่านมา): ${newBookings.length} รายการ\n`;
+        newBookings.forEach(b => {
+          dataSection += formatBooking(b) + '\n';
+        });
+        dataSection += '\n';
+      }
+    }
+
+    // Today's check-ins
+    if (data.checkIns.length > 0) {
+      dataSection += `### Check-in วันนี้: ${data.checkIns.length} รายการ\n`;
+      data.checkIns.forEach(b => {
+        dataSection += formatBooking(b) + '\n';
+      });
+      dataSection += '\n';
+    }
+
+    // Today's check-outs
+    if (data.checkOuts.length > 0) {
+      dataSection += `### Check-out วันนี้: ${data.checkOuts.length} รายการ\n`;
+      data.checkOuts.forEach(b => {
+        dataSection += formatBooking(b) + '\n';
+      });
+      dataSection += '\n';
+    }
+
+    // Occupancy
+    if (data.occupancy) {
+      dataSection += `### Occupancy วันนี้\n`;
+      dataSection += `  - ห้องเต็ม: ${data.occupancy.occupied}/${data.occupancy.totalRooms}\n`;
+      dataSection += `  - ห้องว่าง: ${data.occupancy.available}\n`;
+      dataSection += `  - อัตรา: ${data.occupancy.occupancyRate}%\n\n`;
+    }
+
+    // Handle no data case
+    if (data.recentBookings.length === 0 && data.checkIns.length === 0 && data.checkOuts.length === 0) {
+      dataSection += `### ไม่มีข้อมูลใหม่\n`;
+      dataSection += `- ไม่มี booking ใหม่ในช่วง 30 นาทีที่ผ่านมา\n`;
+      dataSection += `- ไม่มี check-in/check-out วันนี้\n\n`;
+    }
+
+    return `You are Oracle, a proactive AI assistant for Tars (hotel operator).
+
+## เวลาปัจจุบัน
+**${dateStr}**
+**เวลา ${timeStr}**
+**ปี ${now.getFullYear()}** (พ.ศ. ${now.getFullYear() + 543})
+
+${dataSection}
+
+## คำแนะนำ
+1. วิเคราะห์ข้อมูลด้านบน (ข้อมูลจริงจาก Beds24 API)
+2. ถ้ามี booking ใหม่ → แจ้ง Tars พร้อมรายละเอียด
+3. ถ้ามี check-in วันนี้ → เตือนให้เตรียมห้อง
+4. ถ้าไม่มีอะไรต้องทำ → ตอบ HEARTBEAT_OK
+
+## กฎสำคัญ
+✅ ใช้เฉพาะข้อมูลที่แสดงด้านบนเท่านั้น
+❌ ห้ามแต่งข้อมูลเพิ่ม (ห้ามใส่ ID ปลอม, ชื่อปลอม)
+❌ ถ้าไม่มีข้อมูลในส่วนไหน → ข้ามส่วนนั้นไป
+
+## Format การตอบ
+
+ถ้ามีเรื่องสำคัญ:
+🔔 Oracle Alert
+
+[สรุปสั้นๆ]
+
+รายละเอียด:
+- [ใช้ข้อมูลจริงจากด้านบนเท่านั้น]
+
+แนะนำ:
+- [action ที่ควรทำ]
+
+ถ้าไม่มีอะไร:
+HEARTBEAT_OK`;
+  }
+
+  /**
+   * Run heartbeat check with REAL DATA
    */
   async runHeartbeat() {
     if (this.isRunning) {
@@ -189,21 +331,23 @@ If nothing urgent OR no real data: HEARTBEAT_OK`;
     }
 
     this.isRunning = true;
-    console.log('[HEARTBEAT] Running heartbeat check...');
+    console.log('[HEARTBEAT] Running heartbeat check with real data...');
 
     try {
-      // Read HEARTBEAT.md
-      const heartbeatContent = this.readHeartbeatFile();
+      // Step 1: Fetch REAL data from Beds24 API
+      const realData = await this.fetchRealData();
 
-      if (!heartbeatContent || this.isEffectivelyEmpty(heartbeatContent)) {
-        console.log('[HEARTBEAT] HEARTBEAT.md empty, skipping API call');
-        return null;
+      // Step 2: Check if there's anything actionable
+      if (!this.hasActionableData(realData)) {
+        console.log('[HEARTBEAT] No actionable data, skipping AI call');
+        this.lastRun = new Date();
+        return { status: 'ok', message: 'HEARTBEAT_OK (no data)' };
       }
 
-      // Build prompt
-      const prompt = this.buildPrompt(heartbeatContent);
+      // Step 3: Build prompt with real data
+      const prompt = this.buildPromptWithRealData(realData);
 
-      // Call Claude (Haiku for cost efficiency)
+      // Step 4: Call Claude with real data
       const response = await this.anthropic.messages.create({
         model: this.config.model,
         max_tokens: 1024,
@@ -213,14 +357,19 @@ If nothing urgent OR no real data: HEARTBEAT_OK`;
       const responseText = response.content[0]?.text || '';
       console.log('[HEARTBEAT] Response:', responseText.substring(0, 100) + '...');
 
-      // Check if HEARTBEAT_OK
+      // Step 5: Check if HEARTBEAT_OK
       if (this.isHeartbeatOk(responseText)) {
         console.log('[HEARTBEAT] Nothing urgent - HEARTBEAT_OK');
         this.lastRun = new Date();
         return { status: 'ok', message: 'HEARTBEAT_OK' };
       }
 
-      // Has content - notify user
+      // Step 6: Mark notified bookings
+      realData.recentBookings.forEach(b => {
+        if (b.id) this.notifiedBookings.add(b.id);
+      });
+
+      // Step 7: Notify user
       console.log('[HEARTBEAT] Alert detected, notifying...');
 
       if (this.onNotify) {
@@ -248,7 +397,7 @@ If nothing urgent OR no real data: HEARTBEAT_OK`;
     }
 
     const intervalMs = this.parseInterval(this.config.every);
-    console.log(`[HEARTBEAT] Starting with interval: ${this.config.every} (${intervalMs}ms)`);
+    console.log(`[HEARTBEAT] Starting v3.0 (Real Data) with interval: ${this.config.every} (${intervalMs}ms)`);
     console.log(`[HEARTBEAT] Active hours: ${this.config.activeHours.start}:00 - ${this.config.activeHours.end}:00`);
     console.log(`[HEARTBEAT] Model: ${this.config.model}`);
 
@@ -304,8 +453,18 @@ If nothing urgent OR no real data: HEARTBEAT_OK`;
       activeHours: this.config.activeHours,
       model: this.config.model,
       isActiveNow: this.isActiveHours(),
-      queueBusy: this.mainQueueBusy
+      queueBusy: this.mainQueueBusy,
+      notifiedCount: this.notifiedBookings.size,
+      version: '3.0'
     };
+  }
+
+  /**
+   * Clear notified bookings (for testing)
+   */
+  clearNotified() {
+    this.notifiedBookings.clear();
+    console.log('[HEARTBEAT] Cleared notified bookings');
   }
 }
 
