@@ -142,25 +142,31 @@ Read the following HEARTBEAT.md checklist and determine if there's anything that
 ${heartbeatContent}
 ---
 
+CRITICAL RULES:
+🚫 ห้ามแต่งข้อมูลขึ้นมาเอง - ใช้เฉพาะข้อมูลที่มีใน checklist เท่านั้น
+🚫 ถ้าไม่มี booking ID จริง → อย่าใส่ตัวเลขมั่ว (เช่น 12345)
+🚫 ถ้าไม่มีชื่อแขกจริง → อย่าใส่ "John Doe" หรือชื่อปลอม
+🚫 ถ้าไม่มีข้อมูลเพียงพอ → ตอบ HEARTBEAT_OK
+
 Instructions:
 1. Go through each check in the checklist
-2. If you find something urgent or important, summarize it clearly
-3. If nothing needs attention, reply with just: HEARTBEAT_OK
-4. Keep responses concise - Tars is busy
-5. Don't repeat notifications from the last 6 hours
+2. ONLY report items that have REAL data in the checklist
+3. If data is missing or incomplete, skip that item
+4. If nothing concrete needs attention, reply with just: HEARTBEAT_OK
+5. Keep responses concise - Tars is busy
 
-Response format for alerts:
+Response format for alerts (ONLY if real data exists):
 🔔 Oracle Alert
 
-[Brief summary]
+[Brief summary based on ACTUAL data]
 
 Details:
-- ...
+- [Only include real data from checklist]
 
 Recommended action:
 - ...
 
-If nothing urgent: HEARTBEAT_OK`;
+If nothing urgent OR no real data: HEARTBEAT_OK`;
   }
 
   /**
