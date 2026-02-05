@@ -308,6 +308,207 @@ async function generateCheckinContextString() {
 }
 
 // =============================================================================
+// 4. WEATHER @ PAI - สภาพอากาศที่ปาย
+// =============================================================================
+
+let weatherCache = { data: null, lastFetch: null };
+
+/**
+ * Fetch weather for Pai, Thailand
+ */
+async function fetchPaiWeather() {
+  try {
+    // OpenWeatherMap API (free tier)
+    // Pai coordinates: 19.3590° N, 98.4408° E
+    const apiKey = process.env.OPENWEATHER_API_KEY || '';
+    if (!apiKey) {
+      // Use wttr.in as fallback (no API key needed)
+      const response = await fetch('https://wttr.in/Pai,Thailand?format=j1');
+      const data = await response.json();
+
+      if (data.current_condition?.[0]) {
+        const current = data.current_condition[0];
+        return {
+          success: true,
+          temp: parseInt(current.temp_C),
+          feelsLike: parseInt(current.FeelsLikeC),
+          humidity: parseInt(current.humidity),
+          description: current.weatherDesc?.[0]?.value || '',
+          icon: getWeatherEmoji(current.weatherCode),
+          updatedAt: new Date().toISOString()
+        };
+      }
+    }
+  } catch (e) {
+    console.error('[REALTIME] Weather error:', e.message);
+  }
+  return { success: false };
+}
+
+function getWeatherEmoji(code) {
+  const codeNum = parseInt(code);
+  if (codeNum >= 200 && codeNum < 300) return '⛈️'; // Thunderstorm
+  if (codeNum >= 300 && codeNum < 400) return '🌧️'; // Drizzle
+  if (codeNum >= 500 && codeNum < 600) return '🌧️'; // Rain
+  if (codeNum >= 600 && codeNum < 700) return '❄️'; // Snow
+  if (codeNum >= 700 && codeNum < 800) return '🌫️'; // Fog
+  if (codeNum === 800) return '☀️'; // Clear
+  if (codeNum > 800) return '☁️'; // Clouds
+  return '🌤️';
+}
+
+async function generateWeatherContextString() {
+  const now = Date.now();
+
+  // Cache for 1 hour
+  if (weatherCache.lastFetch && (now - weatherCache.lastFetch) < 60 * 60 * 1000) {
+    if (weatherCache.data) {
+      const w = weatherCache.data;
+      return `\n🌤️ **อากาศปาย:** ${w.icon} ${w.temp}°C (${w.description})`;
+    }
+    return '';
+  }
+
+  const weather = await fetchPaiWeather();
+  weatherCache.lastFetch = now;
+
+  if (weather.success) {
+    weatherCache.data = weather;
+
+    let context = `\n🌤️ **อากาศปาย:** ${weather.icon} ${weather.temp}°C`;
+    if (weather.description) context += ` (${weather.description})`;
+
+    // Business insight
+    if (weather.temp < 20) {
+      context += ` - อากาศเย็น demand สูง!`;
+    } else if (weather.temp > 35) {
+      context += ` - ร้อนมาก demand อาจต่ำ`;
+    }
+    if (weather.description.toLowerCase().includes('rain')) {
+      context += ` - ฝนตก อาจมี cancellation`;
+    }
+
+    return context;
+  }
+
+  return '';
+}
+
+// =============================================================================
+// 5. REVENUE TRACKING - รายได้ vs เป้า
+// =============================================================================
+
+/**
+ * Calculate monthly revenue from Beds24
+ */
+async function getMonthlyRevenue() {
+  try {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    const fromDate = firstDay.toISOString().split('T')[0];
+    const toDate = lastDay.toISOString().split('T')[0];
+
+    // Get bookings for the month
+    const bookings = await beds24.getBookings?.(fromDate, toDate) || [];
+
+    let totalRevenue = 0;
+    let bookingCount = 0;
+
+    for (const b of bookings) {
+      if (b.price) {
+        totalRevenue += b.price;
+        bookingCount++;
+      }
+    }
+
+    // Monthly target (example: 500,000 THB)
+    const monthlyTarget = 500000;
+    const percentOfTarget = Math.round((totalRevenue / monthlyTarget) * 100);
+    const daysInMonth = lastDay.getDate();
+    const currentDay = now.getDate();
+    const expectedPercent = Math.round((currentDay / daysInMonth) * 100);
+
+    return {
+      success: true,
+      totalRevenue,
+      bookingCount,
+      monthlyTarget,
+      percentOfTarget,
+      expectedPercent,
+      onTrack: percentOfTarget >= expectedPercent - 10,
+      daysRemaining: daysInMonth - currentDay
+    };
+  } catch (e) {
+    console.error('[REALTIME] Revenue error:', e.message);
+    return { success: false };
+  }
+}
+
+let revenueCache = { data: null, lastFetch: null };
+
+async function generateRevenueContextString() {
+  const now = Date.now();
+
+  // Cache for 6 hours
+  if (revenueCache.lastFetch && (now - revenueCache.lastFetch) < 6 * 60 * 60 * 1000) {
+    return revenueCache.context || '';
+  }
+
+  const revenue = await getMonthlyRevenue();
+  revenueCache.lastFetch = now;
+
+  if (!revenue.success) {
+    revenueCache.context = '';
+    return '';
+  }
+
+  const emoji = revenue.onTrack ? '📈' : '📉';
+  const status = revenue.onTrack ? 'On Track' : 'ต่ำกว่าเป้า';
+
+  let context = `\n${emoji} **Revenue เดือนนี้:** ฿${revenue.totalRevenue.toLocaleString()} (${revenue.percentOfTarget}% of target)`;
+
+  if (!revenue.onTrack) {
+    context += `\n⚠️ ${status} - ควรอยู่ที่ ${revenue.expectedPercent}% แต่ได้ ${revenue.percentOfTarget}%`;
+    context += ` (เหลืออีก ${revenue.daysRemaining} วัน)`;
+  }
+
+  revenueCache.context = context;
+  return context;
+}
+
+// =============================================================================
+// 6. CALENDAR - นัดหมายวันนี้
+// =============================================================================
+
+async function generateCalendarContextString() {
+  try {
+    // Try to import google-calendar if available
+    const { default: calendar } = await import('./google-calendar.js');
+
+    if (!calendar.isConfigured?.()) {
+      return '';
+    }
+
+    const events = await calendar.getTodayEvents?.();
+    if (!events || events.length === 0) {
+      return '';
+    }
+
+    let context = `\n📅 **นัดวันนี้ (${events.length}):**`;
+    for (const event of events.slice(0, 3)) {
+      context += `\n  • ${event.time || ''} ${event.title}`;
+    }
+
+    return context;
+  } catch (e) {
+    // Google Calendar not configured
+    return '';
+  }
+}
+
+// =============================================================================
 // MAIN: Generate all real-time context
 // =============================================================================
 
@@ -334,6 +535,30 @@ async function generateRealtimeContext(options = {}) {
     const checkinContext = await generateCheckinContextString();
     if (checkinContext) {
       contexts.push(checkinContext);
+    }
+  }
+
+  // 4. Weather @ Pai
+  if (options.includeWeather !== false) {
+    const weatherContext = await generateWeatherContextString();
+    if (weatherContext) {
+      contexts.push(weatherContext);
+    }
+  }
+
+  // 5. Revenue tracking
+  if (options.includeRevenue !== false) {
+    const revenueContext = await generateRevenueContextString();
+    if (revenueContext) {
+      contexts.push(revenueContext);
+    }
+  }
+
+  // 6. Calendar
+  if (options.includeCalendar !== false) {
+    const calendarContext = await generateCalendarContextString();
+    if (calendarContext) {
+      contexts.push(calendarContext);
     }
   }
 
@@ -371,6 +596,17 @@ export default {
   // Check-in
   checkUpcomingCheckins,
   generateCheckinContextString,
+
+  // Weather
+  fetchPaiWeather,
+  generateWeatherContextString,
+
+  // Revenue
+  getMonthlyRevenue,
+  generateRevenueContextString,
+
+  // Calendar
+  generateCalendarContextString,
 
   // Main
   generateRealtimeContext,
