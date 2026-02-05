@@ -12,7 +12,7 @@
  */
 
 import express from 'express';
-import { spawn } from 'child_process';
+import { execSync } from 'child_process';
 import cors from 'cors';
 import fs from 'fs';
 
@@ -109,47 +109,45 @@ app.post('/chat', async (req, res) => {
 });
 
 /**
- * Call Claude CLI and get response
- * Uses 'claude' command which is part of Claude Max subscription
+ * Call Claude CLI (Terminal only - FREE with Claude Max)
+ * Uses haiku model for faster responses
  */
 async function callClaudeCLI(prompt) {
-  return new Promise((resolve, reject) => {
-    // Use claude CLI with --print flag for non-interactive mode
-    const claude = spawn('claude', ['--print', '-p', prompt], {
-      cwd: process.env.HOME,
-      env: { ...process.env },
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
+  console.log('[LOCAL-CLAUDE] Using Claude CLI (haiku)...');
 
-    let stdout = '';
-    let stderr = '';
+  try {
+    // Escape double quotes in prompt
+    const escapedPrompt = prompt.replace(/"/g, '\\"');
 
-    claude.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
+    // Create clean env without API keys (use Claude Max subscription instead)
+    const cleanEnv = { ...process.env };
+    delete cleanEnv.ANTHROPIC_API_KEY;  // Remove to use Claude Max
+    delete cleanEnv.OPENAI_API_KEY;
 
-    claude.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    claude.on('close', (code) => {
-      if (code === 0) {
-        resolve(stdout.trim());
-      } else {
-        reject(new Error(stderr || `Claude CLI exited with code ${code}`));
+    // Use execSync with proper PATH
+    const result = execSync(
+      `claude --model haiku --print -p "${escapedPrompt}"`,
+      {
+        cwd: '/Users/tanakitchaithip/Desktop/Oracle/main/tools/oracle-agent',
+        encoding: 'utf8',
+        timeout: 90000,
+        maxBuffer: 10 * 1024 * 1024,
+        shell: '/bin/zsh',
+        env: {
+          ...cleanEnv,
+          HOME: '/Users/tanakitchaithip',
+          PATH: '/Users/tanakitchaithip/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin'
+        }
       }
-    });
+    );
 
-    claude.on('error', (err) => {
-      reject(new Error(`Failed to start Claude CLI: ${err.message}`));
-    });
-
-    // Timeout after 60 seconds
-    setTimeout(() => {
-      claude.kill();
-      reject(new Error('Claude CLI timeout'));
-    }, 60000);
-  });
+    console.log('[LOCAL-CLAUDE] Got response from CLI');
+    return result.trim();
+  } catch (error) {
+    console.error('[LOCAL-CLAUDE] CLI error:', error.message);
+    if (error.stdout) console.error('[LOCAL-CLAUDE] Stdout:', error.stdout.toString());
+    throw error;
+  }
 }
 
 // Alternative: Direct API call if ANTHROPIC_API_KEY is available from Claude Max
@@ -197,6 +195,74 @@ app.post('/chat/api', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// LINE Webhook endpoint - receives LINE webhook and responds via Claude Max
+app.post('/webhook', async (req, res) => {
+  console.log('[LOCAL-CLAUDE] Received webhook');
+
+  const events = req.body.events || [];
+
+  // Respond immediately to LINE
+  res.status(200).send('OK');
+
+  // Process events in background
+  for (const event of events) {
+    if (event.type === 'message' && event.message?.type === 'text') {
+      const userMessage = event.message.text;
+      const replyToken = event.replyToken;
+
+      console.log(`[LOCAL-CLAUDE] LINE message: ${userMessage.substring(0, 50)}...`);
+
+      try {
+        // Get response from Claude CLI
+        const response = await callClaudeCLI(userMessage);
+
+        // Reply to LINE
+        await replyToLine(replyToken, response);
+
+        console.log(`[LOCAL-CLAUDE] Replied via LINE`);
+      } catch (error) {
+        console.error('[LOCAL-CLAUDE] Webhook error:', error.message);
+        await replyToLine(replyToken, `ขออภัย เกิดข้อผิดพลาด: ${error.message}`);
+      }
+    }
+  }
+});
+
+// Reply to LINE
+async function replyToLine(replyToken, text) {
+  // Support both naming conventions
+  const LINE_TOKEN = process.env.LINE_CHANNEL_TOKEN || process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!LINE_TOKEN) {
+    console.error('[LOCAL-CLAUDE] LINE_CHANNEL_TOKEN not set');
+    return;
+  }
+
+  // Truncate if too long
+  const maxLength = 5000;
+  if (text.length > maxLength) {
+    text = text.substring(0, maxLength - 3) + '...';
+  }
+
+  try {
+    await fetch('https://api.line.me/v2/bot/message/reply', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${LINE_TOKEN}`
+      },
+      body: JSON.stringify({
+        replyToken,
+        messages: [{
+          type: 'text',
+          text: text + '\n\n🟢 claude-max'
+        }]
+      })
+    });
+  } catch (error) {
+    console.error('[LOCAL-CLAUDE] LINE reply error:', error.message);
+  }
+}
 
 // Start server
 app.listen(PORT, () => {
