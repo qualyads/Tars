@@ -1,8 +1,13 @@
 /**
- * Autonomous Idea Engine
+ * Autonomous Idea Engine v2.0
  * Oracle คิดเอง หา idea ทำเอง deploy เอง
  *
- * @version 1.0.0
+ * v2.0 Changes:
+ * - Auto-save ideas to Supabase
+ * - Direct LINE notification (no config needed)
+ * - Better error handling
+ *
+ * @version 2.0.0
  */
 
 import claude from './claude.js';
@@ -11,6 +16,8 @@ import line from './line.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { query, getPool } from './db-postgres.js';
+import { generateEmbedding } from './embedding.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -300,16 +307,60 @@ ${idea.mvpScope}
 }
 
 // =============================================================================
-// NOTIFY TARS
+// SAVE TO SUPABASE
 // =============================================================================
 
-async function notifyTars(message, config) {
-  if (config?.line?.owner_id) {
+async function saveIdeasToSupabase(ideas) {
+  const pool = getPool();
+  if (!pool) {
+    console.log('[IDEAS] No database pool, skipping Supabase save');
+    return;
+  }
+
+  try {
+    const summary = ideas.slice(0, 5).map((idea, i) =>
+      `${i + 1}. ${idea.name} (Score: ${idea.score?.totalScore || 0}) - ${idea.tagline}`
+    ).join('\n');
+
+    const content = `Ideas Generated ${new Date().toISOString().split('T')[0]}:\n${summary}`;
+
+    let embedding = null;
     try {
-      await line.pushMessage(config.line.owner_id, message);
+      embedding = await generateEmbedding(content);
     } catch (e) {
-      console.error('[IDEAS] LINE notification error:', e.message);
+      console.log('[IDEAS] Embedding error:', e.message);
     }
+
+    const searchText = content.toLowerCase().substring(0, 1000);
+
+    await query(`
+      INSERT INTO episodic_memory (user_id, content, context, memory_type, importance, search_text${embedding ? ', embedding' : ''})
+      VALUES ($1, $2, $3, $4, $5, $6${embedding ? ', $7' : ''})
+    `, embedding
+      ? ['tars', content, { source: 'autonomous-ideas', count: ideas.length }, 'idea', 0.8, searchText, embedding]
+      : ['tars', content, { source: 'autonomous-ideas', count: ideas.length }, 'idea', 0.8, searchText]
+    );
+
+    console.log('[IDEAS] Saved to Supabase:', ideas.length, 'ideas');
+  } catch (error) {
+    console.error('[IDEAS] Supabase save error:', error.message);
+  }
+}
+
+// =============================================================================
+// NOTIFY TARS (Direct LINE)
+// =============================================================================
+
+// Line owner ID (hardcoded for reliability)
+const LINE_OWNER_ID = 'Uba2ae89ff15d0ca1ea673058844f287c';
+
+async function notifyTars(message, config) {
+  const ownerId = config?.line?.owner_id || LINE_OWNER_ID;
+  try {
+    await line.pushMessage(ownerId, message);
+    console.log('[IDEAS] LINE notification sent');
+  } catch (e) {
+    console.error('[IDEAS] LINE notification error:', e.message);
   }
 }
 
@@ -357,10 +408,13 @@ async function runThinkingCycle(config) {
     // Sort by score
     scoredIdeas.sort((a, b) => (b.score?.totalScore || 0) - (a.score?.totalScore || 0));
 
-    // Save all ideas
+    // Save all ideas (local file)
     data.ideas = [...scoredIdeas, ...data.ideas].slice(0, 50); // Keep last 50 ideas
     data.lastThinking = cycleStart;
     saveIdeas(data);
+
+    // Save to Supabase (persistent memory)
+    await saveIdeasToSupabase(scoredIdeas);
 
     // 4. Find best idea
     const bestIdea = scoredIdeas[0];

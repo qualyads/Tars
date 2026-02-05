@@ -1,6 +1,6 @@
 # Session Handoff
 
-**From:** Session 2026-02-05 (100% Memory System Complete!)
+**From:** Session 2026-02-05 20:30 (Memory Sync Fix)
 **To:** Next Session
 
 ---
@@ -8,143 +8,124 @@
 ## Current Status
 
 ```
-Oracle Agent v6.0.2 - 100% MEMORY SYSTEM
-├── Supabase: ✅ Connected (pgvector)
-├── Embeddings: ✅ OpenAI text-embedding-3-small
-├── Semantic Search: ✅ Working
-├── LINE Auto-Save: ✅ 100% coverage
-├── Claude Code: ✅ Protocol + Hooks
-└── Memories: 151+ with embeddings
+Oracle Agent v6.0.3 (local) / v6.0.0 (Railway - ยังไม่ deploy!)
+├── Local: ✅ Updated
+├── Railway: ⚠️ NEEDS MANUAL REDEPLOY
+├── Supabase: ✅ Working (semantic search)
+├── Git: ✅ Pushed (fa097f3)
+└── Issue: Railway ไม่ auto-deploy
 ```
 
 ---
 
-## What We Completed This Session
+## PENDING ACTION - Railway Redeploy!
 
-### 1. Supabase Migration
-- [x] Migrated from Railway PostgreSQL to Supabase
-- [x] pgvector extension enabled
-- [x] Session pooler connection (IPv4 compatible)
+```
+1. Go to Railway Dashboard
+2. Select oracle-agent project
+3. Click "Redeploy" or "Deploy"
+4. Verify version = 6.0.3
+```
 
-### 2. Semantic Search
-- [x] OpenAI embeddings (1536 dimensions)
-- [x] Query by meaning, not just keywords
-- [x] Example: "favorite dessert" → "chocolate cake"
-
-### 3. Backfill Embeddings
-- [x] Created `/api/memory/backfill-embeddings` endpoint
-- [x] Processed 151 memories → 100% have embeddings
-- [x] All memories now semantically searchable
-
-### 4. LINE Auto-Save (100%)
-- [x] Modified `memory.js` - saveConversation → Supabase
-- [x] Modified `memory-consolidation.js` - addShortTerm → Supabase
-- [x] Every message + response saved with embedding
-
-### 5. Claude Code Protocol
-- [x] Added AUTO-SAVE PROTOCOL in CLAUDE.md
-- [x] Created hooks directory (~/.claude/hooks/)
-- [x] Instructions for saving before session end
-
-### 6. CRITICAL FIX: Date/Year Accuracy
-- [x] Oracle was reporting wrong year (2025 instead of 2026)
-- [x] Added `getCurrentDateInfo()` function to server.js
-- [x] Added explicit date/year to SYSTEM_PROMPT
-- [x] Prevents Claude knowledge cutoff date issues
-- [x] Commit: `9ca12cc`
+**After redeploy, test:**
+> LINE: "นินสวิซผมถึงไหนหล่ะ"
 
 ---
 
-## Memory API Endpoints
+## What We Did This Session
 
+### 1. Nintendo Switch Kerry Tracking
+- [x] Tracking: `SOE3355A0004917`
+- [x] Status: กำลังส่ง - ถึง DC สารภี เชียงใหม่แล้ว (5 ก.พ. 09:07)
+- [x] Saved to Supabase memory ✅
+- [x] Created `parcel-watchlist.json` ✅
+- [x] TrackingMore API working ✅
+
+### 2. Memory Sync Issue Found & Fixed
+- [x] Terminal saves to Supabase ✅
+- [x] Added Supabase semantic search to server.js LINE handler
+- [x] Query episodic_memory with vector embeddings
+- [ ] **Railway ยังไม่ deploy code ใหม่!**
+
+### 3. Code Changes (pending deploy)
+```javascript
+// server.js - Added after line 1275
+const embedding = await generateEmbedding(userMessage);
+const searchResult = await dbQuery(`
+  SELECT content FROM episodic_memory
+  WHERE embedding IS NOT NULL
+  ORDER BY embedding <=> $1
+  LIMIT 5
+`, [embedding, 'tars']);
+```
+
+---
+
+## Key Tracking Info
+
+### Nintendo Switch (Kerry)
+| Item | Value |
+|------|-------|
+| Tracking | `SOE3355A0004917` |
+| Status | กำลังส่ง |
+| Location | สารภี, เชียงใหม่ |
+| Updated | 5 ก.พ. 09:07 |
+| Destination | ปาย |
+
+### ROG Ally (Synnex)
+| Item | Value |
+|------|-------|
+| Repair No. | `MT521260100101/1` |
+| Status | ส่งซ่อม ASUS Vendor |
+| Duration | 9 วันแล้ว (ตั้งแต่ 27 ม.ค.) |
+
+### TrackingMore API
 ```bash
-# Save memory (auto-generates embedding)
-POST /api/memory/save
-{"content": "...", "user_id": "tars", "importance": 0.8}
-
-# Semantic search
-GET /api/memory/search?q=query&limit=5
-
-# Get context (for load memory)
-GET /api/memory/context?user_id=tars
-
-# Backfill embeddings
-POST /api/memory/backfill-embeddings
+curl -s "https://api.trackingmore.com/v4/trackings/get?tracking_numbers=SOE3355A0004917" \
+  -H "Tracking-Api-Key: ffdipqwt-clf7-xzri-a8gn-q92kst37617r"
 ```
 
 ---
 
-## Files Changed
+## Files Changed This Session
 
 ```
 Modified:
-├── main/CLAUDE.md                    # Auto-save protocol
-├── main/tools/oracle-agent/server.js # Date/year fix in SYSTEM_PROMPT
-├── main/tools/oracle-agent/lib/memory.js
-├── main/tools/oracle-agent/lib/memory-consolidation.js
-├── main/tools/oracle-agent/lib/memory-api.js
-├── main/tools/oracle-agent/lib/embedding.js
+├── tools/oracle-agent/server.js     # Added Supabase semantic search
+├── tools/oracle-agent/config.json   # Version 6.0.3
 
 Created:
-├── ~/.claude/hooks/save-memory.sh
-├── ~/.claude/hooks/sync-handoff.sh
-├── ~/.claude/settings.json
-├── scripts/backfill-embeddings.js
-├── scripts/migrate-to-supabase.js
+├── tools/oracle-agent/data/parcel-watchlist.json
+├── ψ/memory/knowledge/personal-items.md
 ```
 
 ---
 
-## Environment Variables (Railway)
+## Git Commits
 
 ```
-DATABASE_URL=postgresql://...@pooler.supabase.com:5432/postgres
-OPENAI_API_KEY=sk-proj-xxx (valid)
-MEMORY_API_KEY=oracle-memory-secret-2026
-```
-
----
-
-## Git Commits This Session
-
-```
+fa097f3 Bump version to 6.0.3 - trigger Railway redeploy
+953d325 Add Supabase semantic search to LINE message context
+b39a32b Add Nintendo Switch to parcel watchlist
 9ca12cc Fix: Add current date/year to Oracle system prompt
-576acaf Add Claude Code auto-save protocol for 100% memory
-3c0c352 Oracle v6.0.2: Auto-save ALL conversations to Supabase
-7ad2969 Oracle v6.0.1: Semantic Search with pgvector + Supabase
 ```
 
 ---
 
-## Memory Coverage
+## Memory API
 
-| Channel | Auto-Save | Coverage |
-|---------|-----------|----------|
-| LINE (Oracle) | ✅ | 100% |
-| Claude Code | ⚠️ Protocol | ~90% |
-
----
-
-## How to Use
-
-### Load Memory (start of session)
-```
-พิมพ์: load memory
-```
-
-### Search Memory
-```
-พิมพ์: ค้นหา memory เรื่อง "keyword"
-```
-
-### Save Important Info
 ```bash
+# Save memory
 curl -s -X POST -H "X-API-Key: oracle-memory-secret-2026" \
   -H "Content-Type: application/json" \
   -d '{"content":"...","user_id":"tars","importance":0.8}' \
   "https://oracle-agent-production-546e.up.railway.app/api/memory/save"
+
+# Semantic search
+curl -s -H "X-API-Key: oracle-memory-secret-2026" \
+  "https://oracle-agent-production-546e.up.railway.app/api/memory/search?q=query"
 ```
 
 ---
 
-*Handoff updated: 2026-02-05 - 100% MEMORY SYSTEM + DATE FIX COMPLETE!*
+*Handoff updated: 2026-02-05 20:30 - RAILWAY REDEPLOY NEEDED!*
