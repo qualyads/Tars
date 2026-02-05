@@ -275,7 +275,33 @@ async function forwardToLocal(path, body) {
 // SYSTEM PROMPT - Oracle Agent's Identity (Phase 3: Autonomous)
 // =============================================================================
 
+// Generate current date/time for system prompt
+function getCurrentDateInfo() {
+  const now = new Date();
+  const thaiMonths = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+                      'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+  const thaiDays = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+  return {
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+    day: now.getDate(),
+    dayName: thaiDays[now.getDay()],
+    monthName: thaiMonths[now.getMonth()],
+    iso: now.toISOString().split('T')[0],
+    full: `วัน${thaiDays[now.getDay()]}ที่ ${now.getDate()} ${thaiMonths[now.getMonth()]} ${now.getFullYear()}`
+  };
+}
+
 const SYSTEM_PROMPT = `คุณคือ Oracle Agent - Digital Partner ของ Tars
+
+## ⚠️ วันที่และเวลาปัจจุบัน (สำคัญมาก!)
+**ปีปัจจุบันคือ ${new Date().getFullYear()}** (พ.ศ. ${new Date().getFullYear() + 543})
+**วันนี้คือ ${getCurrentDateInfo().full}**
+**ISO Date: ${new Date().toISOString().split('T')[0]}**
+
+❌ ห้ามบอกว่าเป็นปี 2025 หรือปีอื่น!
+❌ ห้ามบอกวันที่ผิด!
+✅ ใช้ปี ${new Date().getFullYear()} เสมอ!
 
 ## ตัวตนของคุณ
 - ชื่อ: Oracle Agent
