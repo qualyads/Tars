@@ -12,14 +12,14 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const config = require('../config.json');
 
-// Carrier detection patterns
+// Carrier detection patterns -> TrackingMore courier_code
 const CARRIER_PATTERNS = {
-  'kex-express': /^(SOE|THKE|KEX|KE)[A-Z0-9]+$/i,
+  'kerry-logistics': /^(SOE|THKE|KEX|KE)[A-Z0-9]+$/i,  // KEX Express Thailand
   'thailand-post': /^(E[A-Z]\d{9}TH|R[A-Z]\d{9}TH|C[A-Z]\d{9}TH|P[A-Z]\d{9}TH|\d{13})$/i,
   'flash-express': /^(TH\d{13}[A-Z]|FL\d+)$/i,
   'j-t-express': /^(TH\d{13}[A-Z]?|JT\d+)$/i,
-  'shopee-express': /^(SPXTH\d+|TH\d{14})$/i,
-  'lazada-express': /^(LEX|LZD)[A-Z0-9]+$/i,
+  'shopee-express-th': /^(SPXTH\d+|TH\d{14})$/i,
+  'lazada-lex-th': /^(LEX|LZD)[A-Z0-9]+$/i,
   'dhl': /^\d{10,22}$/,
   'fedex': /^\d{12,22}$/
 };
@@ -181,11 +181,15 @@ async function trackWithTrackingMore(trackingNumber, carrier = null) {
 
     const data = await response.json();
 
-    if (data.meta?.code !== 200 && data.meta?.code !== 4016) {
-      return {
-        success: false,
-        error: data.meta?.message || 'Unknown error'
-      };
+    // 4101 = tracking already exists (ok to continue), 4120 = invalid courier
+    if (data.meta?.code !== 200 && data.meta?.code !== 4101) {
+      // If invalid courier, still try to get existing tracking
+      if (data.meta?.code !== 4120) {
+        return {
+          success: false,
+          error: data.meta?.message || 'Unknown error'
+        };
+      }
     }
 
     // Get tracking details
@@ -234,15 +238,15 @@ async function trackWithTrackingMore(trackingNumber, carrier = null) {
  * Track parcel (auto-select provider)
  */
 async function track(trackingNumber) {
-  // Try AfterShip first (usually more reliable)
-  if (config.apis?.aftership_key) {
-    const result = await trackWithAfterShip(trackingNumber);
+  // Try TrackingMore first (we have API key)
+  if (config.apis?.trackingmore_key) {
+    const result = await trackWithTrackingMore(trackingNumber);
     if (result.success) return result;
   }
 
-  // Fallback to TrackingMore
-  if (config.apis?.trackingmore_key) {
-    const result = await trackWithTrackingMore(trackingNumber);
+  // Fallback to AfterShip
+  if (config.apis?.aftership_key) {
+    const result = await trackWithAfterShip(trackingNumber);
     if (result.success) return result;
   }
 

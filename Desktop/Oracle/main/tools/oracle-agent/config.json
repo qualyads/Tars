@@ -1,7 +1,7 @@
 {
   "agent": {
     "name": "Oracle Agent",
-    "version": "5.10.1",
+    "version": "5.10.2",
     "owner": "Tars",
     "timezone": "Asia/Bangkok",
     "description": "Digital Partner ของ Tars - ช่วยทุกอย่างในชีวิต ไม่ใช่แค่ธุรกิจเดียว"
@@ -185,6 +185,6 @@
     "rapidapi_key": "014d445a38msh0645e22d930fd07p17eea5jsn5c8866bfbb22",
     "rank_tracker_host": "local-rank-tracker.p.rapidapi.com",
     "aftership_key": "",
-    "trackingmore_key": ""
+    "trackingmore_key": "ffdipqwt-clf7-xzri-a8gn-q92kst37617r"
   }
 }
