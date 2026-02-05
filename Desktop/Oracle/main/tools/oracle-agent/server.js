@@ -555,14 +555,26 @@ app.post('/webhook/line', async (req, res) => {
         // PARCEL TRACKING - เช็คสถานะพัสดุเมื่อพบเลข tracking
         // =====================================================================
         const lowerMessage = userMessage.toLowerCase();
-        const trackingKeywords = ['พัสดุ', 'tracking', 'track', 'ส่งของ', 'ขนส่ง', 'kex', 'flash', 'ems', 'ไปรษณีย์'];
+        const trackingKeywords = ['พัสดุ', 'tracking', 'track', 'ส่งของ', 'ขนส่ง', 'kex', 'flash', 'ems', 'ไปรษณีย์', 'เคอรี่', 'kerry'];
         const trackingNumberMatch = userMessage.match(/\b(SOE|THKE|KEX|KE|TH|FL|JT|SPXTH|LEX|LZD|E[A-Z])[A-Z0-9]{8,20}\b/i);
 
+        // Store last tracking number per user (in-memory cache)
+        if (!global.userTrackingCache) global.userTrackingCache = {};
+
         if (trackingNumberMatch || trackingKeywords.some(kw => lowerMessage.includes(kw))) {
-          // Extract tracking number from message
-          const trackingNumber = trackingNumberMatch?.[0] || userMessage.match(/[A-Z0-9]{10,20}/)?.[0];
+          // Extract tracking number from message OR use cached one
+          let trackingNumber = trackingNumberMatch?.[0] || userMessage.match(/[A-Z0-9]{10,20}/)?.[0];
+
+          // If no tracking number in message, use last one for this user
+          if (!trackingNumber && userId && global.userTrackingCache[userId]) {
+            trackingNumber = global.userTrackingCache[userId];
+            console.log('[LINE] Using cached tracking number for user:', trackingNumber);
+          }
 
           if (trackingNumber) {
+            // Cache this tracking number for the user
+            if (userId) global.userTrackingCache[userId] = trackingNumber;
+
             console.log('[LINE] Detected tracking query for:', trackingNumber);
             try {
               const trackingResult = await parcelTracking.getTrackingSummary(trackingNumber);
