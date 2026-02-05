@@ -166,6 +166,46 @@ const PSI_PATH = IS_RAILWAY ? './data/memory' : LOCAL_PATH;
 
 ---
 
+## Railway Build Patience (จาก Session 2026-02-05)
+
+### สถานการณ์
+Deploy ไป Railway แล้วเช็ค version ทันที → ยังเป็น version เก่า → ใจร้อน → สั่ง redeploy/restart ซ้ำๆ → วนลูป build ไม่เสร็จ
+
+### ความผิดพลาด
+```
+❌ ไม่รอให้ build เสร็จก่อนเช็ค
+❌ เห็น version เก่า → สั่ง deploy ซ้ำทันที
+❌ สั่ง railway up, railway redeploy หลายรอบ
+❌ ทำให้ build queue ยาวขึ้น วนลูป
+```
+
+### วิธีที่ถูกต้อง
+```
+✅ สั่ง railway up แค่ครั้งเดียว
+✅ ดู Railway Dashboard → รอจน "Building" เสร็จ
+✅ Build ปกติใช้เวลา 2-3 นาที
+✅ รอจน status เป็น "Deployed" แล้วค่อยเช็ค version
+✅ ถ้ายัง build อยู่ → อย่าสั่งอะไรเพิ่ม!
+```
+
+### Checklist หลัง Deploy
+```
+□ สั่ง railway up (ครั้งเดียว!)
+□ เปิด Railway Dashboard ดู status
+□ รอจน Building → Deployed (2-3 นาที)
+□ เช็ค version: curl .../
+□ ถ้ายังไม่ถูก → ดู logs, ไม่ใช่ deploy ซ้ำ
+```
+
+### บทเรียน
+> **ใจเย็น รอ build เสร็จก่อน**
+>
+> Railway build ใช้เวลา ~2-3 นาที
+> การสั่ง deploy ซ้ำ = สร้าง build ใหม่ทับ = วนลูปไม่จบ
+> ดู Dashboard ดีกว่าสั่ง curl รัวๆ
+
+---
+
 ## API Keys (จาก Session 2026-02-02)
 
 ### บทเรียน

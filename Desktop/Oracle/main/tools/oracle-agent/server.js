@@ -596,34 +596,47 @@ app.post('/webhook/line', async (req, res) => {
         }
 
         // =====================================================================
-        // MEMORY CONSOLIDATION CONTEXT - ดึงข้อมูลจาก long-term memory
+        // MEMORY CONSOLIDATION CONTEXT - ดึงข้อมูลจาก long-term memory ทุกครั้ง
         // =====================================================================
-        // Check for personal items / memory-related queries
-        const memoryKeywords = ['rog', 'ซ่อม', 'synnex', 'ally', 'gaming', 'เครื่องเกม', 'เกมส์', 'repair'];
-        const isMemoryQuery = memoryKeywords.some(kw => lowerMessage.includes(kw));
+        try {
+          const memoryContext = memoryConsolidation.getContextForAI(userMessage);
 
-        if (isMemoryQuery) {
-          console.log('[LINE] Detected memory query, fetching consolidated memory...');
-          try {
-            // Search for relevant memories
-            const memories = memoryConsolidation.query({ search: userMessage, limit: 5 });
-
-            if (memories && memories.length > 0) {
-              contextString += `\n\n📝 **ข้อมูลจาก Memory:**`;
-              memories.forEach((mem, i) => {
-                if (mem.topic) {
-                  contextString += `\n${i+1}. **${mem.topic}**: ${mem.insight}`;
-                } else if (mem.subject) {
-                  contextString += `\n${i+1}. **${mem.subject}** (${mem.predicate}): ${mem.object}`;
-                } else if (mem.key) {
-                  contextString += `\n${i+1}. **${mem.key}**: ${mem.value}`;
-                }
-              });
-              console.log(`[LINE] Found ${memories.length} relevant memories`);
-            }
-          } catch (memErr) {
-            console.error('[LINE] Memory query error:', memErr.message);
+          // Add learnings (ความรู้ที่จำไว้)
+          if (memoryContext.recentLearnings && memoryContext.recentLearnings.length > 0) {
+            contextString += `\n\n📝 **Long-term Memory:**`;
+            memoryContext.recentLearnings.forEach((mem) => {
+              contextString += `\n- **${mem.topic}**: ${mem.insight}`;
+            });
           }
+
+          // Add relevant facts (ข้อเท็จจริงที่เกี่ยวข้องกับคำถาม)
+          if (memoryContext.relevant && memoryContext.relevant.length > 0) {
+            contextString += `\n\n🔍 **Relevant Facts:**`;
+            memoryContext.relevant.forEach((mem) => {
+              if (mem.subject) {
+                contextString += `\n- ${mem.subject}: ${mem.object}`;
+              } else if (mem.topic) {
+                contextString += `\n- ${mem.topic}: ${mem.insight}`;
+              }
+            });
+          }
+
+          // Add preferences
+          if (memoryContext.preferences && memoryContext.preferences.length > 0) {
+            contextString += `\n\n⚙️ **User Preferences:**`;
+            memoryContext.preferences.forEach((pref) => {
+              contextString += `\n- ${pref.key}: ${pref.value}`;
+            });
+          }
+
+          const totalMemory = (memoryContext.recentLearnings?.length || 0) +
+                             (memoryContext.relevant?.length || 0) +
+                             (memoryContext.preferences?.length || 0);
+          if (totalMemory > 0) {
+            console.log(`[LINE] Memory context: ${memoryContext.recentLearnings?.length || 0} learnings, ${memoryContext.relevant?.length || 0} relevant, ${memoryContext.preferences?.length || 0} prefs`);
+          }
+        } catch (memErr) {
+          console.error('[LINE] Memory context error:', memErr.message);
         }
 
         // =====================================================================
