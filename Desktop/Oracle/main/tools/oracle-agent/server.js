@@ -110,6 +110,9 @@ import userProfiles from './lib/user-profiles.js';
 // Phase 6: Local Agent (Remote Execution)
 import localAgentServer from './lib/local-agent-server.js';
 
+// Phase 7: Autonomous Idea Engine
+import autonomousIdeas from './lib/autonomous-ideas.js';
+
 // Phase 3.5: OpenClaw Upgrades
 import {
   initSessionLogger,
@@ -673,7 +676,7 @@ app.post('/webhook/line', async (req, res) => {
         let localAgentIntent = null;
         if (isLocalAgentConnected) {
           try {
-            const intentPrompt = `วิเคราะห์ข้อความนี้ว่าต้องการทำอะไรบนเครื่องคอม:
+            const intentPrompt = `วิเคราะห์ข้อความนี้ว่าต้องการทำอะไร:
 "${userMessage}"
 
 ถ้าต้องการ:
@@ -684,7 +687,10 @@ app.post('/webhook/line', async (req, res) => {
 - เช็ค RAM/memory/ความจำ → ตอบ: {"action":"system_info"}
 - สร้างโปรเจค/เว็บ/app ให้เสร็จ → ตอบ: {"action":"workflow","projectName":"ชื่อโปรเจค","prompt":"รายละเอียดที่ต้องทำ","deploy":true}
 - เปิด Terminal → ตอบ: {"action":"open_terminal","command":"คำสั่งที่ต้องรัน (ถ้ามี)"}
-- ไม่เกี่ยวกับการทำงานบนคอม → ตอบ: {"action":"none"}
+- คิด idea/หาโอกาส/brainstorm → ตอบ: {"action":"think_ideas"}
+- ดู ideas ที่คิดไว้ → ตอบ: {"action":"list_ideas"}
+- ทำ idea ชื่อ X → ตอบ: {"action":"execute_idea","name":"ชื่อ idea"}
+- ไม่เกี่ยวกับการทำงาน → ตอบ: {"action":"none"}
 
 ตอบ JSON เท่านั้น ไม่ต้องอธิบาย:`;
 
@@ -855,6 +861,51 @@ ${shouldDeploy ? '- จะ deploy ขึ้น Railway เมื่อเสร�
               } else {
                 contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error}]`;
               }
+            }
+            // =================================================================
+            // AUTONOMOUS IDEAS - คิด idea, ดู ideas, execute idea
+            // =================================================================
+            else if (localAgentIntent.action === 'think_ideas') {
+              console.log('[IDEAS] Manual thinking triggered from LINE');
+              contextString += `\n\n[IDEAS: 🧠 Oracle กำลังคิด ideas ใหม่... รอสักครู่จะแจ้งผลทาง LINE]`;
+
+              // Run thinking in background (don't block response)
+              autonomousIdeas.thinkNow(config).then(result => {
+                console.log('[IDEAS] Thinking complete:', result.success);
+              }).catch(err => {
+                console.error('[IDEAS] Thinking error:', err);
+              });
+            }
+            else if (localAgentIntent.action === 'list_ideas') {
+              const status = autonomousIdeas.getStatus();
+              const data = autonomousIdeas.getIdeas();
+
+              let ideaList = `[IDEAS: 💡 Ideas ที่ Oracle คิดไว้]\n\n`;
+              ideaList += `Total: ${status.totalIdeas} ideas\n`;
+              ideaList += `Executed: ${status.executedIdeas} ideas\n`;
+              ideaList += `Last thinking: ${status.lastThinking || 'Never'}\n\n`;
+
+              if (status.topIdeas && status.topIdeas.length > 0) {
+                ideaList += `Top ideas:\n`;
+                status.topIdeas.forEach((idea, i) => {
+                  ideaList += `${i + 1}. ${idea.name} (${idea.score}/100) - ${idea.recommendation}\n`;
+                });
+              } else {
+                ideaList += `ยังไม่มี ideas - บอก "คิด idea หน่อย" เพื่อให้ Oracle คิดใหม่`;
+              }
+
+              contextString += `\n\n${ideaList}`;
+            }
+            else if (localAgentIntent.action === 'execute_idea' && localAgentIntent.name) {
+              console.log(`[IDEAS] Execute idea requested: ${localAgentIntent.name}`);
+              contextString += `\n\n[IDEAS: 🚀 กำลัง execute idea "${localAgentIntent.name}"... Terminal จะเปิดบน Mac]`;
+
+              // Execute in background
+              autonomousIdeas.executeIdeaByName(localAgentIntent.name, config).then(result => {
+                console.log('[IDEAS] Execute result:', result.success);
+              }).catch(err => {
+                console.error('[IDEAS] Execute error:', err);
+              });
             }
 
             console.log('[LOCAL-AGENT] Result:', localAgentResult?.success ? 'success' : 'failed');
@@ -2272,6 +2323,60 @@ app.post('/api/local-agent/open-app', async (req, res) => {
   try {
     const result = await localAgentServer.openApp(appName);
     res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =============================================================================
+// AUTONOMOUS IDEAS API - Oracle คิดเอง ทำเอง
+// =============================================================================
+
+// Get ideas status
+app.get('/api/ideas/status', (req, res) => {
+  res.json(autonomousIdeas.getStatus());
+});
+
+// Get all ideas
+app.get('/api/ideas', (req, res) => {
+  const data = autonomousIdeas.getIdeas();
+  res.json({
+    total: data.ideas.length,
+    ideas: data.ideas.slice(0, 20), // Return latest 20
+    executed: data.executedIdeas.length,
+    lastThinking: data.lastThinking
+  });
+});
+
+// Force thinking cycle now
+app.post('/api/ideas/think', async (req, res) => {
+  console.log('[IDEAS] Manual thinking cycle triggered');
+  try {
+    const result = await autonomousIdeas.thinkNow(config);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Execute a specific idea
+app.post('/api/ideas/execute/:name', async (req, res) => {
+  const { name } = req.params;
+  console.log(`[IDEAS] Manual execution requested for: ${name}`);
+  try {
+    const result = await autonomousIdeas.executeIdeaByName(name, config);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Research trends in a category
+app.get('/api/ideas/research/:category', async (req, res) => {
+  const { category } = req.params;
+  try {
+    const trends = await autonomousIdeas.researchTrends(category);
+    res.json({ category, trends });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -3785,6 +3890,29 @@ cron.schedule('30 23 * * *', async () => {
   } catch (error) {
     console.error('[SUMMARIZER] Terminal error:', error);
     logError('system', error, { source: 'terminal-summarizer' });
+  }
+}, { timezone: config.agent.timezone });
+
+// =============================================================================
+// AUTONOMOUS IDEA ENGINE - Oracle คิดเอง ทำเอง
+// =============================================================================
+
+// Think every 6 hours: 6:00, 12:00, 18:00, 00:00 Bangkok time
+cron.schedule('0 0,6,12,18 * * *', async () => {
+  console.log('[IDEAS] 🧠 Autonomous Thinking Cycle triggered');
+  logSystemEvent('system', 'ideas_thinking_start', {});
+
+  try {
+    const result = await autonomousIdeas.runThinkingCycle(config);
+    console.log('[IDEAS] Thinking cycle result:', result.success ? 'success' : 'failed');
+    logSystemEvent('system', 'ideas_thinking_complete', {
+      success: result.success,
+      executed: result.executed,
+      ideaName: result.idea?.name || result.bestIdea?.name
+    });
+  } catch (error) {
+    console.error('[IDEAS] Thinking cycle error:', error);
+    logError('system', error, { source: 'autonomous-ideas' });
   }
 }, { timezone: config.agent.timezone });
 
