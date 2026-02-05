@@ -453,6 +453,29 @@ Action ตาม Urgency Level:
 
 **คุณไม่ต้องรอ Tars ถาม - ถ้าเห็น urgency สูง ให้พูดเอง!**
 
+## 💰 PRICING RECOMMENDATION PROTOCOL (บังคับ!)
+**เมื่อ Tars ถามเรื่องราคา → ต้องบอกตัวเลขชัดเจน!**
+
+❌ ห้ามตอบแบบนี้:
+- "ควรขึ้น 15-20%" ← ไม่มีตัวเลข!
+- "ต้องการให้ดึงข้อมูลราคาไหม?" ← ไม่ proactive!
+- "ผมไม่เห็นข้อมูลราคา" ← ข้อมูลอยู่ใน context!
+
+✅ ต้องตอบแบบนี้:
+- "A02 ปกติ 1,958 → **แนะนำ 2,250 บาท**"
+- "B08 ปกติ 2,100 → **แนะนำ 2,400 บาท**"
+- "เหตุผล: Occupancy 82% = High Demand"
+
+**หลักการ:**
+| Occupancy | กลยุทธ์ | ปรับราคา |
+|-----------|---------|----------|
+| < 40% | Emergency | ลด 20-40% |
+| 40-60% | Low | ลด 10-20% |
+| 60-80% | Normal | ปกติ |
+| > 80% | High Demand | **ขึ้น 15-20%** |
+
+**Context จะมี:** "💰 High Demand Pricing" หรือ "📊 ราคาแนะนำ" → ใช้ตัวเลขจากนั้นตอบเลย!
+
 ## 🖥️ Local Agent (Remote Execution) - NEW!
 **เมื่อเห็น [LOCAL_AGENT: connected] → คุณสามารถ execute commands บนเครื่อง Mac ของ Tars ได้!**
 
@@ -1154,7 +1177,9 @@ ${shouldDeploy ? '- จะ deploy ขึ้น Railway เมื่อเสร�
         // SMART API DATA FETCHING - ดึงข้อมูลจริงเมื่อ user ถามเกี่ยวกับโรงแรม
         // =====================================================================
         const hotelKeywords = ['beds24', 'ห้อง', 'booking', 'จอง', 'ว่าง', 'เต็ม', 'check-in', 'check-out', 'checkin', 'checkout', 'แขก', 'guest', 'occupancy', 'โรงแรม', 'hotel', 'availability', 'วันนี้', 'พรุ่งนี้'];
+        const pricingKeywords = ['ราคา', 'price', 'ตั้งราคา', 'ขายเท่าไหร่', 'ขายเท่าไร', 'แนะนำราคา', 'ควรขาย', 'ควรตั้ง', 'pricing'];
         const isHotelQuery = hotelKeywords.some(kw => lowerMessage.includes(kw));
+        const isPricingQuery = pricingKeywords.some(kw => lowerMessage.includes(kw));
 
         if (isHotelQuery) {
           console.log('[LINE] Detected hotel query, fetching Beds24 data...');
@@ -1226,15 +1251,34 @@ ${shouldDeploy ? '- จะ deploy ขึ้น Railway เมื่อเสร�
                 });
               }
 
-              // Add pricing recommendations if occupancy is low
-              if (occupancy.available > 0 && occupancy.occupancyRate < 80) {
+              // Add pricing recommendations - ALWAYS when user asks about pricing, OR when occupancy < 80%
+              const shouldShowPricing = isPricingQuery || (occupancy.available > 0 && occupancy.occupancyRate < 80);
+              if (shouldShowPricing) {
                 try {
-                  const pricingAdvice = await pricing.generatePricingAdvice(dateStr);
+                  const pricingAdvice = await pricing.generatePricingAdvice(dateStr, occupancy.occupancyRate);
                   contextString += `\n\n${pricingAdvice}`;
 
                   // Add real-time urgency context for Oracle to think about
                   const urgencyContext = pricing.generateUrgencyContext(dateStr, occupancy.occupancyRate);
                   contextString += urgencyContext;
+
+                  // For high occupancy, add specific advice to RAISE prices
+                  if (occupancy.occupancyRate >= 80) {
+                    contextString += `\n\n💰 **High Demand Pricing:**`;
+                    contextString += `\nOccupancy ${occupancy.occupancyRate}% = ควร**ขึ้นราคา 15-20%**`;
+                    if (occupancy.available > 0) {
+                      const availableRooms = ['A01', 'A02', 'A03', 'A04', 'A05', 'A06', 'B07', 'B08', 'B09', 'C10', 'C11'].filter(r =>
+                        !occupancy.bookings.some(b => b.roomSystemId === r)
+                      );
+                      availableRooms.forEach(roomId => {
+                        const basePrice = pricing.ROOM_PRICING[roomId]?.regular || 2000;
+                        const highDemandPrice = Math.round(basePrice * 1.15); // +15%
+                        const maxPrice = pricing.ROOM_PRICING[roomId]?.max || 3500;
+                        const recommendedPrice = Math.min(highDemandPrice, maxPrice);
+                        contextString += `\n• ${roomId}: ปกติ ${basePrice.toLocaleString()} → **แนะนำ ${recommendedPrice.toLocaleString()} บาท**`;
+                      });
+                    }
+                  }
                 } catch (pricingError) {
                   console.error('[Pricing] Error generating advice:', pricingError.message);
                 }
