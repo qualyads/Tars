@@ -563,12 +563,27 @@ app.post('/webhook/line', async (req, res) => {
             const isTomorrow = lowerMessage.includes('พรุ่งนี้') || lowerMessage.includes('tomorrow');
             const isToday = lowerMessage.includes('วันนี้') || lowerMessage.includes('today');
 
+            // Detect specific date like "วันที่ 9", "9 ก.พ.", "Feb 9"
+            const dateMatch = userMessage.match(/วันที่\s*(\d{1,2})|(\d{1,2})\s*ก\.?พ\.?|Feb(?:ruary)?\s*(\d{1,2})|(\d{1,2})\s*Feb/i);
+            const specificDay = dateMatch ? parseInt(dateMatch[1] || dateMatch[2] || dateMatch[3] || dateMatch[4]) : null;
+
             const today = new Date();
-            const targetDate = isTomorrow
-              ? new Date(today.getTime() + 24 * 60 * 60 * 1000)
-              : today;
+            let targetDate;
+            let dateThai;
+
+            if (specificDay) {
+              // User asked for specific date - use current month/year
+              targetDate = new Date(today.getFullYear(), today.getMonth(), specificDay);
+              dateThai = `วันที่ ${specificDay} ${['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][today.getMonth()]}`;
+            } else if (isTomorrow) {
+              targetDate = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+              dateThai = 'พรุ่งนี้';
+            } else {
+              targetDate = today;
+              dateThai = 'วันนี้';
+            }
+
             const dateStr = targetDate.toISOString().split('T')[0];
-            const dateThai = isTomorrow ? 'พรุ่งนี้' : 'วันนี้';
 
             // Fetch arrivals AND real occupancy for target date
             const [bookings, occupancy] = await Promise.all([
