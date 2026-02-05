@@ -576,11 +576,12 @@ app.post('/webhook/line', async (req, res) => {
 
               // Show all guests staying with check-in links (for Nati to share with guests)
               if (occupancy.bookings && occupancy.bookings.length > 0) {
-                contextString += `\n\n**แขกทั้งหมดที่พัก ${dateThai}:**`;
+                contextString += `\n\n**แขกทั้งหมดที่พัก ${dateThai} (${occupancy.bookings.length} ห้อง):**`;
                 occupancy.bookings.forEach((b, i) => {
                   const guestName = (b.firstName && b.lastName) ? `${b.firstName} ${b.lastName}` : (b.guestName || 'Guest');
+                  const roomInfo = b.roomSystemId ? `${b.roomSystemId}` : `Room ${b.roomId}`;
                   const checkinLink = b.id ? `https://thearchcasa.com/booking/${b.id}?lang=en` : null;
-                  contextString += `\n${i+1}. ${guestName} | Room ${b.roomId} | ${b.arrival} → ${b.departure}`;
+                  contextString += `\n${i+1}. **${roomInfo}**: ${guestName} (${b.arrival} → ${b.departure})`;
                   if (checkinLink) {
                     contextString += `\n   🔗 ${checkinLink}`;
                   }
@@ -592,7 +593,8 @@ app.post('/webhook/line', async (req, res) => {
                 contextString += `\n\n**Check-out ${dateThai}:** ${occupancy.checkouts.length} คน`;
                 occupancy.checkouts.forEach(b => {
                   const guestName = (b.firstName && b.lastName) ? `${b.firstName} ${b.lastName}` : (b.guestName || 'Guest');
-                  contextString += `\n- ${guestName} | Room ${b.roomId}`;
+                  const roomInfo = b.roomSystemId ? `${b.roomSystemId}` : `Room ${b.roomId}`;
+                  contextString += `\n- ${roomInfo}: ${guestName}`;
                 });
               }
             }
