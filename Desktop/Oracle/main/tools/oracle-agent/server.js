@@ -71,6 +71,7 @@ import HeartbeatManager from './lib/heartbeat.js';
 import SubAgentManager from './lib/subagent.js';
 import beds24 from './lib/beds24.js';
 import pricing from './lib/pricing.js';
+import parcelTracking from './lib/parcel-tracking.js';
 import imageGen from './lib/image-gen.js';
 import autonomy from './lib/autonomy.js';
 import hotelNotify from './lib/hotel-notifications.js';
@@ -551,9 +552,31 @@ app.post('/webhook/line', async (req, res) => {
         }
 
         // =====================================================================
-        // SMART API DATA FETCHING - ดึงข้อมูลจริงเมื่อ user ถามเกี่ยวกับโรงแรม
+        // PARCEL TRACKING - เช็คสถานะพัสดุเมื่อพบเลข tracking
         // =====================================================================
         const lowerMessage = userMessage.toLowerCase();
+        const trackingKeywords = ['พัสดุ', 'tracking', 'track', 'ส่งของ', 'ขนส่ง', 'kex', 'flash', 'ems', 'ไปรษณีย์'];
+        const trackingNumberMatch = userMessage.match(/\b(SOE|THKE|KEX|KE|TH|FL|JT|SPXTH|LEX|LZD|E[A-Z])[A-Z0-9]{8,20}\b/i);
+
+        if (trackingNumberMatch || trackingKeywords.some(kw => lowerMessage.includes(kw))) {
+          // Extract tracking number from message
+          const trackingNumber = trackingNumberMatch?.[0] || userMessage.match(/[A-Z0-9]{10,20}/)?.[0];
+
+          if (trackingNumber) {
+            console.log('[LINE] Detected tracking query for:', trackingNumber);
+            try {
+              const trackingResult = await parcelTracking.getTrackingSummary(trackingNumber);
+              contextString += `\n\n${trackingResult}`;
+            } catch (trackError) {
+              console.error('[Tracking] Error:', trackError.message);
+              contextString += `\n\n⚠️ ไม่สามารถเช็คพัสดุ ${trackingNumber} ได้: ${trackError.message}`;
+            }
+          }
+        }
+
+        // =====================================================================
+        // SMART API DATA FETCHING - ดึงข้อมูลจริงเมื่อ user ถามเกี่ยวกับโรงแรม
+        // =====================================================================
         const hotelKeywords = ['beds24', 'ห้อง', 'booking', 'จอง', 'ว่าง', 'เต็ม', 'check-in', 'check-out', 'checkin', 'checkout', 'แขก', 'guest', 'occupancy', 'โรงแรม', 'hotel', 'availability', 'วันนี้', 'พรุ่งนี้'];
         const isHotelQuery = hotelKeywords.some(kw => lowerMessage.includes(kw));
 
