@@ -557,17 +557,26 @@ app.post('/webhook/line', async (req, res) => {
             const dateStr = targetDate.toISOString().split('T')[0];
             const dateThai = isTomorrow ? 'พรุ่งนี้' : 'วันนี้';
 
-            // Fetch bookings for target date
-            const bookings = await beds24.getBookingsByDate(dateStr).catch(e => ({ error: e.message }));
+            // Fetch arrivals AND real occupancy for target date
+            const [bookings, occupancy] = await Promise.all([
+              beds24.getBookingsByDate(dateStr).catch(e => ({ error: e.message })),
+              beds24.getOccupancyForDate(dateStr).catch(e => ({ error: e.message }))
+            ]);
 
             contextString += `\n\n📊 **ข้อมูล Beds24 Real-time (${dateThai} ${dateStr}):**`;
             contextString += `\n🏨 The Arch Casa มี 11 ห้อง`;
 
+            // Show REAL occupancy first (most important!)
+            if (occupancy && !occupancy.error) {
+              contextString += `\n📈 **Occupancy ${dateThai}:** ${occupancy.occupied}/${occupancy.totalRooms} ห้อง (${occupancy.occupancyRate}%)`;
+              contextString += `\n🛏️ **ห้องว่าง:** ${occupancy.available} ห้อง`;
+            }
+
             if (bookings && !bookings.error && Array.isArray(bookings)) {
-              contextString += `\n📅 Arrivals ${dateThai}: ${bookings.length} รายการ`;
+              contextString += `\n📅 **Check-in ${dateThai}:** ${bookings.length} รายการ`;
 
               if (bookings.length > 0) {
-                contextString += `\n\n**รายละเอียดการจอง:**`;
+                contextString += `\n\n**รายละเอียด Check-in:**`;
                 bookings.forEach((b, i) => {
                   // Use enriched data from beds24.js (roomName, roomNameTh, guestName)
                   const nights = Math.ceil((new Date(b.departure) - new Date(b.arrival)) / (1000 * 60 * 60 * 24));
@@ -581,11 +590,9 @@ app.post('/webhook/line', async (req, res) => {
                 });
 
                 const totalRevenue = bookings.reduce((sum, b) => sum + (b.price || 0), 0);
-                const uniqueRooms = new Set(bookings.map(b => b.roomId)).size;
-                contextString += `\n\n**สรุป:** ${uniqueRooms} ห้อง booked, ${beds24.TOTAL_ROOMS - uniqueRooms} ห้องว่าง`;
-                contextString += `\n**รายได้:** ฿${totalRevenue.toLocaleString()}`;
+                contextString += `\n\n**รายได้จาก Check-in วันนี้:** ฿${totalRevenue.toLocaleString()}`;
               } else {
-                contextString += `\n✅ ไม่มี arrivals ${dateThai} - ทุกห้องว่าง!`;
+                contextString += ` (ไม่มี check-in ใหม่)`;
               }
             } else if (bookings?.error) {
               contextString += `\n⚠️ API Error: ${bookings.error}`;
