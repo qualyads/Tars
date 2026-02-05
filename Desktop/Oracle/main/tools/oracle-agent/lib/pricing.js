@@ -73,6 +73,109 @@ function getDaysUntil(date) {
 }
 
 /**
+ * Get hours until date (for same-day/next-day urgency)
+ */
+function getHoursUntil(date) {
+  const now = new Date();
+  const target = new Date(date);
+  target.setHours(14, 0, 0, 0); // Check-in time is typically 14:00
+  return Math.max(0, (target - now) / (1000 * 60 * 60));
+}
+
+/**
+ * Calculate real-time urgency score
+ * Higher score = more urgent = need to take action
+ *
+ * Factors:
+ * - occupancy: ยิ่งว่างเยอะ ยิ่ง urgent
+ * - time: ยิ่งใกล้วัน ยิ่ง urgent
+ * - time of day: หลัง 18:00 + พรุ่งนี้ยังว่าง = very urgent
+ */
+function calculateUrgency(date, occupancyRate) {
+  const now = new Date();
+  const currentHour = now.getHours();
+  const daysUntil = getDaysUntil(date);
+  const hoursUntil = getHoursUntil(date);
+
+  // Base urgency from vacancy (100 - occupancy)
+  const vacancyFactor = 100 - occupancyRate;
+
+  // Time pressure multiplier
+  let timePressure = 1.0;
+  if (daysUntil === 0) {
+    // Same day
+    timePressure = 4.0;
+  } else if (daysUntil === 1) {
+    // Tomorrow
+    timePressure = currentHour >= 18 ? 3.5 : currentHour >= 14 ? 2.5 : 2.0;
+  } else if (daysUntil === 2) {
+    timePressure = currentHour >= 18 ? 2.0 : 1.5;
+  } else if (daysUntil <= 5) {
+    timePressure = 1.2;
+  }
+
+  // Urgency score
+  const urgencyScore = Math.round(vacancyFactor * timePressure);
+
+  // Determine urgency level and action
+  let level, action, emoji;
+  if (urgencyScore >= 200) {
+    level = 'CRITICAL';
+    emoji = '🚨';
+    action = 'ต้องลดราคา 30-40% หรือ Flash Sale ทันที!';
+  } else if (urgencyScore >= 150) {
+    level = 'HIGH';
+    emoji = '🔴';
+    action = 'ควรลดราคา 20-30% หรือทำโปรโมชั่น';
+  } else if (urgencyScore >= 100) {
+    level = 'MEDIUM';
+    emoji = '🟠';
+    action = 'ควรลดราคา 10-15% หรือ push OTA';
+  } else if (urgencyScore >= 50) {
+    level = 'LOW';
+    emoji = '🟡';
+    action = 'Monitor ต่อ อาจไม่ต้องทำอะไร';
+  } else {
+    level = 'OK';
+    emoji = '🟢';
+    action = 'สถานการณ์ดี ไม่ต้องทำอะไร';
+  }
+
+  return {
+    score: urgencyScore,
+    level,
+    emoji,
+    action,
+    factors: {
+      vacancy: vacancyFactor,
+      timePressure,
+      daysUntil,
+      hoursUntil: Math.round(hoursUntil),
+      currentHour
+    }
+  };
+}
+
+/**
+ * Generate urgency context for Oracle to think about
+ * This is injected into context - Oracle decides what to do
+ */
+function generateUrgencyContext(date, occupancyRate) {
+  const urgency = calculateUrgency(date, occupancyRate);
+  const daysUntil = getDaysUntil(date);
+
+  const dateLabel = daysUntil === 0 ? 'วันนี้' : daysUntil === 1 ? 'พรุ่งนี้' : `อีก ${daysUntil} วัน`;
+
+  let context = `\n\n${urgency.emoji} **Urgency Analysis (${dateLabel}):**\n`;
+  context += `• Score: ${urgency.score}/300 (${urgency.level})\n`;
+  context += `• Occupancy: ${occupancyRate}% | Time Pressure: ${urgency.factors.timePressure}x\n`;
+  context += `• Now: ${urgency.factors.currentHour}:00 | Hours until check-in: ${urgency.factors.hoursUntil}h\n`;
+  context += `• ${urgency.action}`;
+
+  return context;
+}
+
+/**
  * Get occupancy modifier based on current occupancy rate
  */
 function getOccupancyModifier(occupancyRate) {
@@ -246,5 +349,7 @@ export default {
   generatePricingAdvice,
   getWeeklyPricingOverview,
   getSeason,
-  getOccupancyModifier
+  getOccupancyModifier,
+  calculateUrgency,
+  generateUrgencyContext
 };

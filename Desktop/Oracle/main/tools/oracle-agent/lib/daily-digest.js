@@ -47,7 +47,8 @@ const SECTIONS = {
   MARKET: 'market',
   REMINDERS: 'reminders',
   SUGGESTIONS: 'suggestions',
-  WEATHER: 'weather'
+  WEATHER: 'weather',
+  PRICING: 'pricing'
 };
 
 /**
@@ -146,6 +147,65 @@ class DailyDigest {
       } catch (e) {}
       return { count: 0, items: [] };
     });
+
+    // Pricing collector - daily pricing recommendations
+    this.registerCollector(SECTIONS.PRICING, async () => {
+      try {
+        const { default: beds24 } = await import('./beds24.js');
+        const { default: pricing } = await import('./pricing.js');
+
+        // Get today and next 7 days
+        const today = new Date();
+        const recommendations = [];
+
+        for (let i = 0; i < 7; i++) {
+          const date = new Date(today);
+          date.setDate(date.getDate() + i);
+          const dateStr = date.toISOString().split('T')[0];
+          const dayName = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'][date.getDay()];
+
+          // Get occupancy for this date
+          let occupancy = 0;
+          try {
+            const occupancyData = await beds24.getRealOccupancy(dateStr);
+            occupancy = occupancyData.occupancyPercent || 0;
+          } catch (e) {
+            // Default to 50% if can't get data
+            occupancy = 50;
+          }
+
+          // Get pricing recommendation
+          const priceRec = pricing.getDailyRecommendation(dateStr, occupancy);
+
+          recommendations.push({
+            date: dateStr,
+            day: dayName,
+            dayIndex: i,
+            occupancy: Math.round(occupancy),
+            avgPrice: priceRec.avgRecommendedPrice,
+            strategy: priceRec.strategy,
+            modifier: priceRec.modifier
+          });
+        }
+
+        // Find days that need attention (low occupancy)
+        const lowOccDays = recommendations.filter(r => r.occupancy < 50);
+        const highOccDays = recommendations.filter(r => r.occupancy >= 80);
+
+        return {
+          recommendations,
+          lowOccDays,
+          highOccDays,
+          summary: {
+            avgOccupancy: Math.round(recommendations.reduce((a, r) => a + r.occupancy, 0) / recommendations.length),
+            needsAttention: lowOccDays.length
+          }
+        };
+      } catch (e) {
+        console.error('[DIGEST] Pricing collector error:', e.message);
+        return { error: e.message };
+      }
+    });
   }
 
   /**
@@ -155,7 +215,7 @@ class DailyDigest {
     const sections = [
       SECTIONS.CALENDAR,
       SECTIONS.REMINDERS,
-      SECTIONS.WEATHER,
+      SECTIONS.PRICING,  // Daily pricing recommendations
       SECTIONS.APPROVALS
     ];
 
@@ -322,6 +382,25 @@ class DailyDigest {
         lines.push(`  • ${item.action || item.message || item}`);
       }
       lines.push('');
+    }
+
+    // Pricing recommendations
+    if (data.pricing?.recommendations) {
+      const p = data.pricing;
+      lines.push(`💰 ราคาแนะนำ 7 วัน (Avg Occ: ${p.summary.avgOccupancy}%):`);
+      lines.push('');
+
+      for (const rec of p.recommendations) {
+        const occIcon = rec.occupancy >= 80 ? '🟢' : rec.occupancy >= 50 ? '🟡' : '🔴';
+        const dateLabel = rec.dayIndex === 0 ? 'วันนี้' : rec.dayIndex === 1 ? 'พรุ่งนี้' : `${rec.date.slice(5)} (${rec.day})`;
+        lines.push(`  ${occIcon} ${dateLabel}: ${rec.occupancy}% | ฿${rec.avgPrice.toLocaleString()} (${rec.strategy})`);
+      }
+      lines.push('');
+
+      if (p.lowOccDays.length > 0) {
+        lines.push(`⚠️ ${p.lowOccDays.length} วันที่ต้องลดราคา/ทำโปร`);
+        lines.push('');
+      }
     }
 
     // Messages

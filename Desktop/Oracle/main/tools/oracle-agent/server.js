@@ -72,6 +72,8 @@ import SubAgentManager from './lib/subagent.js';
 import beds24 from './lib/beds24.js';
 import pricing from './lib/pricing.js';
 import parcelTracking from './lib/parcel-tracking.js';
+import parcelWatchlist from './lib/parcel-watchlist.js';
+import realtimeContext from './lib/realtime-context.js';
 import imageGen from './lib/image-gen.js';
 import autonomy from './lib/autonomy.js';
 import hotelNotify from './lib/hotel-notifications.js';
@@ -273,6 +275,21 @@ const SYSTEM_PROMPT = `คุณคือ Oracle Agent - Digital Partner ขอ�
 ✅ มีงานต่อที่ควรทำ → ทำเลย
 ✅ ตัดสินใจเอง ตามหลักการที่ดีที่สุด
 
+## 🧠 Real-time Thinking (มาตรฐาน!)
+**คุณคิดเอง real-time จาก context ที่เห็น - ไม่ใช่รอ script บอก!**
+
+Context ที่คุณจะเห็น:
+- ⏰ **เวลาปัจจุบัน** - รู้ว่ากี่โมง วันอะไร เสาร์/อาทิตย์
+- 💰 **Investment Alerts** - ทอง/BTC เปลี่ยนแรง
+- 🔔 **Check-in Proximity** - ใกล้เวลาแขก check-in
+- 📊 **Pricing Urgency** - occupancy ต่ำ + เวลากดดัน
+
+**หลักการ:**
+1. เห็น context → คิดเอง → พูดกับ Tars (ไม่ต้องรอถาม)
+2. ข้อมูลสำคัญ/urgent → บอกทันที
+3. ไม่สำคัญ → ไม่ต้องพูด (อย่า spam)
+4. คิดจากข้อมูลจริง → แนะนำสิ่งที่ทำได้จริง
+
 ## ขอบเขตที่คุณดูแล (ทุกอย่างของ Tars)
 1. **ธุรกิจที่พัก Best Hotel Pai** - 4 แห่ง
 2. **SaaS Projects** - KeyForge และโปรเจคใหม่ๆ
@@ -297,6 +314,16 @@ const SYSTEM_PROMPT = `คุณคือ Oracle Agent - Digital Partner ขอ�
 รองรับ: KEX Express, Kerry, Flash Express, J&T, Thailand Post, DHL, FedEx
 ข้อมูลจะอยู่ใน context ถ้ามี - ใช้ข้อมูลนั้นตอบเลย
 
+## 📦 Parcel Watchlist (ติดตามพัสดุ)
+**คุณมี watchlist พัสดุที่ Tars สนใจ!**
+- เมื่อ Tars พูดว่า "ติดตามพัสดุนี้" / "ช่วยดูพัสดุ" / "แจ้งเตือนเมื่อถึง":
+  1. **ถามชื่อเรียกพัสดุก่อนเสมอ!** "พัสดุนี้ให้เรียกว่าอะไรครับ?" (เช่น "ROG Ally", "เคส iPhone", "ของขวัญแม่")
+  2. เมื่อได้ชื่อแล้ว → ระบบจะเพิ่มเข้า watchlist อัตโนมัติ
+- **[PENDING_WATCHLIST]** ใน context = กำลังรอชื่อพัสดุ → ให้ถาม "พัสดุนี้ให้เรียกว่าอะไรครับ?"
+- เมื่อสถานะพัสดุเปลี่ยน → webhook จะแจ้งเตือน LINE ทันทีพร้อมชื่อที่ตั้งไว้
+- เมื่อพัสดุถึงแล้ว (delivered) → ลบออกจาก watchlist อัตโนมัติ
+- ข้อมูล watchlist จะอยู่ใน context → บอก Tars ได้ว่ากำลังติดตามพัสดุอะไรบ้าง
+
 ## 🚨 กฎเหล็ก: ข้อมูล Beds24 (บังคับเคร่งครัด!)
 **ห้ามแต่ง ห้ามเดา ห้าม hallucinate!**
 1. ใช้ข้อมูลที่ให้มาใน context เท่านั้น - ห้ามสมมติเลข/ชื่อ/ห้อง
@@ -317,6 +344,41 @@ const SYSTEM_PROMPT = `คุณคือ Oracle Agent - Digital Partner ขอ�
 | Hotel | MEDIUM | ตอบคำถาม, Alert | Promotion, ราคา |
 | Investment | LOW | Alert | ซื้อ/ขาย |
 | SaaS | MEDIUM | Monitor | Launch, Pricing |
+
+## 🧠 Real-time Pricing Intelligence (คิดเอง!)
+**เมื่อเห็น Urgency Analysis ใน context → คุณต้องคิดเองว่าควรทำอะไร!**
+
+วิธีคิด:
+- ดู Urgency Score: ยิ่งสูง ยิ่งต้อง proactive
+- ดูเวลาปัจจุบัน: หลัง 18:00 + พรุ่งนี้ว่าง = urgent มาก
+- ดู occupancy: <50% = ต้องทำอะไรสักอย่าง
+
+Action ตาม Urgency Level:
+- 🟢 OK (<50): ไม่ต้องพูดถึงราคา
+- 🟡 LOW (50-99): บอก Tars ว่า "ยังว่างอยู่นะ"
+- 🟠 MEDIUM (100-149): แนะนำว่า "น่าจะลดราคาหน่อย"
+- 🔴 HIGH (150-199): เตือนชัดว่า "ต้องทำโปรแล้วนะ!"
+- 🚨 CRITICAL (200+): **แจ้งเตือนทันที** "ด่วน!"
+
+**คุณไม่ต้องรอ Tars ถาม - ถ้าเห็น urgency สูง ให้พูดเอง!**
+
+## ⚠️ แนะนำเฉพาะสิ่งที่ทำได้จริง!
+**ห้ามแนะนำลอยๆ ต้องเป็น actionable ที่ทำได้!**
+
+❌ สิ่งที่ Oracle ทำไม่ได้ (ห้ามแนะนำเหมือนทำได้):
+- "push Flash Sale บน Agoda/Booking.com" → ต้อง login manual
+- "ลดราคาใน Beds24 ให้เลย" → ยังไม่มี write API
+- "ส่ง email/SMS หาลูกค้า" → ไม่มีระบบ
+- "โพสต์โปรโมชั่นใน Facebook" → ไม่มี access
+
+✅ สิ่งที่ Oracle ทำได้จริง:
+- แจ้งเตือน Tars ผ่าน LINE (ทำได้เลย)
+- บอกราคาที่ควรตั้ง + เหตุผล (Tars ไปปรับเอง)
+- วิเคราะห์สถานการณ์จากข้อมูลจริง
+- เตือนว่า "ห้อง X ควรลดเหลือ Y บาท" (Tars ทำเอง)
+- บอกว่า "ลองเปิด Flash Sale ใน Agoda นะ" (แนะนำ ไม่ใช่ทำให้)
+
+**หลักการ: บอกว่า "ควรทำอะไร" + "ทำไม" แต่ Tars ต้องไปทำเอง**
 
 ## Opportunity Hunter (บังคับ!)
 Tars พูดถึง/สนใจอะไร → หาโอกาสทำเงินทันที!
@@ -516,6 +578,20 @@ app.post('/webhook/line', async (req, res) => {
 
         // Build context string for Claude
         let contextString = '';
+
+        // Real-time Context (Standard: ทุก feature ต้องมี!)
+        try {
+          const rtContext = await realtimeContext.generateRealtimeContext({
+            includeInvestment: isOwner, // Only show investment to owner
+            includeHotel: isOwner
+          });
+          if (rtContext) {
+            contextString += rtContext;
+          }
+        } catch (rtErr) {
+          console.error('[REALTIME] Context error:', rtErr.message);
+        }
+
         if (context.current_focus) {
           contextString += `\n\n[Current Focus: ${context.current_focus.topic}]`;
         }
@@ -558,16 +634,48 @@ app.post('/webhook/line', async (req, res) => {
         }
 
         // =====================================================================
-        // PARCEL TRACKING - เช็คสถานะพัสดุเมื่อพบเลข tracking
+        // PARCEL TRACKING & WATCHLIST - เช็คสถานะพัสดุและติดตาม
         // =====================================================================
         const lowerMessage = userMessage.toLowerCase();
         const trackingKeywords = ['พัสดุ', 'tracking', 'track', 'ส่งของ', 'ขนส่ง', 'kex', 'flash', 'ems', 'ไปรษณีย์', 'เคอรี่', 'kerry'];
+        const watchKeywords = ['ติดตาม', 'ช่วยดู', 'แจ้งเตือน', 'บอกด้วย', 'watch', 'notify', 'alert'];
         const trackingNumberMatch = userMessage.match(/\b(SOE|THKE|KEX|KE|TH|FL|JT|SPXTH|LEX|LZD|E[A-Z])[A-Z0-9]{8,20}\b/i);
 
         // Store last tracking number per user (in-memory cache)
         if (!global.userTrackingCache) global.userTrackingCache = {};
+        // Store pending watchlist entries waiting for name
+        if (!global.pendingWatchlist) global.pendingWatchlist = {};
 
-        if (trackingNumberMatch || trackingKeywords.some(kw => lowerMessage.includes(kw))) {
+        // Check if user wants to add to watchlist
+        const wantsToWatch = watchKeywords.some(kw => lowerMessage.includes(kw));
+
+        // Check if user is responding to "ให้เรียกว่าอะไร" prompt
+        const hasPendingWatchlist = userId && global.pendingWatchlist[userId];
+        const hasNoTrackingNumber = !trackingNumberMatch && !userMessage.match(/[A-Z0-9]{10,20}/);
+
+        if (hasPendingWatchlist && hasNoTrackingNumber) {
+          // User is giving a name for the pending parcel
+          const pending = global.pendingWatchlist[userId];
+          const parcelName = userMessage.trim();
+
+          console.log('[WATCHLIST] Adding with name:', pending.trackingNumber, '→', parcelName);
+
+          try {
+            const watchResult = await parcelWatchlist.addToWatchlist(pending.trackingNumber, {
+              userId: userId,
+              description: parcelName
+            });
+            console.log('[WATCHLIST] Add result:', watchResult.message);
+            contextString += `\n\n✅ เพิ่ม "${parcelName}" (${pending.trackingNumber}) เข้า watchlist แล้ว จะแจ้งเตือนเมื่อมีอัพเดท`;
+
+            // Clear pending state
+            delete global.pendingWatchlist[userId];
+          } catch (watchError) {
+            console.error('[WATCHLIST] Error:', watchError.message);
+            contextString += `\n\n❌ ไม่สามารถเพิ่มเข้า watchlist: ${watchError.message}`;
+          }
+        }
+        else if (trackingNumberMatch || trackingKeywords.some(kw => lowerMessage.includes(kw))) {
           // Extract tracking number from message OR use cached one
           let trackingNumber = trackingNumberMatch?.[0] || userMessage.match(/[A-Z0-9]{10,20}/)?.[0];
 
@@ -582,6 +690,22 @@ app.post('/webhook/line', async (req, res) => {
             if (userId) global.userTrackingCache[userId] = trackingNumber;
 
             console.log('[LINE] Detected tracking query for:', trackingNumber);
+
+            // If user wants to watch, store pending state (wait for name)
+            if (wantsToWatch) {
+              // Check if already in watchlist
+              if (parcelWatchlist.isInWatchlist(trackingNumber)) {
+                contextString += `\n\n📦 พัสดุ ${trackingNumber} อยู่ใน watchlist แล้ว`;
+              } else {
+                // Store pending state - Oracle will ask for name
+                global.pendingWatchlist[userId] = {
+                  trackingNumber,
+                  requestedAt: new Date().toISOString()
+                };
+                contextString += `\n\n🔔 [PENDING_WATCHLIST] กำลังรอชื่อเรียกพัสดุ ${trackingNumber} - ถาม user ว่าพัสดุนี้ให้เรียกว่าอะไร`;
+              }
+            }
+
             try {
               const trackingResult = await parcelTracking.getTrackingSummary(trackingNumber);
               contextString += `\n\n${trackingResult}`;
@@ -590,6 +714,16 @@ app.post('/webhook/line', async (req, res) => {
               contextString += `\n\n⚠️ ไม่สามารถเช็คพัสดุ ${trackingNumber} ได้: ${trackError.message}`;
             }
           }
+        }
+
+        // Add watchlist summary to context
+        try {
+          const watchlistSummary = await parcelWatchlist.getWatchlistSummary();
+          if (watchlistSummary) {
+            contextString += `\n\n${watchlistSummary}`;
+          }
+        } catch (err) {
+          console.error('[WATCHLIST] Error getting summary:', err.message);
         }
 
         // =====================================================================
@@ -673,6 +807,10 @@ app.post('/webhook/line', async (req, res) => {
                 try {
                   const pricingAdvice = await pricing.generatePricingAdvice(dateStr);
                   contextString += `\n\n${pricingAdvice}`;
+
+                  // Add real-time urgency context for Oracle to think about
+                  const urgencyContext = pricing.generateUrgencyContext(dateStr, occupancy.occupancyRate);
+                  contextString += urgencyContext;
                 } catch (pricingError) {
                   console.error('[Pricing] Error generating advice:', pricingError.message);
                 }
@@ -940,6 +1078,20 @@ app.post('/webhook/telegram', async (req, res) => {
 
       // Build context string for Claude
       let contextString = '';
+
+      // Real-time Context (Standard: ทุก feature ต้องมี!)
+      try {
+        const rtContext = await realtimeContext.generateRealtimeContext({
+          includeInvestment: isOwner,
+          includeHotel: isOwner
+        });
+        if (rtContext) {
+          contextString += rtContext;
+        }
+      } catch (rtErr) {
+        console.error('[REALTIME] Context error:', rtErr.message);
+      }
+
       if (context.current_focus) {
         contextString += `\n\n[Current Focus: ${context.current_focus.topic}]`;
       }
@@ -1496,6 +1648,25 @@ app.post('/webhook/trackingmore', async (req, res) => {
       const latestEvent = update.latest_event;
       const location = update.origin_info?.trackinfo?.[0]?.location;
 
+      // Update watchlist and check if we should notify
+      const watchlistResult = parcelWatchlist.updateParcelStatus(
+        trackingNumber,
+        status,
+        location,
+        latestEvent
+      );
+
+      // Only notify if parcel is in watchlist AND status changed
+      if (!watchlistResult.found) {
+        console.log('[TRACKINGMORE] Parcel not in watchlist, skipping notification:', trackingNumber);
+        continue;
+      }
+
+      if (!watchlistResult.shouldNotify) {
+        console.log('[TRACKINGMORE] Status unchanged, skipping notification:', trackingNumber);
+        continue;
+      }
+
       // Status translations
       const statusTh = {
         'transit': 'กำลังจัดส่ง',
@@ -1508,9 +1679,22 @@ app.post('/webhook/trackingmore', async (req, res) => {
 
       // Build LINE message
       let message = `📦 **พัสดุ ${trackingNumber}**\n`;
+      if (watchlistResult.parcel?.description) {
+        message += `📝 ${watchlistResult.parcel.description}\n`;
+      }
       message += `📍 สถานะ: ${statusTh}\n`;
       if (location) message += `📍 ตำแหน่ง: ${location}\n`;
       if (latestEvent) message += `💬 ${latestEvent}`;
+
+      // Add delivered message
+      if (status === 'delivered') {
+        message += `\n\n✅ พัสดุถึงแล้ว! ลบออกจาก watchlist อัตโนมัติ`;
+        // Auto-remove from watchlist after delivered
+        setTimeout(() => {
+          parcelWatchlist.removeFromWatchlist(trackingNumber);
+          console.log('[WATCHLIST] Auto-removed delivered parcel:', trackingNumber);
+        }, 5000);
+      }
 
       // Send LINE notification to owner
       if (config.line?.owner_id) {
@@ -1522,6 +1706,48 @@ app.post('/webhook/trackingmore', async (req, res) => {
     res.json({ success: true, processed: updates.length });
   } catch (error) {
     console.error('[TRACKINGMORE] Webhook error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =============================================================================
+// PARCEL WATCHLIST API
+// =============================================================================
+
+// Get all parcels in watchlist
+app.get('/api/watchlist', (req, res) => {
+  res.json({
+    success: true,
+    parcels: parcelWatchlist.getWatchlist()
+  });
+});
+
+// Add parcel to watchlist
+app.post('/api/watchlist', async (req, res) => {
+  try {
+    const { trackingNumber, description } = req.body;
+    if (!trackingNumber) {
+      return res.status(400).json({ error: 'trackingNumber required' });
+    }
+    const result = await parcelWatchlist.addToWatchlist(trackingNumber, { description });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Remove parcel from watchlist
+app.delete('/api/watchlist/:trackingNumber', (req, res) => {
+  const result = parcelWatchlist.removeFromWatchlist(req.params.trackingNumber);
+  res.json(result);
+});
+
+// Refresh all parcels in watchlist
+app.post('/api/watchlist/refresh', async (req, res) => {
+  try {
+    const results = await parcelWatchlist.refreshAllParcels();
+    res.json({ success: true, results });
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
