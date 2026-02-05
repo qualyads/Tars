@@ -671,14 +671,20 @@ app.post('/webhook/line', async (req, res) => {
 
         const lowerMsg = userMessage.toLowerCase();
         const localAgentPatterns = [
-          { pattern: /สร้าง.*(โฟลเดอร์|folder|dir)/i, type: 'mkdir', extract: (m) => {
-            // Try multiple patterns
-            let name = m.match(/(?:โฟลเดอร์|folder)\s+(\S+)/i)?.[1];
+          { pattern: /สร้าง.*(โฟล?เดอร์|folder|dir)/i, type: 'mkdir', extract: (m) => {
+            // Try multiple patterns - รองรับ typo "โฟเดอร์" ด้วย
+            let name = m.match(/(?:โฟล?เดอร์|folder)\s+(\S+)/i)?.[1];
             if (!name) name = m.match(/(?:ชื่อ|ว่า)\s*[""]?(\S+)/i)?.[1];
-            if (!name) name = m.match(/สร้าง\S*\s+(\S+)/i)?.[1];
+            if (!name) name = m.match(/desktop\s+(?:ว่า|ชื่อ)?\s*(\S+)/i)?.[1];
+            // Clean up - remove common suffixes
+            if (name) {
+              name = name.replace(/[,\.\?!]+$/, '');
+              name = name.replace(/^(ใน|บน|ที่)/, '');
+            }
             console.log('[LOCAL-AGENT-EXTRACT] Extracted folder name:', name);
             return name;
           }},
+          { pattern: /เปิด.*(browser|บราวเซอร์|chrome|safari|firefox|google)/i, type: 'open_browser' },
           { pattern: /(?:ดู|list|ls)\s*(?:ไฟล์|files?)/i, type: 'ls' },
           { pattern: /git\s+(status|pull|push|log|diff)/i, type: 'git' },
           { pattern: /(?:ให้|run)\s*claude\s*code/i, type: 'claude_code' },
@@ -727,6 +733,21 @@ app.post('/webhook/line', async (req, res) => {
                   } else {
                     contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error || localAgentResult.stderr}]`;
                   }
+                }
+              }
+              else if (type === 'open_browser') {
+                // Detect which browser to open
+                const browserMatch = userMessage.match(/(chrome|safari|firefox)/i);
+                const browser = browserMatch ? browserMatch[1] : 'Google Chrome';
+                const appName = browser.toLowerCase() === 'chrome' ? 'Google Chrome' :
+                                browser.toLowerCase() === 'safari' ? 'Safari' :
+                                browser.toLowerCase() === 'firefox' ? 'Firefox' : 'Google Chrome';
+
+                localAgentResult = await localAgentServer.executeShell(`open -a "${appName}"`);
+                if (localAgentResult.success) {
+                  contextString += `\n\n[LOCAL_AGENT_RESULT: เปิด ${appName} สำเร็จแล้ว ✅]`;
+                } else {
+                  contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error}]`;
                 }
               }
 
