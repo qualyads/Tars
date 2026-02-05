@@ -15,13 +15,22 @@ import beds24 from './beds24.js';
 
 /**
  * Get current time context for Oracle to think about
+ * CRITICAL: Must include full date (day/month/year) so Claude knows the current year!
  */
 function getTimeContext() {
   const now = new Date();
   const hour = now.getHours();
   const dayOfWeek = now.getDay();
   const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+  const monthNames = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+                      'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
   const dayNamesTh = dayNames[dayOfWeek];
+
+  // Full date info (CRITICAL for Claude to know current year!)
+  const day = now.getDate();
+  const month = now.getMonth();
+  const year = now.getFullYear();
+  const buddhist_year = year + 543;
 
   // Time period
   let period, emoji;
@@ -56,6 +65,11 @@ function getTimeContext() {
   return {
     hour,
     minute: now.getMinutes(),
+    day,
+    month: month + 1,  // 1-indexed for display
+    monthName: monthNames[month],
+    year,
+    buddhist_year,
     dayOfWeek,
     dayNamesTh,
     period,
@@ -65,18 +79,24 @@ function getTimeContext() {
     isLateNight: hour >= 21 || hour < 6,
     isBusinessHours: hour >= 9 && hour < 18,
     businessContext,
-    formatted: `${emoji} ${hour.toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} วัน${dayNamesTh}`,
+    // CRITICAL: Include full date so Claude knows current year!
+    date: now.toISOString().split('T')[0],  // 2026-02-05
+    dateTh: `${day} ${monthNames[month]} ${year}`,  // 5 กุมภาพันธ์ 2026
+    formatted: `${emoji} ${hour.toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} วัน${dayNamesTh}ที่ ${day} ${monthNames[month]} ${year}`,
     timestamp: now.toISOString()
   };
 }
 
 /**
  * Generate time context string for Oracle
+ * CRITICAL: Must tell Claude the exact current date including YEAR!
  */
 function generateTimeContextString() {
   const time = getTimeContext();
 
-  let context = `\n⏰ **เวลาปัจจุบัน:** ${time.formatted}`;
+  // CRITICAL: Always include full date with YEAR so Claude knows we're in 2026!
+  let context = `\n📅 **วันที่ปัจจุบัน:** ${time.dateTh} (${time.date})`;
+  context += `\n⏰ **เวลา:** ${time.emoji} ${time.hour.toString().padStart(2, '0')}:${time.minute.toString().padStart(2, '0')} วัน${time.dayNamesTh}`;
 
   if (time.businessContext) {
     context += ` (${time.businessContext})`;
