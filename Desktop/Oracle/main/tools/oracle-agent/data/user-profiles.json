@@ -1,0 +1,66 @@
+{
+  "Uba2ae89ff15d0ca1ea673058844f287c": {
+    "userId": "Uba2ae89ff15d0ca1ea673058844f287c",
+    "name": "Tars",
+    "role": "owner",
+    "permissions": {
+      "level": 100,
+      "access": [
+        "all",
+        "business",
+        "investment",
+        "bookings",
+        "revenue",
+        "daily_briefing",
+        "opportunities"
+      ],
+      "dailyBriefing": true,
+      "investmentAlerts": true,
+      "businessOpportunities": true,
+      "fullAccess": true
+    },
+    "preferences": {
+      "language": "th",
+      "dailyBriefing": true,
+      "investmentAlerts": true,
+      "callStyle": "casual"
+    },
+    "onboarded": true,
+    "createdAt": "2026-02-04T17:20:52.472Z"
+  },
+  "U2ce788802c5a339d8805ad37a42bc833": {
+    "userId": "U2ce788802c5a339d8805ad37a42bc833",
+    "name": "นิว",
+    "lineId": "nati",
+    "role": "partner",
+    "permissions": {
+      "level": 80,
+      "access": [
+        "bookings",
+        "revenue",
+        "pricing_strategy",
+        "daily_briefing",
+        "hotel_operations"
+      ],
+      "dailyBriefing": true,
+      "hotelUpdates": true,
+      "pricingStrategy": true,
+      "investmentAlerts": false,
+      "businessOpportunities": false
+    },
+    "preferences": {
+      "language": "th",
+      "dailyBriefing": true,
+      "hotelUpdates": true,
+      "callStyle": "polite"
+    },
+    "subscriptions": {
+      "dailyPricingStrategy": true,
+      "checkInAlerts": true,
+      "occupancyUpdates": true
+    },
+    "onboarded": true,
+    "createdAt": "2026-02-05T04:30:00.000Z",
+    "addedBy": "Tars"
+  }
+}

@@ -348,6 +348,44 @@ function sendLineCritical(message) {
   return sendLine(message, { force: true, skipDedup: true });
 }
 
+/**
+ * Send LINE message to a specific user (not just owner)
+ */
+function sendLineToUser(userId, message) {
+  return new Promise((resolve) => {
+    if (!LINE_TOKEN || !userId) {
+      console.log('[SCHEDULER] No LINE config or userId, skipping');
+      resolve(false);
+      return;
+    }
+
+    const data = JSON.stringify({
+      to: userId,
+      messages: [{ type: 'text', text: message.substring(0, 4500) }]
+    });
+
+    const req = https.request({
+      hostname: 'api.line.me',
+      path: '/v2/bot/message/push',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${LINE_TOKEN}`,
+        'Content-Length': Buffer.byteLength(data)
+      }
+    }, (res) => {
+      if (res.statusCode === 200) {
+        console.log(`[SCHEDULER] Message sent to ${userId}:`, message.substring(0, 40) + '...');
+      }
+      resolve(res.statusCode === 200);
+    });
+
+    req.on('error', () => resolve(false));
+    req.write(data);
+    req.end();
+  });
+}
+
 // Quick reply with options
 function sendLineWithOptions(message, options) {
   return new Promise((resolve) => {
@@ -553,6 +591,113 @@ async function eveningSummary() {
   console.log('[SCHEDULER] Evening Summary sent');
 }
 
+// =============================================================================
+// HOTEL BRIEFING FOR คุณนิว (Partner)
+// =============================================================================
+
+const NIW_USER_ID = 'U2ce788802c5a339d8805ad37a42bc833';
+
+/**
+ * Daily Hotel Briefing - ส่งให้คุณนิว ทุกวัน 08:00 และ 17:00
+ * เน้น: สถานะห้องพัก, กลยุทธ์ราคา, check-in/out วันนี้
+ */
+async function dailyHotelBriefing() {
+  console.log('[SCHEDULER] Generating Hotel Briefing for Niw...');
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('th-TH', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short'
+  });
+
+  // Try to get hotel data from beds24
+  let checkIns = [];
+  let checkOuts = [];
+  let currentGuests = [];
+  let occupancy = 0;
+  let dataLoaded = false;
+
+  try {
+    const beds24 = await import('./beds24.js');
+    const [ci, co, guests, occ] = await Promise.all([
+      beds24.getCheckInsToday().catch(() => []),
+      beds24.getCheckOutsToday().catch(() => []),
+      beds24.getCurrentGuests().catch(() => []),
+      beds24.getOccupancy().catch(() => ({ occupancy: 0 }))
+    ]);
+    checkIns = ci || [];
+    checkOuts = co || [];
+    currentGuests = guests || [];
+    occupancy = occ?.occupancy || 0;
+    dataLoaded = true;
+  } catch (e) {
+    console.log('[SCHEDULER] Could not load beds24:', e.message);
+  }
+
+  let msg = `🏨 Hotel Update ${dateStr}\n\n`;
+
+  if (dataLoaded) {
+    // Real data from Beds24
+    msg += `📊 สถานะวันนี้\n`;
+    msg += `├ Check-in: ${checkIns.length} booking\n`;
+    msg += `├ Check-out: ${checkOuts.length} booking\n`;
+    msg += `├ พักอยู่: ${currentGuests.length} booking\n`;
+    msg += `└ Occupancy: ${occupancy}%\n`;
+
+    // Check-ins today
+    if (checkIns.length > 0) {
+      msg += `\n📥 Check-in วันนี้:\n`;
+      checkIns.slice(0, 5).forEach(b => {
+        const name = b.firstName || b.guestName || 'Guest';
+        msg += `  • ${name}\n`;
+      });
+    }
+
+    // Check-outs today
+    if (checkOuts.length > 0) {
+      msg += `\n📤 Check-out วันนี้:\n`;
+      checkOuts.slice(0, 5).forEach(b => {
+        const name = b.firstName || b.guestName || 'Guest';
+        msg += `  • ${name}\n`;
+      });
+    }
+  } else {
+    // Fallback message
+    msg += `⚠️ ไม่สามารถดึงข้อมูลจาก Beds24 ได้\n`;
+    msg += `กรุณาเช็คใน Beds24 Dashboard โดยตรง\n`;
+  }
+
+  // Pricing strategy section
+  const dayOfWeek = now.getDay();
+  const isWeekend = dayOfWeek === 5 || dayOfWeek === 6; // Fri, Sat
+
+  msg += `\n💰 กลยุทธ์ราคาวันนี้\n`;
+  if (isWeekend) {
+    msg += `├ 🔥 Weekend = Peak Rate\n`;
+    msg += `├ ไม่ลดราคา last-minute\n`;
+    msg += `└ พิจารณา surge ถ้าเหลือ <3 ห้อง\n`;
+  } else {
+    msg += `├ Weekday = Standard Rate\n`;
+    msg += `├ OTA promo ได้ถ้ายังมีห้องว่าง\n`;
+    msg += `└ Direct booking discount 5%\n`;
+  }
+
+  // Valentine's week special (Feb 10-15)
+  const dayOfMonth = now.getDate();
+  const month = now.getMonth() + 1;
+  if (month === 2 && dayOfMonth >= 10 && dayOfMonth <= 15) {
+    msg += `\n💕 Valentine's Week = Premium!\n`;
+    msg += `ราคาควรสูงกว่าปกติ 15-20%\n`;
+  }
+
+  msg += `\n━━━━━━━━━━━━━━━\nมีอะไรให้ช่วยแจ้งได้เลยค่ะ 🙏`;
+
+  // Send to Niw
+  await sendLineToUser(NIW_USER_ID, msg);
+  console.log('[SCHEDULER] Hotel Briefing sent to Niw');
+}
+
 /**
  * Market Check - ทุกชั่วโมง
  */
@@ -720,6 +865,19 @@ function start() {
     intervals.push(setInterval(hourlyMarketCheck, 60 * 60 * 1000));
   }, msUntilNextHour);
 
+  // Hotel Briefing for Niw at 8:00 and 17:00
+  const msUntil8am = getMillisecondsUntil(8, 0);
+  setTimeout(() => {
+    dailyHotelBriefing();
+    intervals.push(setInterval(dailyHotelBriefing, 24 * 60 * 60 * 1000));
+  }, msUntil8am);
+
+  const msUntil5pm = getMillisecondsUntil(17, 0);
+  setTimeout(() => {
+    dailyHotelBriefing();
+    intervals.push(setInterval(dailyHotelBriefing, 24 * 60 * 60 * 1000));
+  }, msUntil5pm);
+
   // Initial market data fetch
   setTimeout(async () => {
     const market = await getMarketData();
@@ -732,6 +890,7 @@ function start() {
   console.log('[SCHEDULER] Scheduled:');
   console.log(`  - Morning Briefing: 7:00 (in ${Math.round(msUntil7am / 60000)} min)`);
   console.log(`  - Evening Summary: 18:00 (in ${Math.round(msUntil6pm / 60000)} min)`);
+  console.log(`  - Hotel Briefing (Niw): 8:00 & 17:00`);
   console.log(`  - Market Check: Every hour (next in ${Math.round(msUntilNextHour / 60000)} min)`);
 }
 
@@ -769,6 +928,10 @@ async function triggerMarketCheck() {
   return await hourlyMarketCheck();
 }
 
+async function triggerHotelBriefing() {
+  return await dailyHotelBriefing();
+}
+
 // =============================================================================
 // EXPORTS
 // =============================================================================
@@ -779,6 +942,7 @@ export {
   triggerBriefing,
   triggerSummary,
   triggerMarketCheck,
+  triggerHotelBriefing,
   processApproval,
   suggestAction,
   HEARTBEAT_OK,
@@ -790,6 +954,7 @@ export {
   markConversationActive,
   markConversationInactive,
   sendLineCritical,
+  sendLineToUser,
   ACTIVE_HOURS
 };
 
@@ -811,6 +976,7 @@ export default {
   triggerBriefing,
   triggerSummary,
   triggerMarketCheck,
+  triggerHotelBriefing,
   processApproval,
   suggestAction,
   getState,
@@ -824,6 +990,7 @@ export default {
   markConversationActive,
   markConversationInactive,
   sendLineCritical,
+  sendLineToUser,
   ACTIVE_HOURS,
   getHeartbeatStats
 };
