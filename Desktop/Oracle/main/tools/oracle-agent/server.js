@@ -71,6 +71,7 @@ import HeartbeatManager from './lib/heartbeat.js';
 import SubAgentManager from './lib/subagent.js';
 import beds24 from './lib/beds24.js';
 import pricing from './lib/pricing.js';
+import revenueReport from './lib/revenue-report.js';
 import parcelTracking from './lib/parcel-tracking.js';
 import parcelWatchlist from './lib/parcel-watchlist.js';
 import realtimeContext from './lib/realtime-context.js';
@@ -2676,6 +2677,67 @@ app.post('/api/hunt/analyze', async (req, res) => {
 });
 
 // =============================================================================
+// REVENUE REPORT API - รายงาน Revenue รายชั่วโมง
+// =============================================================================
+
+// Get revenue report status
+app.get('/api/revenue/status', (req, res) => {
+  res.json(revenueReport.getStatus());
+});
+
+// Get current hourly report (manual trigger)
+app.get('/api/revenue/report', async (req, res) => {
+  try {
+    const report = await revenueReport.generateHourlyReport();
+    res.json(report);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Trigger and send report to LINE
+app.post('/api/revenue/send', async (req, res) => {
+  try {
+    const report = await revenueReport.generateHourlyReport();
+
+    if (!report.success) {
+      return res.status(500).json(report);
+    }
+
+    if (config.line?.owner_id) {
+      await line.pushMessage(config.line.owner_id, report.message);
+    }
+
+    res.json({ ...report, sent: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get today's revenue data
+app.get('/api/revenue/today', async (req, res) => {
+  try {
+    const data = await revenueReport.getTodayRevenue();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get pricing recommendations for a date
+app.get('/api/revenue/pricing', async (req, res) => {
+  const { date } = req.query;
+  const targetDate = date || new Date().toISOString().split('T')[0];
+
+  try {
+    const data = await revenueReport.getAvailableRoomsWithPricing(targetDate);
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =============================================================================
 // GMAIL PUB/SUB API
 // =============================================================================
 
@@ -4327,6 +4389,48 @@ cron.schedule('0 9,11,13,15,17,19,21 * * *', async () => {
   } catch (error) {
     console.error('[API-HUNTER] Hunt cycle error:', error);
     logError('system', error, { source: 'api-hunter' });
+  }
+}, { timezone: config.agent.timezone });
+
+// =============================================================================
+// HOURLY REVENUE REPORT - ส่ง Report รายชั่วโมง (The Arch Casa)
+// =============================================================================
+
+// Send revenue report every hour during active hours (8:00-21:00)
+cron.schedule('0 8-21 * * *', async () => {
+  const hour = new Date().getHours();
+  console.log(`[REVENUE] 📊 Hourly Revenue Report triggered at ${hour}:00`);
+  logSystemEvent('system', 'revenue_report_start', { hour });
+
+  try {
+    const report = await revenueReport.generateHourlyReport();
+
+    if (!report.success) {
+      console.error('[REVENUE] Report generation failed:', report.error);
+      return;
+    }
+
+    // Check if should send (avoid spam if nothing changed)
+    const shouldSend = revenueReport.shouldSendReport(report.data);
+
+    if (shouldSend) {
+      console.log('[REVENUE] Sending report to LINE...');
+
+      if (config.line?.owner_id) {
+        await line.pushMessage(config.line.owner_id, report.message);
+        console.log('[REVENUE] Report sent successfully');
+        logSystemEvent('system', 'revenue_report_sent', {
+          hour,
+          revenue: report.data.revenue,
+          occupancy: report.data.occupancy
+        });
+      }
+    } else {
+      console.log('[REVENUE] Skipping report (no significant changes)');
+    }
+  } catch (error) {
+    console.error('[REVENUE] Report error:', error);
+    logError('system', error, { source: 'revenue-report' });
   }
 }, { timezone: config.agent.timezone });
 
