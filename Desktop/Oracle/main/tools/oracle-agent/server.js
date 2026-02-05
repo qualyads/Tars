@@ -4202,12 +4202,19 @@ cron.schedule('45 23 * * *', async () => {
 }, { timezone: config.agent.timezone });
 
 // =============================================================================
-// AUTONOMOUS IDEA ENGINE - Oracle คิดเอง ทำเอง
+// AUTONOMOUS IDEA ENGINE - Oracle คิดเอง ทำเอง (ทุก 30 นาที)
 // =============================================================================
 
-// Think every 6 hours: 6:00, 12:00, 18:00, 00:00 Bangkok time
-cron.schedule('0 0,6,12,18 * * *', async () => {
-  console.log('[IDEAS] 🧠 Autonomous Thinking Cycle triggered');
+// Think every 30 minutes during active hours (8:00-22:00)
+cron.schedule('*/30 * * * *', async () => {
+  const hour = new Date().getHours();
+  // Only run during active hours (8:00 - 22:00 Bangkok time)
+  if (hour < 8 || hour >= 22) {
+    console.log('[IDEAS] Outside active hours, skipping...');
+    return;
+  }
+
+  console.log('[IDEAS] 🧠 Autonomous Thinking Cycle triggered (every 30 min)');
   logSystemEvent('system', 'ideas_thinking_start', {});
 
   try {
@@ -4224,12 +4231,26 @@ cron.schedule('0 0,6,12,18 * * *', async () => {
   }
 }, { timezone: config.agent.timezone });
 
+// Run Ideas immediately on server start (after 30 seconds delay)
+setTimeout(async () => {
+  console.log('[IDEAS] 🚀 Running initial thinking cycle on startup...');
+  try {
+    const result = await autonomousIdeas.runThinkingCycle(config);
+    console.log('[IDEAS] Startup thinking result:', result.success ? 'success' : 'failed');
+    if (result.bestIdea) {
+      console.log('[IDEAS] Best idea:', result.bestIdea.name, '- Score:', result.bestIdea.score?.totalScore);
+    }
+  } catch (error) {
+    console.error('[IDEAS] Startup thinking error:', error.message);
+  }
+}, 30000); // 30 seconds after startup
+
 // =============================================================================
-// API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส
+// API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส (ทุก 2 ชม.)
 // =============================================================================
 
-// Hunt every 8 hours: 2:00, 10:00, 18:00 Bangkok time (offset from ideas)
-cron.schedule('0 2,10,18 * * *', async () => {
+// Hunt every 2 hours during active hours (9:00-21:00)
+cron.schedule('0 9,11,13,15,17,19,21 * * *', async () => {
   console.log('[API-HUNTER] 🔍 API Hunt Cycle triggered');
   logSystemEvent('system', 'api_hunt_start', {});
 
