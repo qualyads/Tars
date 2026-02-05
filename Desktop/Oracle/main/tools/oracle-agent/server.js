@@ -671,11 +671,22 @@ app.post('/webhook/line', async (req, res) => {
 
         const lowerMsg = userMessage.toLowerCase();
         const localAgentPatterns = [
-          { pattern: /สร้าง.*(โฟล?เดอร์|folder|dir)/i, type: 'mkdir', extract: (m) => {
-            // Try multiple patterns - รองรับ typo "โฟเดอร์" ด้วย
-            let name = m.match(/(?:โฟล?เดอร์|folder)\s+(\S+)/i)?.[1];
+          // รองรับ typo หลายแบบ: สร้าง/สร้ง, โฟลเดอร์/โฟเดอร์/โฟลเดอ
+          { pattern: /สร.{0,2}ง.*(โฟ.{0,3}เ?ดอ|folder|dir|mkdir)/i, type: 'mkdir', extract: (m) => {
+            // Try multiple patterns - รองรับ typo
+            let name = m.match(/(?:โฟ\S*เ?ดอร์?|folder)\s+(\S+)/i)?.[1];
             if (!name) name = m.match(/(?:ชื่อ|ว่า)\s*[""]?(\S+)/i)?.[1];
             if (!name) name = m.match(/desktop\s+(?:ว่า|ชื่อ)?\s*(\S+)/i)?.[1];
+            // Last resort: find any word that looks like a folder name (alphanumeric)
+            if (!name) {
+              const words = m.split(/\s+/);
+              for (const word of words) {
+                if (/^[a-zA-Z0-9_-]+$/.test(word) && word.length > 1) {
+                  name = word;
+                  break;
+                }
+              }
+            }
             // Clean up - remove common suffixes
             if (name) {
               name = name.replace(/[,\.\?!]+$/, '');
