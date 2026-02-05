@@ -566,10 +566,13 @@ app.post('/webhook/line', async (req, res) => {
             contextString += `\n\n📊 **ข้อมูล Beds24 Real-time (${dateThai} ${dateStr}):**`;
             contextString += `\n🏨 The Arch Casa มี 11 ห้อง`;
 
-            // Show REAL occupancy first (most important!)
+            // Show REAL occupancy (don't show "ห้องว่าง" because some rooms might be closed for sale)
             if (occupancy && !occupancy.error) {
               contextString += `\n📈 **Occupancy ${dateThai}:** ${occupancy.occupied}/${occupancy.totalRooms} ห้อง (${occupancy.occupancyRate}%)`;
-              contextString += `\n🛏️ **ห้องว่าง:** ${occupancy.available} ห้อง`;
+              // Note: ไม่แสดง "ห้องว่าง" เพราะบางห้องอาจปิดขายไว้ ต้องเช็คใน Beds24 Dashboard
+              if (occupancy.occupied === occupancy.totalRooms) {
+                contextString += `\n✅ **เต็มทุกห้อง!**`;
+              }
             }
 
             if (bookings && !bookings.error && Array.isArray(bookings)) {
