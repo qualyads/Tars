@@ -2677,6 +2677,22 @@ app.post('/api/hunt/analyze', async (req, res) => {
 });
 
 // =============================================================================
+// AI PROVIDER STATUS - ดูสถานะ AI provider + failover
+// =============================================================================
+
+// Get current AI provider status
+app.get('/api/ai/status', (req, res) => {
+  res.json({
+    ...claude.getProviderStatus(),
+    failoverConfig: {
+      providers: ['anthropic', 'openai', 'groq'],
+      openaiConfigured: !!process.env.OPENAI_API_KEY,
+      groqConfigured: !!process.env.GROQ_API_KEY
+    }
+  });
+});
+
+// =============================================================================
 // REVENUE REPORT API - รายงาน Revenue รายชั่วโมง
 // =============================================================================
 
@@ -4491,6 +4507,13 @@ const server = app.listen(PORT, async () => {
   });
   registerCleanup('local-agent', () => localAgentServer.shutdown(), { phase: 'cleanup', priority: 5 });
   console.log('[LOCAL-AGENT-SERVER] WebSocket server initialized');
+
+  // Setup Claude failover notification callback
+  claude.setNotifyCallback(async (message) => {
+    console.log('[CLAUDE-FAILOVER] Sending notification to LINE...');
+    await line.notifyOwner(message);
+  });
+  console.log('[CLAUDE] Failover notification callback configured');
 
   // Initialize Heartbeat System (Phase 4)
   if (config.heartbeat?.enabled) {
