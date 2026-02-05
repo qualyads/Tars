@@ -107,6 +107,9 @@ import memoryConsolidation from './lib/memory-consolidation.js';
 // Phase 5.6: User Profiles System
 import userProfiles from './lib/user-profiles.js';
 
+// Phase 6: Local Agent (Remote Execution)
+import localAgentServer from './lib/local-agent-server.js';
+
 // Phase 3.5: OpenClaw Upgrades
 import {
   initSessionLogger,
@@ -1809,6 +1812,109 @@ app.post('/api/autonomous/tasks/:taskId/complete', (req, res) => {
 });
 
 // =============================================================================
+// LOCAL AGENT API (Phase 6: Remote Execution)
+// =============================================================================
+
+// Get Local Agent status
+app.get('/api/local-agent/status', (req, res) => {
+  res.json(localAgentServer.getStatus());
+});
+
+// Execute shell command on Local Agent
+app.post('/api/local-agent/shell', async (req, res) => {
+  try {
+    const { command, cwd, timeout, approved } = req.body;
+
+    if (!localAgentServer.isConnected()) {
+      return res.status(503).json({
+        success: false,
+        error: 'No local agent connected. Please start local-agent.js on your Mac.'
+      });
+    }
+
+    const result = await localAgentServer.executeShell(command, { cwd, timeout, approved });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Execute Claude Code on Local Agent
+app.post('/api/local-agent/claude-code', async (req, res) => {
+  try {
+    const { prompt, cwd, timeout } = req.body;
+
+    if (!localAgentServer.isConnected()) {
+      return res.status(503).json({
+        success: false,
+        error: 'No local agent connected. Please start local-agent.js on your Mac.'
+      });
+    }
+
+    const result = await localAgentServer.executeClaudeCode(prompt, { cwd, timeout });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// File operation on Local Agent
+app.post('/api/local-agent/file', async (req, res) => {
+  try {
+    const { operation, filePath, content, encoding } = req.body;
+
+    if (!localAgentServer.isConnected()) {
+      return res.status(503).json({
+        success: false,
+        error: 'No local agent connected. Please start local-agent.js on your Mac.'
+      });
+    }
+
+    const result = await localAgentServer.fileOperation(operation, { filePath, content, encoding });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get system info from Local Agent
+app.get('/api/local-agent/system-info', async (req, res) => {
+  try {
+    if (!localAgentServer.isConnected()) {
+      return res.status(503).json({
+        success: false,
+        error: 'No local agent connected'
+      });
+    }
+
+    const result = await localAgentServer.getSystemInfo();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Approve pending command
+app.post('/api/local-agent/approve/:approvalId', async (req, res) => {
+  try {
+    const result = await localAgentServer.approveCommand(req.params.approvalId);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Reject pending command
+app.post('/api/local-agent/reject/:approvalId', async (req, res) => {
+  try {
+    const result = await localAgentServer.rejectCommand(req.params.approvalId);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =============================================================================
 // GMAIL PUB/SUB API
 // =============================================================================
 
@@ -3360,6 +3466,14 @@ const server = app.listen(PORT, async () => {
   // Initialize User Profiles System (Phase 5.6)
   userProfiles.init(config);
   console.log('[USER-PROFILES] System initialized');
+
+  // Initialize Local Agent WebSocket Server (Phase 6: Remote Execution)
+  localAgentServer.initialize(server);
+  localAgentServer.setNotifyCallback(async (message) => {
+    await line.notifyOwner(message);
+  });
+  registerCleanup('local-agent', () => localAgentServer.shutdown(), { phase: 'cleanup', priority: 5 });
+  console.log('[LOCAL-AGENT-SERVER] WebSocket server initialized');
 
   // Initialize Heartbeat System (Phase 4)
   if (config.heartbeat?.enabled) {
