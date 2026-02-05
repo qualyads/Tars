@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Oracle Local Agent v2.0
+ * Oracle Local Agent v2.1
  * รันบนเครื่อง Tars เพื่อ execute commands จาก LINE/Telegram
  *
  * Features:
@@ -10,12 +10,13 @@
  * - Claude Code integration
  * - Security layers (whitelist, path restriction)
  * - Approval flow for dangerous commands
+ * - Lock file to prevent duplicate instances
  *
  * Usage:
  *   node local-agent.js
  *   LOCAL_AGENT_KEY=xxx node local-agent.js
  *
- * @version 2.0.0
+ * @version 2.1.0
  */
 
 import WebSocket from 'ws';
@@ -25,6 +26,72 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import os from 'os';
+
+// =============================================================================
+// LOCK FILE - ป้องกันรันซ้ำ
+// =============================================================================
+
+const LOCK_FILE = '/tmp/oracle-local-agent.lock';
+
+function checkAndCreateLock() {
+  // Check if lock file exists
+  if (fs.existsSync(LOCK_FILE)) {
+    try {
+      const lockData = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8'));
+      const pid = lockData.pid;
+
+      // Check if process is still running
+      try {
+        process.kill(pid, 0); // Signal 0 = check if process exists
+        console.log(`\x1b[33m[LOCAL-AGENT] Already running (PID: ${pid})\x1b[0m`);
+        console.log(`\x1b[33m[LOCAL-AGENT] Lock file: ${LOCK_FILE}\x1b[0m`);
+        console.log(`\x1b[33m[LOCAL-AGENT] To force restart: rm ${LOCK_FILE}\x1b[0m`);
+        process.exit(0); // Exit gracefully, not an error
+      } catch (e) {
+        // Process not running, stale lock file
+        console.log(`[LOCAL-AGENT] Removing stale lock file (old PID: ${pid})`);
+        fs.unlinkSync(LOCK_FILE);
+      }
+    } catch (e) {
+      // Invalid lock file, remove it
+      fs.unlinkSync(LOCK_FILE);
+    }
+  }
+
+  // Create lock file
+  const lockData = {
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+    hostname: os.hostname()
+  };
+  fs.writeFileSync(LOCK_FILE, JSON.stringify(lockData, null, 2));
+  console.log(`[LOCAL-AGENT] Lock file created (PID: ${process.pid})`);
+
+  // Remove lock file on exit
+  const cleanup = () => {
+    try {
+      if (fs.existsSync(LOCK_FILE)) {
+        const data = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8'));
+        if (data.pid === process.pid) {
+          fs.unlinkSync(LOCK_FILE);
+          console.log('[LOCAL-AGENT] Lock file removed');
+        }
+      }
+    } catch (e) { }
+  };
+
+  process.on('exit', cleanup);
+  process.on('SIGINT', () => { cleanup(); process.exit(0); });
+  process.on('SIGTERM', () => { cleanup(); process.exit(0); });
+  process.on('uncaughtException', (err) => {
+    console.error('[LOCAL-AGENT] Uncaught exception:', err);
+    cleanup();
+    process.exit(1);
+  });
+}
+
+// Check lock immediately
+checkAndCreateLock();
 
 const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
