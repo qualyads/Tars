@@ -573,6 +573,28 @@ app.post('/webhook/line', async (req, res) => {
               if (occupancy.occupied === occupancy.totalRooms) {
                 contextString += `\n✅ **เต็มทุกห้อง!**`;
               }
+
+              // Show all guests staying with check-in links (for Nati to share with guests)
+              if (occupancy.bookings && occupancy.bookings.length > 0) {
+                contextString += `\n\n**แขกทั้งหมดที่พัก ${dateThai}:**`;
+                occupancy.bookings.forEach((b, i) => {
+                  const guestName = (b.firstName && b.lastName) ? `${b.firstName} ${b.lastName}` : (b.guestName || 'Guest');
+                  const checkinLink = b.id ? `https://thearchcasa.com/booking/${b.id}?lang=en` : null;
+                  contextString += `\n${i+1}. ${guestName} | Room ${b.roomId} | ${b.arrival} → ${b.departure}`;
+                  if (checkinLink) {
+                    contextString += `\n   🔗 ${checkinLink}`;
+                  }
+                });
+              }
+
+              // Show checkouts if any
+              if (occupancy.checkouts && occupancy.checkouts.length > 0) {
+                contextString += `\n\n**Check-out ${dateThai}:** ${occupancy.checkouts.length} คน`;
+                occupancy.checkouts.forEach(b => {
+                  const guestName = (b.firstName && b.lastName) ? `${b.firstName} ${b.lastName}` : (b.guestName || 'Guest');
+                  contextString += `\n- ${guestName} | Room ${b.roomId}`;
+                });
+              }
             }
 
             if (bookings && !bookings.error && Array.isArray(bookings)) {
@@ -583,6 +605,7 @@ app.post('/webhook/line', async (req, res) => {
                 bookings.forEach((b, i) => {
                   // Use enriched data from beds24.js (roomName, roomNameTh, guestName)
                   const nights = Math.ceil((new Date(b.departure) - new Date(b.arrival)) / (1000 * 60 * 60 * 24));
+                  const checkinLink = b.id ? `https://thearchcasa.com/booking/${b.id}?lang=en` : null;
                   contextString += `\n${i+1}. **${b.guestName || 'Guest'}** (${b.country?.toUpperCase() || 'N/A'})`;
                   contextString += `\n   - Booking ID: ${b.id || 'N/A'}`;
                   contextString += `\n   - ห้อง: ${b.roomSystemId || ''} ${b.roomNameTh || b.roomName || `Room ${b.roomId}`}`;
@@ -590,6 +613,9 @@ app.post('/webhook/line', async (req, res) => {
                   contextString += `\n   - ผู้เข้าพัก: ${b.numAdult} ผู้ใหญ่${b.numChild > 0 ? `, ${b.numChild} เด็ก` : ''}`;
                   contextString += `\n   - ราคา: ฿${b.price?.toLocaleString() || 'N/A'}`;
                   contextString += `\n   - ช่องทาง: ${b.apiSource || b.referer || 'Direct'}`;
+                  if (checkinLink) {
+                    contextString += `\n   - 🔗 Self Check-in: ${checkinLink}`;
+                  }
                 });
 
                 const totalRevenue = bookings.reduce((sum, b) => sum + (b.price || 0), 0);

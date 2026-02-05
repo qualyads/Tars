@@ -1,172 +1,122 @@
 # Session Handoff
 
-**From:** Session 2026-02-05 (morning)
+**From:** Session 2026-02-05
 **To:** Next Session
 
 ---
 
-## What We Did This Session
+## Current Status
 
-### 0. User Profiles System (v5.7.0) 🆕
-สร้างระบบจำแนก user และให้ข้อมูลตาม permission:
+```
+Oracle Agent v5.9.2
+├── Local: ✅ v5.9.2
+├── Railway: ✅ v5.9.0 → 5.9.2 (deploying)
+└── GitHub: ✅ pushed
+```
+
+---
+
+## What We Did This Session (2026-02-05)
+
+### 1. Hotel Briefing for คุณนิว (v5.9.2) 🆕
+
+สร้างระบบส่งข้อมูลโรงแรมให้คุณนิวอัตโนมัติ:
 
 | Feature | Description |
 |---------|-------------|
-| **Multi-User Identity** | รู้จัก user แต่ละคน (Tars = owner, นิว = partner) |
-| **Onboarding Flow** | ถาม user ใหม่ว่าต้องการอะไร แล้วจำไว้ |
-| **Permission Levels** | owner/partner/staff/guest - เห็นข้อมูลต่างกัน |
-| **Owner Commands** | "ลงทะเบียน นิว เป็น partner" |
+| **sendLineToUser()** | ส่ง LINE ไปหา user เฉพาะ (ไม่ใช่แค่ owner) |
+| **dailyHotelBriefing()** | ดึงข้อมูล Beds24 + สร้าง summary |
+| **Pricing Strategy** | คำแนะนำราคาตาม weekday/weekend/valentine |
+| **Schedule** | 08:00 และ 17:00 ทุกวัน |
 
-**Flow:**
+**คุณนิวจะได้รับ:**
 ```
-LINE Message เข้ามา
-       ↓
-เช็ค User ID → เคยเจอไหม?
-       ↓
-┌─────────────────────────────────────────────┐
-│ Owner (Tars)?  → Full access ทุกอย่าง      │
-│ Known user?    → ใช้ saved preferences      │
-│ Unknown user?  → Onboarding → ถามว่าต้องการอะไร │
-└─────────────────────────────────────────────┘
-       ↓
-AI ตอบตาม permission level
+🏨 Hotel Update พฤ. 5 ก.พ.
+
+📊 สถานะวันนี้
+├ Check-in: X booking
+├ Check-out: X booking
+├ พักอยู่: X booking
+└ Occupancy: X%
+
+📥 Check-in วันนี้:
+  • Guest 1
+  • Guest 2
+
+💰 กลยุทธ์ราคาวันนี้
+├ Weekend = Peak Rate / Weekday = Standard
+└ Valentine's Week = Premium!
 ```
 
-**Files:**
-- `lib/user-profiles.js` - User management system
-- `data/user-profiles.json` - Stored profiles
+**Files Changed:**
+- `lib/autonomous-scheduler.js` - เพิ่ม sendLineToUser, dailyHotelBriefing
+- `data/user-profiles.json` - เพิ่มคุณนิวเป็น partner
 
 ---
 
-### 1. Self-Improvement Features (v5.5.0)
-สร้าง 4 features สำหรับ AI self-improvement:
+### 2. User Profiles Updated
 
-| Feature | File | Purpose |
-|---------|------|---------|
-| **Mistake Tracker** | `lib/mistake-tracker.js` | บันทึกความผิดพลาด ป้องกันทำซ้ำ |
-| **Self-Reflection** | `lib/self-reflection.js` | เช็คคำตอบก่อนส่ง |
-| **Sentiment Analysis** | `lib/sentiment-analysis.js` | ตรวจอารมณ์ user |
-| **Quality Tracker** | `lib/quality-tracker.js` | วัดคุณภาพคำตอบ |
+| User | Role | LINE ID | Access |
+|------|------|---------|--------|
+| **Tars** | owner | Uba2ae89f... | Full access |
+| **นิว** | partner | U2ce78880... | Hotel, bookings, pricing |
 
-### 2. Proactive Partner Features (v5.6.0)
-สร้าง 4 features ที่ทำให้ Oracle proactive:
-
-| Feature | File | Purpose |
-|---------|------|---------|
-| **Reminder System** | `lib/reminder-system.js` | "เตือนผม 5 โมง โทรลูกค้า" |
-| **Google Calendar** | `lib/google-calendar.js` | ดู/สร้าง events |
-| **Daily Digest** | `lib/daily-digest.js` | Morning briefing, Evening summary |
-| **Memory Consolidation** | `lib/memory-consolidation.js` | Short-term → Long-term memory |
-
-### 3. Full Integration into Main Flow
-**ทุก feature ถูก integrate เข้า LINE webhook แล้ว:**
-
-```
-ข้อความเข้ามา
-    ↓
-1. Sentiment Analysis (วิเคราะห์อารมณ์)
-2. Memory Consolidation (บันทึก short-term)
-3. Mistake Tracker (เช็ค prevention rules)
-    ↓
-[AI สร้าง Response]
-    ↓
-4. Self-Reflection (เช็คก่อนส่ง)
-5. Quality Tracker (ให้คะแนน)
-    ↓
-ส่ง LINE
-```
-
-### 4. Scheduled Tasks
-| เวลา | Task | Action |
-|------|------|--------|
-| 07:00 | Morning Briefing | ส่ง LINE สรุปวันนี้ |
-| 18:00 | Evening Summary | ส่ง LINE สรุปวันที่ผ่านมา |
-| 00:00 | Memory Consolidation | รวม memories เก่า |
-| ทุกนาที | Reminder Check | ส่ง reminders ที่ถึงเวลา |
+**คุณนิว subscriptions:**
+- ✅ dailyPricingStrategy
+- ✅ checkInAlerts
+- ✅ occupancyUpdates
 
 ---
 
-## Files Changed
+### 3. Revenue Projection Analysis
 
-| File | Change |
-|------|--------|
-| `lib/mistake-tracker.js` | **NEW** - Self-learning from errors |
-| `lib/self-reflection.js` | **NEW** - Pre-send response checking |
-| `lib/sentiment-analysis.js` | **NEW** - User mood detection |
-| `lib/quality-tracker.js` | **NEW** - Response quality scoring |
-| `lib/reminder-system.js` | **NEW** - Natural language reminders |
-| `lib/google-calendar.js` | **NEW** - Calendar integration |
-| `lib/daily-digest.js` | **NEW** - Morning/evening summaries |
-| `lib/memory-consolidation.js` | **NEW** - Memory management |
-| `server.js` | Integrated all features + schedules |
-| `config.json` | v5.6.0 |
+**ตรวจสอบการคำนวณ:**
+- The Arch Casa มี **11 ห้อง** (ไม่ใช่ 6 ห้องตาม memory เก่า)
+- ราคา ~฿1,500-1,800/ห้อง/คืน = สมเหตุสมผล
+- Betel Palm, Paddy Fields, 365 Vila → ไม่มี Beds24 data (อาจเป็นการประมาณ)
 
 ---
 
 ## Oracle Agent Status
 
 ```
-Oracle Agent v5.6.0 - FULLY INTEGRATED PROACTIVE PARTNER
+Oracle Agent v5.9.2
 ├── Phase 1-3: Core + Autonomy ✅
 ├── Phase 4-6: Heartbeat + Sub-Agent + Gateway ✅
 ├── Phase 7-9: Failover + Webhooks + Queue ✅
 ├── Phase 10-15: Gmail + Thinking Levels ✅
-├── Phase 16-19: Tier 1-3 Features ✅
-├── Phase 5.4: Self-Improvement ✅ INTEGRATED
-│   ├── Sentiment Analysis (AUTO every message)
-│   ├── Self-Reflection (AUTO before reply)
-│   ├── Quality Tracker (AUTO after reply)
-│   └── Mistake Tracker (AUTO prevention)
-└── Phase 5.5: Proactive Partner ✅ INTEGRATED
-    ├── Reminder System (notify via LINE)
-    ├── Daily Digest (7:00 + 18:00)
-    ├── Memory Consolidation (midnight)
-    └── Google Calendar (needs credentials)
+├── Phase 16-19: Self-Improvement + Proactive ✅
+├── v5.8.x: Seed Memory + Heartbeat Fix ✅
+└── v5.9.2: Hotel Briefing for Partner ✅ NEW
+    ├── sendLineToUser() - ส่ง LINE หา user เฉพาะ
+    ├── dailyHotelBriefing() - ข้อมูล + กลยุทธ์ราคา
+    └── Schedule 08:00 & 17:00
 ```
 
-**Total lib files:** 87 files
+---
+
+## Scheduled Tasks (Updated)
+
+| เวลา | Task | ส่งให้ใคร |
+|------|------|----------|
+| 07:00 | Morning Briefing (Market) | Tars |
+| **08:00** | **Hotel Briefing** | **นิว** 🆕 |
+| **17:00** | **Hotel Briefing** | **นิว** 🆕 |
+| 18:00 | Evening Summary | Tars |
+| ทุกชม. | Market Check | Tars (ถ้ามี alert) |
+| 00:00 | Memory Consolidation | - |
 
 ---
 
 ## Git Status
 
-**Commits this session:**
-1. `7418626` - Oracle Agent v5.5.0: Self-Improvement Features
-2. `45f26f1` - Update handoff: Oracle v5.5.0
-3. `6360d05` - Oracle Agent v5.6.0: Proactive Partner Features
-4. `4462c3b` - Integrate all features into main flow
-
-**All pushed to GitHub ✅**
-
----
-
-## What's Now Auto-Running
-
-### On Every LINE Message:
-1. ✅ Sentiment Analysis - ตรวจอารมณ์
-2. ✅ Memory Storage - บันทึก short-term
-3. ✅ Mistake Check - ป้องกันความผิดพลาด
-4. ✅ Self-Reflection - เช็คก่อนส่ง
-5. ✅ Quality Score - วัดคุณภาพ
-
-### Scheduled:
-1. ✅ Morning Briefing - 07:00 daily
-2. ✅ Evening Summary - 18:00 daily
-3. ✅ Memory Consolidation - 00:00 daily
-4. ✅ Reminder Check - every minute
-
----
-
-## Pending Setup (Optional)
-
-1. **Google Calendar** - ต้องใส่ credentials:
-   - `GOOGLE_CLIENT_ID`
-   - `GOOGLE_CLIENT_SECRET`
-   - `GOOGLE_REFRESH_TOKEN`
-
-2. **Telegram** - ยังไม่ได้ enable:
-   - `bot_token`
-   - `owner_id`
+**Latest commits:**
+```
+833e6ff v5.9.2: Add hotel briefing for Niw (partner)
+8612141 v5.9.1: Fix room availability calculation
+8501744 v5.9.0: Add seed memory
+d6ae8d3 v5.8.5: Fix heartbeat hallucination
+```
 
 ---
 
@@ -175,85 +125,32 @@ Oracle Agent v5.6.0 - FULLY INTEGRATED PROACTIVE PARTNER
 <!-- PERSIST -->
 **สำคัญมาก - Oracle ต้องจำ:**
 
-1. **เช็คโค้ดก่อนพูดเสมอ**
-   - `ls lib/` ก่อนบอกจำนวน features
-   - `grep -l "keyword"` ก่อนบอกว่าไม่มี
-   - ห้าม assume จาก memory
+1. **The Arch Casa มี 11 ห้อง** (ไม่ใช่ 6 ห้อง)
+   - Room mapping อยู่ใน `lib/beds24.js`
+   - A01-A06, B07-B09, C10-C11
 
-2. **Oracle v5.6.0 = Proactive Partner**
-   - 87 lib files
-   - 8 features ใหม่ (4 self-improvement + 4 proactive)
-   - ทุกอย่าง integrate เข้า main flow แล้ว
+2. **เช็คโค้ดก่อนพูดเสมอ**
+   - ห้าม assume จาก memory เก่า
+   - โค้ดไม่โกหก
 
-3. **Auto-run ทุกข้อความ:**
-   - Sentiment → Mistake Check → AI → Reflection → Quality
+3. **Railway Deployment**
+   - สั่ง deploy ครั้งเดียว แล้วรอ!
+   - ไม่สั่งซ้ำขณะ building
+   - ดู Dashboard รอจน "Deployed"
+
+4. **Multi-User LINE**
+   - sendLine() → ส่งให้ owner (Tars)
+   - sendLineToUser(userId, msg) → ส่งให้ user เฉพาะ
 <!-- /PERSIST -->
 
 ---
 
 ## Next Session Should
 
-1. **Test** - ส่งข้อความ LINE ทดสอบว่า features ทำงาน
-2. **Monitor** - ดู logs ว่า sentiment/quality ทำงาน
-3. **Setup Calendar** - ถ้าต้องการใช้ Google Calendar
-4. **Check Digests** - รอดู morning/evening summaries
+1. **เช็ค Railway** - รอ build เสร็จ แล้วเช็ค version 5.9.2
+2. **ถามคุณนิว** - ได้รับ hotel briefing ไหม
+3. **Monitor** - ดูว่า 08:00 & 17:00 ส่งจริงไหม
 
 ---
 
-## OpenClaw Analysis (Saved for Future)
-
-บันทึกไว้สำหรับการพัฒนาในอนาคต:
-
-**Files created:**
-- `ψ/memory/knowledge/openclaw-features.md` - Analysis summary
-- `ψ/memory/archive/2026-02-04_openclaw-comparison.md` - Full comparison
-
-**Priority features for Best Hotel Pai:**
-
-| Tier | Feature | Why |
-|------|---------|-----|
-| 1 | WhatsApp (Baileys) | นักท่องเที่ยวต่างชาติ |
-| 1 | Image Processing | รับสลิปโอนเงิน |
-| 1 | Audio Transcription | Voice notes |
-| 2 | Browser Automation | Scrape ราคาคู่แข่ง |
-| 2 | Lobster Workflows | Guest journey automation |
-
-**Oracle vs OpenClaw:**
-- Oracle: 46 features (เน้น self-improvement + business)
-- OpenClaw: 55 features (เน้น channels + enterprise)
-- Gap: 19 features (ส่วนใหญ่ไม่จำเป็นสำหรับ hotel business)
-
----
-
----
-
-## 🔴 INCOMPLETE: n8n Service (2026-02-04)
-
-**Goal:** Claude รับทำ n8n ให้ลูกค้าได้ 100%
-
-**ทำแล้ว:**
-- ✅ Research n8n + MCP + API
-- ✅ สร้าง workflow ตัวอย่าง (`tools/n8n-test/line-to-sheets-workflow.json`)
-- ✅ บันทึก skill (`ψ/skills/n8n.md`)
-- ✅ บันทึกข้อจำกัดของ Claude (ไม่สามารถกรอกฟอร์ม/สมัคร account)
-
-**ยังไม่ได้ทำ:**
-- [ ] Deploy n8n instance
-- [ ] ทดสอบ import workflow
-- [ ] ทดสอบ API create workflow
-- [ ] Verify ทำงานได้จริง
-
-**ต้องทำก่อนรับงานลูกค้า:**
-1. Tars สมัคร n8n Cloud หรือ Deploy Railway
-2. ให้ URL + API Key
-3. Claude ทดสอบ
-4. อัพเดท skill status เป็น ✅ VERIFIED
-
-**Lessons Learned:**
-- Claude ไม่สามารถกรอกฟอร์ม/สมัคร account ได้ (ไม่มี browser automation)
-- แต่ถ้ามี CLI login (เช่น Railway) Claude deploy ได้
-- หลังจากมี API Key แล้ว Claude ทำได้ทุกอย่าง
-
----
-
-*Handoff updated: 2026-02-04 - v5.6.0 + n8n skill (🔴 INCOMPLETE)*
+*Handoff updated: 2026-02-05 11:30 - v5.9.2*
