@@ -1275,6 +1275,40 @@ ${shouldDeploy ? '- จะ deploy ขึ้น Railway เมื่อเสร�
         }
 
         // =====================================================================
+        // SUPABASE SEMANTIC MEMORY - ค้นหา memory จาก Supabase ด้วย semantic search
+        // =====================================================================
+        try {
+          const { query: dbQuery } = await import('./lib/db-postgres.js');
+          const { generateEmbedding } = await import('./lib/embedding.js');
+
+          // Generate embedding for user message
+          const embedding = await generateEmbedding(userMessage);
+          if (embedding) {
+            // Semantic search in Supabase
+            const searchResult = await dbQuery(`
+              SELECT content, context, memory_type, importance,
+                     1 - (embedding <=> $1) as similarity
+              FROM episodic_memory
+              WHERE user_id = $2 AND embedding IS NOT NULL
+              ORDER BY embedding <=> $1
+              LIMIT 5
+            `, [embedding, 'tars']);
+
+            if (searchResult.rows && searchResult.rows.length > 0) {
+              contextString += `\n\n🧠 **Supabase Memory (Semantic Search):**`;
+              searchResult.rows.forEach((mem) => {
+                if (mem.similarity > 0.3) { // Only show relevant results
+                  contextString += `\n- ${mem.content}`;
+                }
+              });
+              console.log(`[LINE] Supabase semantic search: ${searchResult.rows.length} results`);
+            }
+          }
+        } catch (supabaseErr) {
+          console.error('[LINE] Supabase memory search error:', supabaseErr.message);
+        }
+
+        // =====================================================================
         // IMAGE GENERATION - ถ้า user ขอ gen รูป ให้ทำเลย
         // =====================================================================
         if (imageGen.isImageRequest(userMessage)) {
