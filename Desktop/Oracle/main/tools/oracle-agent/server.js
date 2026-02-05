@@ -666,9 +666,19 @@ app.post('/webhook/line', async (req, res) => {
         }
 
         // Detect commands that need Local Agent
+        console.log('[LOCAL-AGENT-DETECT] Checking message:', userMessage);
+        console.log('[LOCAL-AGENT-DETECT] Agent connected:', isLocalAgentConnected);
+
         const lowerMsg = userMessage.toLowerCase();
         const localAgentPatterns = [
-          { pattern: /สร้าง\s*(โฟลเดอร์|folder|dir)/i, type: 'mkdir', extract: (m) => m.match(/(?:ชื่อ|ว่า|ใน\s*desktop\s*ว่า|ว่า)\s*["""]?([^\s""",]+)/i)?.[1] || m.match(/(?:โฟลเดอร์|folder)\s+([^\s]+)/i)?.[1] },
+          { pattern: /สร้าง.*(โฟลเดอร์|folder|dir)/i, type: 'mkdir', extract: (m) => {
+            // Try multiple patterns
+            let name = m.match(/(?:โฟลเดอร์|folder)\s+(\S+)/i)?.[1];
+            if (!name) name = m.match(/(?:ชื่อ|ว่า)\s*[""]?(\S+)/i)?.[1];
+            if (!name) name = m.match(/สร้าง\S*\s+(\S+)/i)?.[1];
+            console.log('[LOCAL-AGENT-EXTRACT] Extracted folder name:', name);
+            return name;
+          }},
           { pattern: /(?:ดู|list|ls)\s*(?:ไฟล์|files?)/i, type: 'ls' },
           { pattern: /git\s+(status|pull|push|log|diff)/i, type: 'git' },
           { pattern: /(?:ให้|run)\s*claude\s*code/i, type: 'claude_code' },
@@ -677,7 +687,9 @@ app.post('/webhook/line', async (req, res) => {
 
         let localAgentResult = null;
         for (const { pattern, type, extract } of localAgentPatterns) {
+          console.log(`[LOCAL-AGENT-DETECT] Testing pattern ${type}:`, pattern.test(userMessage));
           if (pattern.test(userMessage)) {
+            console.log(`[LOCAL-AGENT-DETECT] *** MATCHED ${type} ***`);
             if (!isLocalAgentConnected) {
               contextString += `\n\n[LOCAL_AGENT_ERROR: ไม่มี Local Agent connected - บอก user ให้รัน node local-agent.js ก่อน]`;
               break;
