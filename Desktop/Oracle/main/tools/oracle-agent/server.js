@@ -665,109 +665,89 @@ app.post('/webhook/line', async (req, res) => {
           contextString += `\n[LOCAL_AGENT: connected ✅ - สามารถ execute commands บน Mac ได้]`;
         }
 
-        // Detect commands that need Local Agent
+        // Detect commands that need Local Agent - ใช้ AI classify intent
         console.log('[LOCAL-AGENT-DETECT] Checking message:', userMessage);
         console.log('[LOCAL-AGENT-DETECT] Agent connected:', isLocalAgentConnected);
 
+        // ถ้า Local Agent connected → ใช้ Claude Haiku วิเคราะห์ intent
+        let localAgentIntent = null;
+        if (isLocalAgentConnected) {
+          try {
+            const intentPrompt = `วิเคราะห์ข้อความนี้ว่าต้องการทำอะไรบนเครื่องคอม:
+"${userMessage}"
+
+ถ้าต้องการ:
+- สร้างโฟลเดอร์ → ตอบ: {"action":"mkdir","name":"ชื่อโฟลเดอร์"}
+- เปิด browser → ตอบ: {"action":"open_browser","app":"Chrome/Safari/Firefox"}
+- ดูไฟล์ใน Desktop → ตอบ: {"action":"ls"}
+- git command → ตอบ: {"action":"git","cmd":"status/pull/etc"}
+- ไม่เกี่ยวกับการทำงานบนคอม → ตอบ: {"action":"none"}
+
+ตอบ JSON เท่านั้น ไม่ต้องอธิบาย:`;
+
+            const intentResponse = await claude.chat([{ role: 'user', content: intentPrompt }], {
+              model: 'claude-3-haiku-20240307',
+              max_tokens: 100
+            });
+
+            const intentText = intentResponse.content?.[0]?.text || intentResponse;
+            const jsonMatch = intentText.match(/\{[^}]+\}/);
+            if (jsonMatch) {
+              localAgentIntent = JSON.parse(jsonMatch[0]);
+              console.log('[LOCAL-AGENT-INTENT] Detected:', localAgentIntent);
+            }
+          } catch (intentErr) {
+            console.error('[LOCAL-AGENT-INTENT] Error:', intentErr.message);
+          }
+        }
+
         const lowerMsg = userMessage.toLowerCase();
-        const localAgentPatterns = [
-          // รองรับ typo หลายแบบ: สร้าง/สร้ง, โฟลเดอร์/โฟเดอร์/โฟลเดอ
-          { pattern: /สร.{0,2}ง.*(โฟ.{0,3}เ?ดอ|folder|dir|mkdir)/i, type: 'mkdir', extract: (m) => {
-            // Try multiple patterns - รองรับ typo
-            let name = m.match(/(?:โฟ\S*เ?ดอร์?|folder)\s+(\S+)/i)?.[1];
-            if (!name) name = m.match(/(?:ชื่อ|ว่า)\s*[""]?(\S+)/i)?.[1];
-            if (!name) name = m.match(/desktop\s+(?:ว่า|ชื่อ)?\s*(\S+)/i)?.[1];
-            // Last resort: find any word that looks like a folder name (alphanumeric)
-            if (!name) {
-              const words = m.split(/\s+/);
-              for (const word of words) {
-                if (/^[a-zA-Z0-9_-]+$/.test(word) && word.length > 1) {
-                  name = word;
-                  break;
-                }
-              }
-            }
-            // Clean up - remove common suffixes
-            if (name) {
-              name = name.replace(/[,\.\?!]+$/, '');
-              name = name.replace(/^(ใน|บน|ที่)/, '');
-            }
-            console.log('[LOCAL-AGENT-EXTRACT] Extracted folder name:', name);
-            return name;
-          }},
-          { pattern: /เปิด.*(browser|บราวเซอร์|chrome|safari|firefox|google)/i, type: 'open_browser' },
-          { pattern: /(?:ดู|list|ls)\s*(?:ไฟล์|files?)/i, type: 'ls' },
-          { pattern: /git\s+(status|pull|push|log|diff)/i, type: 'git' },
-          { pattern: /(?:ให้|run)\s*claude\s*code/i, type: 'claude_code' },
-          { pattern: /(?:npx|npm)\s+create/i, type: 'create_project' }
-        ];
 
+        // Execute based on AI intent
         let localAgentResult = null;
-        for (const { pattern, type, extract } of localAgentPatterns) {
-          console.log(`[LOCAL-AGENT-DETECT] Testing pattern ${type}:`, pattern.test(userMessage));
-          if (pattern.test(userMessage)) {
-            console.log(`[LOCAL-AGENT-DETECT] *** MATCHED ${type} ***`);
-            if (!isLocalAgentConnected) {
-              contextString += `\n\n[LOCAL_AGENT_ERROR: ไม่มี Local Agent connected - บอก user ให้รัน node local-agent.js ก่อน]`;
-              break;
+        if (localAgentIntent && localAgentIntent.action !== 'none') {
+          console.log(`[LOCAL-AGENT] Executing intent:`, localAgentIntent);
+
+          try {
+            if (localAgentIntent.action === 'mkdir' && localAgentIntent.name) {
+              const folderName = localAgentIntent.name;
+              const targetPath = `/Users/tanakitchaithip/Desktop/${folderName}`;
+              localAgentResult = await localAgentServer.fileOperation('mkdir', { filePath: targetPath });
+              if (localAgentResult.success) {
+                contextString += `\n\n[LOCAL_AGENT_RESULT: สร้างโฟลเดอร์ "${folderName}" บน Desktop สำเร็จแล้ว ✅]`;
+              } else {
+                contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error}]`;
+              }
+            }
+            else if (localAgentIntent.action === 'ls') {
+              localAgentResult = await localAgentServer.executeShell('ls -la ~/Desktop | head -20');
+              if (localAgentResult.success) {
+                contextString += `\n\n[LOCAL_AGENT_RESULT: Files on Desktop]\n${localAgentResult.stdout}`;
+              }
+            }
+            else if (localAgentIntent.action === 'git' && localAgentIntent.cmd) {
+              const gitCmd = `git ${localAgentIntent.cmd}`;
+              localAgentResult = await localAgentServer.executeShell(gitCmd);
+              if (localAgentResult.success) {
+                contextString += `\n\n[LOCAL_AGENT_RESULT: ${gitCmd}]\n${localAgentResult.stdout}`;
+              } else {
+                contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error || localAgentResult.stderr}]`;
+              }
+            }
+            else if (localAgentIntent.action === 'open_browser') {
+              const appName = localAgentIntent.app || 'Google Chrome';
+              localAgentResult = await localAgentServer.executeShell(`open -a "${appName}"`);
+              if (localAgentResult.success) {
+                contextString += `\n\n[LOCAL_AGENT_RESULT: เปิด ${appName} สำเร็จแล้ว ✅]`;
+              } else {
+                contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error}]`;
+              }
             }
 
-            try {
-              console.log(`[LOCAL-AGENT] Detected ${type} command`);
-
-              if (type === 'mkdir') {
-                const folderName = extract ? extract(userMessage) : null;
-                if (folderName) {
-                  const targetPath = `/Users/tanakitchaithip/Desktop/${folderName}`;
-                  localAgentResult = await localAgentServer.fileOperation('mkdir', { filePath: targetPath });
-                  if (localAgentResult.success) {
-                    contextString += `\n\n[LOCAL_AGENT_RESULT: สร้างโฟลเดอร์ ${folderName} บน Desktop สำเร็จแล้ว ✅]`;
-                  } else {
-                    contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error}]`;
-                  }
-                } else {
-                  contextString += `\n\n[LOCAL_AGENT: ต้องการชื่อโฟลเดอร์ - ถาม user ว่าจะตั้งชื่อว่าอะไร]`;
-                }
-              }
-              else if (type === 'ls') {
-                localAgentResult = await localAgentServer.executeShell('ls -la ~/Desktop | head -20');
-                if (localAgentResult.success) {
-                  contextString += `\n\n[LOCAL_AGENT_RESULT: Files on Desktop]\n${localAgentResult.stdout}`;
-                }
-              }
-              else if (type === 'git') {
-                const gitCmd = userMessage.match(/git\s+(status|pull|push|log|diff)/i)?.[0];
-                if (gitCmd) {
-                  localAgentResult = await localAgentServer.executeShell(gitCmd);
-                  if (localAgentResult.success) {
-                    contextString += `\n\n[LOCAL_AGENT_RESULT: ${gitCmd}]\n${localAgentResult.stdout}`;
-                  } else {
-                    contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error || localAgentResult.stderr}]`;
-                  }
-                }
-              }
-              else if (type === 'open_browser') {
-                // Detect which browser to open
-                const browserMatch = userMessage.match(/(chrome|safari|firefox)/i);
-                const browser = browserMatch ? browserMatch[1] : 'Google Chrome';
-                const appName = browser.toLowerCase() === 'chrome' ? 'Google Chrome' :
-                                browser.toLowerCase() === 'safari' ? 'Safari' :
-                                browser.toLowerCase() === 'firefox' ? 'Firefox' : 'Google Chrome';
-
-                localAgentResult = await localAgentServer.executeShell(`open -a "${appName}"`);
-                if (localAgentResult.success) {
-                  contextString += `\n\n[LOCAL_AGENT_RESULT: เปิด ${appName} สำเร็จแล้ว ✅]`;
-                } else {
-                  contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error}]`;
-                }
-              }
-
-              console.log('[LOCAL-AGENT] Result:', localAgentResult?.success ? 'success' : 'failed');
-            } catch (localErr) {
-              console.error('[LOCAL-AGENT] Error:', localErr.message);
-              contextString += `\n\n[LOCAL_AGENT_ERROR: ${localErr.message}]`;
-            }
-            break;
+            console.log('[LOCAL-AGENT] Result:', localAgentResult?.success ? 'success' : 'failed');
+          } catch (localErr) {
+            console.error('[LOCAL-AGENT] Error:', localErr.message);
+            contextString += `\n\n[LOCAL_AGENT_ERROR: ${localErr.message}]`;
           }
         }
 
