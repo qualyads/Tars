@@ -7,6 +7,14 @@ import pg from 'pg';
 const { Pool } = pg;
 
 let pool = null;
+let vectorEnabled = false;
+
+/**
+ * Check if pgvector is enabled
+ */
+export function isVectorEnabled() {
+  return vectorEnabled;
+}
 
 /**
  * Initialize PostgreSQL connection pool
@@ -34,9 +42,15 @@ export async function initPostgres() {
     const client = await pool.connect();
     console.log('[DB] PostgreSQL connected successfully');
 
-    // Enable pgvector extension
-    await client.query('CREATE EXTENSION IF NOT EXISTS vector');
-    console.log('[DB] pgvector extension enabled');
+    // Try to enable pgvector extension (optional)
+    try {
+      await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+      vectorEnabled = true;
+      console.log('[DB] pgvector extension enabled');
+    } catch (vectorError) {
+      vectorEnabled = false;
+      console.log('[DB] pgvector not available, using text search instead');
+    }
 
     client.release();
 
@@ -55,7 +69,8 @@ export async function initPostgres() {
  * Initialize database schema
  */
 async function initSchema() {
-  const schema = `
+  // Schema without vector columns (works without pgvector)
+  const baseSchema = `
     -- Episodic Memory: conversations and events
     CREATE TABLE IF NOT EXISTS episodic_memory (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -63,8 +78,8 @@ async function initSchema() {
       content TEXT NOT NULL,
       context JSONB DEFAULT '{}',
       memory_type TEXT DEFAULT 'conversation',
-      embedding vector(1536),
       importance FLOAT DEFAULT 0.5,
+      search_text TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       last_accessed TIMESTAMPTZ DEFAULT NOW()
     );
@@ -77,7 +92,7 @@ async function initSchema() {
       object TEXT NOT NULL,
       confidence FLOAT DEFAULT 1.0,
       source_episodes UUID[],
-      embedding vector(1536),
+      search_text TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
@@ -149,14 +164,28 @@ async function initSchema() {
     -- Create indexes
     CREATE INDEX IF NOT EXISTS idx_episodic_user ON episodic_memory(user_id);
     CREATE INDEX IF NOT EXISTS idx_episodic_created ON episodic_memory(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_episodic_search ON episodic_memory USING gin(to_tsvector('english', search_text));
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_learnings_type ON learnings(type);
     CREATE INDEX IF NOT EXISTS idx_reasoning_created ON reasoning_logs(created_at DESC);
   `;
 
   try {
-    await pool.query(schema);
-    console.log('[DB] Schema initialized');
+    await pool.query(baseSchema);
+    console.log('[DB] Schema initialized (text search mode)');
+
+    // Add vector columns if pgvector is available
+    if (vectorEnabled) {
+      try {
+        await pool.query(`
+          ALTER TABLE episodic_memory ADD COLUMN IF NOT EXISTS embedding vector(1536);
+          ALTER TABLE semantic_memory ADD COLUMN IF NOT EXISTS embedding vector(1536);
+        `);
+        console.log('[DB] Vector columns added');
+      } catch (e) {
+        console.log('[DB] Could not add vector columns:', e.message);
+      }
+    }
   } catch (error) {
     console.error('[DB] Schema initialization failed:', error.message);
   }
@@ -200,5 +229,6 @@ export default {
   initPostgres,
   getPool,
   query,
-  closePostgres
+  closePostgres,
+  isVectorEnabled
 };

@@ -1,6 +1,6 @@
 {
   "name": "oracle-agent",
-  "version": "6.0.0",
+  "version": "6.0.1",
   "description": "Oracle Agent - Digital Partner for Tars (Phase 9: Practical AGI + Unified Memory)",
   "type": "module",
   "main": "server.js",

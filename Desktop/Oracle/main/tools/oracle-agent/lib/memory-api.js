@@ -5,7 +5,7 @@
  */
 
 import express from 'express';
-import { query, getPool } from './db-postgres.js';
+import { query, getPool, isVectorEnabled } from './db-postgres.js';
 import { generateEmbedding } from './embedding.js';
 
 const router = express.Router();
@@ -77,6 +77,7 @@ router.get('/context', async (req, res) => {
 
     res.json({
       status: 'ok',
+      vector_enabled: isVectorEnabled(),
       user: profile,
       recent_memories: memoriesResult.rows,
       recent_mistakes: mistakesResult.rows,
@@ -105,24 +106,32 @@ router.post('/save', async (req, res) => {
       return res.status(400).json({ error: 'Content is required' });
     }
 
-    // Generate embedding
+    // Generate embedding if vector is enabled
     let embedding = null;
-    try {
-      embedding = await generateEmbedding(content);
-    } catch (e) {
-      console.log('[Memory API] Embedding generation skipped:', e.message);
+    if (isVectorEnabled()) {
+      try {
+        embedding = await generateEmbedding(content);
+      } catch (e) {
+        console.log('[Memory API] Embedding generation skipped:', e.message);
+      }
     }
 
+    // Create search text for full-text search
+    const searchText = content.toLowerCase();
+
     const result = await query(`
-      INSERT INTO episodic_memory (user_id, content, context, memory_type, embedding, importance)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO episodic_memory (user_id, content, context, memory_type, importance, search_text${embedding ? ', embedding' : ''})
+      VALUES ($1, $2, $3, $4, $5, $6${embedding ? ', $7' : ''})
       RETURNING id
-    `, [user_id, content, context, memory_type, embedding, importance]);
+    `, embedding
+      ? [user_id, content, context, memory_type, importance, searchText, embedding]
+      : [user_id, content, context, memory_type, importance, searchText]);
 
     res.json({
       status: 'ok',
       id: result.rows[0].id,
-      message: 'Memory saved successfully'
+      message: 'Memory saved successfully',
+      vector_enabled: isVectorEnabled()
     });
   } catch (error) {
     console.error('[Memory API] Save error:', error);
@@ -148,40 +157,64 @@ router.get('/search', async (req, res) => {
       return res.status(400).json({ error: 'Search query is required' });
     }
 
-    // Try semantic search with embedding
     let results = [];
-    try {
-      const embedding = await generateEmbedding(searchText);
-      if (embedding) {
-        const semanticResult = await query(`
-          SELECT content, context, memory_type, importance,
-                 1 - (embedding <=> $1) as similarity
-          FROM episodic_memory
-          WHERE user_id = $2 AND embedding IS NOT NULL
-          ORDER BY embedding <=> $1
-          LIMIT $3
-        `, [embedding, user_id, parseInt(limit)]);
-        results = semanticResult.rows;
+    let searchMode = 'text';
+
+    // Try semantic search with embedding if vector is enabled
+    if (isVectorEnabled()) {
+      try {
+        const embedding = await generateEmbedding(searchText);
+        if (embedding) {
+          const semanticResult = await query(`
+            SELECT content, context, memory_type, importance,
+                   1 - (embedding <=> $1) as similarity
+            FROM episodic_memory
+            WHERE user_id = $2 AND embedding IS NOT NULL
+            ORDER BY embedding <=> $1
+            LIMIT $3
+          `, [embedding, user_id, parseInt(limit)]);
+          results = semanticResult.rows;
+          searchMode = 'semantic';
+        }
+      } catch (e) {
+        console.log('[Memory API] Semantic search failed, falling back to text search');
       }
-    } catch (e) {
-      console.log('[Memory API] Semantic search failed, falling back to text search');
     }
 
-    // Fallback to text search
+    // Fallback to full-text search
     if (results.length === 0) {
-      const textResult = await query(`
-        SELECT content, context, memory_type, importance, 0.5 as similarity
-        FROM episodic_memory
-        WHERE user_id = $1 AND content ILIKE $2
-        ORDER BY importance DESC, created_at DESC
-        LIMIT $3
-      `, [user_id, `%${searchText}%`, parseInt(limit)]);
-      results = textResult.rows;
+      // Try PostgreSQL full-text search first
+      try {
+        const ftsResult = await query(`
+          SELECT content, context, memory_type, importance,
+                 ts_rank(to_tsvector('english', COALESCE(search_text, content)), plainto_tsquery('english', $2)) as similarity
+          FROM episodic_memory
+          WHERE user_id = $1
+            AND to_tsvector('english', COALESCE(search_text, content)) @@ plainto_tsquery('english', $2)
+          ORDER BY similarity DESC, importance DESC
+          LIMIT $3
+        `, [user_id, searchText, parseInt(limit)]);
+        results = ftsResult.rows;
+        searchMode = 'fulltext';
+      } catch (e) {
+        // Fallback to ILIKE search
+        const textResult = await query(`
+          SELECT content, context, memory_type, importance, 0.5 as similarity
+          FROM episodic_memory
+          WHERE user_id = $1 AND content ILIKE $2
+          ORDER BY importance DESC, created_at DESC
+          LIMIT $3
+        `, [user_id, `%${searchText}%`, parseInt(limit)]);
+        results = textResult.rows;
+        searchMode = 'ilike';
+      }
     }
 
     res.json({
       status: 'ok',
       query: searchText,
+      search_mode: searchMode,
+      vector_enabled: isVectorEnabled(),
       results
     });
   } catch (error) {
