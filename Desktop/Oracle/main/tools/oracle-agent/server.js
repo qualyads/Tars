@@ -74,6 +74,7 @@ import pricing from './lib/pricing.js';
 import parcelTracking from './lib/parcel-tracking.js';
 import parcelWatchlist from './lib/parcel-watchlist.js';
 import realtimeContext from './lib/realtime-context.js';
+import autonomousLoop from './lib/autonomous-loop.js';
 import imageGen from './lib/image-gen.js';
 import autonomy from './lib/autonomy.js';
 import hotelNotify from './lib/hotel-notifications.js';
@@ -1753,6 +1754,61 @@ app.post('/api/watchlist/refresh', async (req, res) => {
 });
 
 // =============================================================================
+// AUTONOMOUS LOOP API
+// =============================================================================
+
+// Get autonomous loop status
+app.get('/api/autonomous/status', (req, res) => {
+  res.json(autonomousLoop.getStatus());
+});
+
+// Start autonomous loop
+app.post('/api/autonomous/start', (req, res) => {
+  const interval = req.body.intervalMinutes || 30;
+  autonomousLoop.startLoop(interval);
+  res.json({ success: true, message: `Loop started (every ${interval} minutes)` });
+});
+
+// Stop autonomous loop
+app.post('/api/autonomous/stop', (req, res) => {
+  autonomousLoop.stopLoop();
+  res.json({ success: true, message: 'Loop stopped' });
+});
+
+// Trigger thinking cycle manually
+app.post('/api/autonomous/think', async (req, res) => {
+  try {
+    const thought = await autonomousLoop.generateThought();
+    if (thought && thought.notify) {
+      await autonomousLoop.notifyThought(thought);
+    }
+    res.json({ success: true, thought });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get task queue
+app.get('/api/autonomous/tasks', (req, res) => {
+  res.json({
+    pending: autonomousLoop.getPendingTasks(),
+    queue: autonomousLoop.loadTaskQueue()
+  });
+});
+
+// Add task to queue
+app.post('/api/autonomous/tasks', (req, res) => {
+  const task = autonomousLoop.addTask(req.body);
+  res.json({ success: true, task });
+});
+
+// Complete task
+app.post('/api/autonomous/tasks/:taskId/complete', (req, res) => {
+  const task = autonomousLoop.completeTask(req.params.taskId, req.body.result);
+  res.json({ success: true, task });
+});
+
+// =============================================================================
 // GMAIL PUB/SUB API
 // =============================================================================
 
@@ -3294,6 +3350,12 @@ const server = app.listen(PORT, async () => {
 
   // Initialize Autonomy Engine (Phase 3)
   autonomy.initialize();
+
+  // Initialize Autonomous Loop (Phase 6: คิดเองทุก 30 นาที)
+  if (config.autonomy?.auto_opportunity_alert) {
+    autonomousLoop.startLoop(30); // คิดเองทุก 30 นาที
+    console.log('[AUTONOMOUS-LOOP] Started (every 30 minutes)');
+  }
 
   // Initialize User Profiles System (Phase 5.6)
   userProfiles.init(config);
