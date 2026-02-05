@@ -366,10 +366,27 @@ Action ตาม Urgency Level:
 
 **คุณไม่ต้องรอ Tars ถาม - ถ้าเห็น urgency สูง ให้พูดเอง!**
 
+## 🖥️ Local Agent (Remote Execution) - NEW!
+**เมื่อเห็น [LOCAL_AGENT: connected] → คุณสามารถ execute commands บนเครื่อง Mac ของ Tars ได้!**
+
+✅ **คุณทำได้เลย (ถ้า Local Agent connected):**
+- สร้างโฟลเดอร์: "สร้างโฟลเดอร์ X ใน Desktop"
+- ดูไฟล์: "ls ~/Desktop"
+- git commands: "git status", "git pull"
+- Claude Code: "ให้ Claude Code สร้าง/แก้ไข..."
+- สร้างโปรเจค: "npx create-next-app..."
+
+**วิธีทำ:** เมื่อ user สั่ง → ดู context ว่ามี [LOCAL_AGENT_RESULT] หรือไม่:
+- ถ้ามี result → ใช้ข้อมูลนั้นตอบ
+- ถ้า success: true → บอกว่า "ทำเสร็จแล้วครับ" + แสดงผล
+- ถ้า error → บอก error และแนะนำวิธีแก้
+
+**ถ้า Local Agent ไม่ connected:** บอก Tars ให้รัน \`node local-agent.js\` ก่อน
+
 ## ⚠️ แนะนำเฉพาะสิ่งที่ทำได้จริง!
 **ห้ามแนะนำลอยๆ ต้องเป็น actionable ที่ทำได้!**
 
-❌ สิ่งที่ Oracle ทำไม่ได้ (ห้ามแนะนำเหมือนทำได้):
+❌ สิ่งที่ Oracle ทำไม่ได้:
 - "push Flash Sale บน Agoda/Booking.com" → ต้อง login manual
 - "ลดราคาใน Beds24 ให้เลย" → ยังไม่มี write API
 - "ส่ง email/SMS หาลูกค้า" → ไม่มีระบบ
@@ -380,9 +397,9 @@ Action ตาม Urgency Level:
 - บอกราคาที่ควรตั้ง + เหตุผล (Tars ไปปรับเอง)
 - วิเคราะห์สถานการณ์จากข้อมูลจริง
 - เตือนว่า "ห้อง X ควรลดเหลือ Y บาท" (Tars ทำเอง)
-- บอกว่า "ลองเปิด Flash Sale ใน Agoda นะ" (แนะนำ ไม่ใช่ทำให้)
+- **สั่งงานบน Mac ผ่าน Local Agent (ถ้า connected)**
 
-**หลักการ: บอกว่า "ควรทำอะไร" + "ทำไม" แต่ Tars ต้องไปทำเอง**
+**หลักการ: บอกว่า "ควรทำอะไร" + "ทำไม" แต่ Tars ต้องไปทำเอง (ยกเว้น Local Agent tasks)**
 
 ## Opportunity Hunter (บังคับ!)
 Tars พูดถึง/สนใจอะไร → หาโอกาสทำเงินทันที!
@@ -635,6 +652,79 @@ app.post('/webhook/line', async (req, res) => {
         // Add mistake prevention rules
         if (mistakeCheck.rulesToFollow.length > 0) {
           contextString += `\n[Rules: ${mistakeCheck.rulesToFollow.join('; ')}]`;
+        }
+
+        // =====================================================================
+        // LOCAL AGENT - Execute commands on Tars's Mac
+        // =====================================================================
+        const localAgentStatus = localAgentServer.getStatus();
+        const isLocalAgentConnected = localAgentServer.isConnected();
+
+        // Add Local Agent status to context
+        if (isLocalAgentConnected) {
+          contextString += `\n[LOCAL_AGENT: connected ✅ - สามารถ execute commands บน Mac ได้]`;
+        }
+
+        // Detect commands that need Local Agent
+        const lowerMsg = userMessage.toLowerCase();
+        const localAgentPatterns = [
+          { pattern: /สร้าง\s*(โฟลเดอร์|folder|dir)/i, type: 'mkdir', extract: (m) => m.match(/(?:ชื่อ|ว่า|ใน\s*desktop\s*ว่า|ว่า)\s*["""]?([^\s""",]+)/i)?.[1] || m.match(/(?:โฟลเดอร์|folder)\s+([^\s]+)/i)?.[1] },
+          { pattern: /(?:ดู|list|ls)\s*(?:ไฟล์|files?)/i, type: 'ls' },
+          { pattern: /git\s+(status|pull|push|log|diff)/i, type: 'git' },
+          { pattern: /(?:ให้|run)\s*claude\s*code/i, type: 'claude_code' },
+          { pattern: /(?:npx|npm)\s+create/i, type: 'create_project' }
+        ];
+
+        let localAgentResult = null;
+        for (const { pattern, type, extract } of localAgentPatterns) {
+          if (pattern.test(userMessage)) {
+            if (!isLocalAgentConnected) {
+              contextString += `\n\n[LOCAL_AGENT_ERROR: ไม่มี Local Agent connected - บอก user ให้รัน node local-agent.js ก่อน]`;
+              break;
+            }
+
+            try {
+              console.log(`[LOCAL-AGENT] Detected ${type} command`);
+
+              if (type === 'mkdir') {
+                const folderName = extract ? extract(userMessage) : null;
+                if (folderName) {
+                  const targetPath = `/Users/tanakitchaithip/Desktop/${folderName}`;
+                  localAgentResult = await localAgentServer.fileOperation('mkdir', { filePath: targetPath });
+                  if (localAgentResult.success) {
+                    contextString += `\n\n[LOCAL_AGENT_RESULT: สร้างโฟลเดอร์ ${folderName} บน Desktop สำเร็จแล้ว ✅]`;
+                  } else {
+                    contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error}]`;
+                  }
+                } else {
+                  contextString += `\n\n[LOCAL_AGENT: ต้องการชื่อโฟลเดอร์ - ถาม user ว่าจะตั้งชื่อว่าอะไร]`;
+                }
+              }
+              else if (type === 'ls') {
+                localAgentResult = await localAgentServer.executeShell('ls -la ~/Desktop | head -20');
+                if (localAgentResult.success) {
+                  contextString += `\n\n[LOCAL_AGENT_RESULT: Files on Desktop]\n${localAgentResult.stdout}`;
+                }
+              }
+              else if (type === 'git') {
+                const gitCmd = userMessage.match(/git\s+(status|pull|push|log|diff)/i)?.[0];
+                if (gitCmd) {
+                  localAgentResult = await localAgentServer.executeShell(gitCmd);
+                  if (localAgentResult.success) {
+                    contextString += `\n\n[LOCAL_AGENT_RESULT: ${gitCmd}]\n${localAgentResult.stdout}`;
+                  } else {
+                    contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error || localAgentResult.stderr}]`;
+                  }
+                }
+              }
+
+              console.log('[LOCAL-AGENT] Result:', localAgentResult?.success ? 'success' : 'failed');
+            } catch (localErr) {
+              console.error('[LOCAL-AGENT] Error:', localErr.message);
+              contextString += `\n\n[LOCAL_AGENT_ERROR: ${localErr.message}]`;
+            }
+            break;
+          }
         }
 
         // =====================================================================
