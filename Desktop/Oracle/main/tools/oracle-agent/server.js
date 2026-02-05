@@ -570,6 +570,7 @@ app.post('/webhook/line', async (req, res) => {
                   // Use enriched data from beds24.js (roomName, roomNameTh, guestName)
                   const nights = Math.ceil((new Date(b.departure) - new Date(b.arrival)) / (1000 * 60 * 60 * 24));
                   contextString += `\n${i+1}. **${b.guestName || 'Guest'}** (${b.country?.toUpperCase() || 'N/A'})`;
+                  contextString += `\n   - Booking ID: ${b.id || 'N/A'}`;
                   contextString += `\n   - ห้อง: ${b.roomSystemId || ''} ${b.roomNameTh || b.roomName || `Room ${b.roomId}`}`;
                   contextString += `\n   - วันที่: ${b.arrival} → ${b.departure} (${nights} คืน)`;
                   contextString += `\n   - ผู้เข้าพัก: ${b.numAdult} ผู้ใหญ่${b.numChild > 0 ? `, ${b.numChild} เด็ก` : ''}`;
