@@ -34,6 +34,9 @@ const ALLOWED_COMMANDS = [
   'pwd', 'whoami', 'date', 'uptime', 'df', 'du',
   'which', 'echo', 'printf',
 
+  // macOS - open applications/files
+  'open',
+
   // Network (read-only)
   'curl', 'wget', 'ping',
 
