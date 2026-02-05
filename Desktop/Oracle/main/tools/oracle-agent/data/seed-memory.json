@@ -1,0 +1,38 @@
+{
+  "learnings": [
+    {
+      "topic": "ROG Ally ของ Tars",
+      "insight": "รุ่น ASUS ROG Ally A1-RC73XA-NH015W Serial T8NVCX03N816358 ส่งซ่อม Synnex เลข MT521260100101/1 ตั้งแต่ 20 ม.ค. 2026 ส่งต่อไป ASUS Vendor 27 ม.ค. Tars รอคอยมากเพราะอยากเล่นเกมส์",
+      "source": "knowledge/personal-items.md",
+      "importance": 5,
+      "tags": ["ROG", "ซ่อม", "Synnex", "gaming", "personal"]
+    }
+  ],
+  "facts": [
+    {
+      "subject": "ROG Ally",
+      "predicate": "repair_number",
+      "object": "MT521260100101/1",
+      "confidence": 1.0
+    },
+    {
+      "subject": "ROG Ally",
+      "predicate": "sent_date",
+      "object": "2026-01-20",
+      "confidence": 1.0
+    },
+    {
+      "subject": "ROG Ally",
+      "predicate": "vendor_date",
+      "object": "2026-01-27 (ส่งไป ASUS)",
+      "confidence": 1.0
+    }
+  ],
+  "preferences": [
+    {
+      "key": "rog_ally_tracking",
+      "value": "Tars สนใจสถานะซ่อม ROG Ally มาก - ควรเช็คและแจ้งเมื่อถาม",
+      "confidence": 1.0
+    }
+  ]
+}

@@ -627,6 +627,36 @@ class MemoryConsolidation {
         this.stats = data.stats || this.stats;
       }
 
+      // Load seed data if no long-term memory exists
+      const seedPath = path.join(__dirname, '..', 'data', 'seed-memory.json');
+      if (this.getStats().longTermCount === 0 && fs.existsSync(seedPath)) {
+        console.log('[MEMORY] Loading seed data...');
+        const seedData = JSON.parse(fs.readFileSync(seedPath, 'utf8'));
+
+        // Add seed learnings
+        if (seedData.learnings) {
+          for (const learning of seedData.learnings) {
+            this.addLearning(learning);
+          }
+        }
+
+        // Add seed facts
+        if (seedData.facts) {
+          for (const fact of seedData.facts) {
+            this.addFact(fact);
+          }
+        }
+
+        // Add seed preferences
+        if (seedData.preferences) {
+          for (const pref of seedData.preferences) {
+            this.addPreference(pref);
+          }
+        }
+
+        console.log(`[MEMORY] Seed data loaded: ${seedData.learnings?.length || 0} learnings, ${seedData.facts?.length || 0} facts, ${seedData.preferences?.length || 0} prefs`);
+      }
+
       console.log(`[MEMORY] Loaded: ${this.shortTerm.length} short-term, ${this.getStats().longTermCount} long-term`);
     } catch (err) {
       console.error('[MEMORY] Failed to load:', err.message);
