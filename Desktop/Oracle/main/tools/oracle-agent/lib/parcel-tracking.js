@@ -14,7 +14,7 @@ const config = require('../config.json');
 
 // Carrier detection patterns -> TrackingMore courier_code
 const CARRIER_PATTERNS = {
-  'kerry-logistics': /^(SOE|THKE|KEX|KE)[A-Z0-9]+$/i,  // KEX Express Thailand
+  'kerryexpress-th': /^(SOE|THKE|KEX|KE)[A-Z0-9]+$/i,  // KEX Express Thailand
   'thailand-post': /^(E[A-Z]\d{9}TH|R[A-Z]\d{9}TH|C[A-Z]\d{9}TH|P[A-Z]\d{9}TH|\d{13})$/i,
   'flash-express': /^(TH\d{13}[A-Z]|FL\d+)$/i,
   'j-t-express': /^(TH\d{13}[A-Z]?|JT\d+)$/i,
@@ -36,7 +36,7 @@ const AFTERSHIP_SLUGS = {
   'fedex': 'fedex'
 };
 
-// Status translations
+// Status translations (TrackingMore delivery_status)
 const STATUS_TH = {
   'InfoReceived': 'รับข้อมูลแล้ว',
   'InTransit': 'กำลังจัดส่ง',
@@ -46,7 +46,14 @@ const STATUS_TH = {
   'AvailableForPickup': 'รอรับที่จุดบริการ',
   'Exception': 'มีปัญหา',
   'Expired': 'หมดอายุ',
-  'Pending': 'รอดำเนินการ'
+  'Pending': 'รอดำเนินการ',
+  'pending': 'รอดำเนินการ',
+  'transit': 'กำลังจัดส่ง',
+  'pickup': 'รับพัสดุแล้ว',
+  'delivered': 'จัดส่งแล้ว',
+  'undelivered': 'นำจ่ายไม่สำเร็จ',
+  'exception': 'มีปัญหา',
+  'notfound': 'ไม่พบข้อมูล'
 };
 
 /**
@@ -209,20 +216,23 @@ async function trackWithTrackingMore(trackingNumber, carrier = null) {
       };
     }
 
+    // Parse trackinfo from TrackingMore format
+    const trackinfo = tracking.origin_info?.trackinfo || [];
+
     return {
       success: true,
       trackingNumber: tracking.tracking_number,
       carrier: tracking.courier_code,
-      carrierName: tracking.courier_name,
+      carrierName: tracking.courier_code === 'kerryexpress-th' ? 'KEX Express Thailand' : tracking.courier_code,
       status: tracking.delivery_status,
       statusTh: STATUS_TH[tracking.delivery_status] || tracking.delivery_status,
       lastUpdate: tracking.latest_checkpoint_time,
-      lastLocation: tracking.latest_event?.location,
-      lastMessage: tracking.latest_event?.description,
-      checkpoints: (tracking.origin_info?.trackinfo || []).map(cp => ({
-        time: cp.Date,
-        location: cp.Details,
-        message: cp.StatusDescription
+      lastLocation: trackinfo[0]?.location || null,
+      lastMessage: tracking.latest_event || trackinfo[0]?.tracking_detail,
+      checkpoints: trackinfo.map(cp => ({
+        time: cp.checkpoint_date,
+        location: cp.location,
+        message: cp.tracking_detail
       }))
     };
 
