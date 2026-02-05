@@ -1,79 +1,114 @@
-# Oracle Heartbeat Checklist
+# Oracle Heartbeat v3.0 - Real Data System
 
-> AI อ่านไฟล์นี้ทุกครั้งที่ heartbeat trigger
-> ถ้าไม่มีอะไร urgent → ตอบ HEARTBEAT_OK
-
----
-
-## Priority Checks (ทุกครั้ง)
-
-### 1. Beds24 Bookings
-- [ ] มี booking ใหม่ในช่วง 30 นาทีที่ผ่านมาไหม
-- [ ] มี booking ถูกยกเลิกไหม
-- [ ] มี payment ค้างเกิน 24 ชม. ไหม
-
-### 2. Today's Operations
-- [ ] มี check-in วันนี้ที่ยังไม่ได้เตรียมไหม
-- [ ] มี check-out วันนี้ที่ต้อง follow up ไหม
+> ระบบนี้ดึงข้อมูลจริงจาก Beds24 API ไม่ได้ใช้ข้อมูลจากไฟล์นี้
+> ไฟล์นี้เป็น reference เท่านั้น
 
 ---
 
-## Conditional Alerts
+## How It Works (v3.0)
+
+```
+1. Heartbeat triggers (ทุก 30 นาที)
+2. Fetch REAL data from Beds24 API:
+   - getCheckInsToday()
+   - getCheckOutsToday()
+   - getAllActiveBookings()
+   - getOccupancyForDate()
+3. If no actionable data → HEARTBEAT_OK (skip AI call)
+4. If has data → Send to Claude with REAL data
+5. Claude analyzes and creates alert (or HEARTBEAT_OK)
+```
+
+---
+
+## Data Sources (Beds24 API)
+
+| Check | API Function | Description |
+|-------|--------------|-------------|
+| New Bookings | `getAllActiveBookings()` | Filter last 30 minutes |
+| Today Check-ins | `getCheckInsToday()` | Arrivals today |
+| Today Check-outs | `getCheckOutsToday()` | Departures today |
+| Occupancy | `getOccupancyForDate()` | Room status |
+
+---
+
+## Alert Conditions
 
 ### Urgent (แจ้งทันที)
-- Booking ยกเลิก → แจ้ง + เสนอ action
-- Overbooking → แจ้งทันที
-- Review ใหม่ < 4 ดาว → แจ้ง + draft response
-- Payment failed → แจ้ง
+- Booking ใหม่ในช่วง 30 นาที
+- Check-in วันนี้ที่ต้องเตรียม
+- Overbooking (ถ้าตรวจพบ)
 
-### Important (รวมแล้วแจ้ง)
-- Booking ใหม่ → รวมเป็น summary
-- Ranking เปลี่ยน > 2 อันดับ → แจ้ง
-- Occupancy สัปดาห์หน้า < 30% → แนะนำ promotion
-
-### Low Priority (เก็บไว้รายงานตอนเช้า)
-- Review ใหม่ >= 4 ดาว
-- Ranking เปลี่ยนเล็กน้อย
-- Stats updates
+### Low Priority (ไม่แจ้ง)
+- ไม่มี booking ใหม่
+- ไม่มี check-in/check-out
+- ข้อมูลซ้ำที่แจ้งไปแล้ว
 
 ---
 
-## Response Rules
+## Response Protocol
 
-### ถ้ามีเรื่องสำคัญ:
-ส่งข้อความรูปแบบ:
-
+### ถ้ามีเรื่องสำคัญ (real data):
 ```
 🔔 Oracle Alert
 
-[สรุปสั้นๆ]
+[สรุปจากข้อมูลจริง]
 
 รายละเอียด:
-- ...
+- Booking ID: [จาก API]
+- Guest: [จาก API]
+- Room: [จาก API]
 
 แนะนำ:
-- ...
+- [action ที่ควรทำ]
 ```
 
 ### ถ้าไม่มีอะไร:
-ตอบ: `HEARTBEAT_OK`
+```
+HEARTBEAT_OK
+```
 
 ---
 
-## Tools Available
+## Key Improvements (v3.0)
 
-- Beds24 API → ดู bookings, availability
-- Memory search → หาข้อมูลเก่า
-- LINE notify → ส่งแจ้งเตือน
-
----
-
-## Notes
-
-- ไม่ต้องแจ้งซ้ำสิ่งที่แจ้งไปแล้วใน 6 ชม.
-- รวมหลาย alerts เป็น 1 message
-- ถ้าไม่แน่ใจว่าสำคัญ → ไม่แจ้ง (HEARTBEAT_OK)
+| Before (v2.0) | After (v3.0) |
+|---------------|--------------|
+| Read template file | Fetch real API data |
+| Claude hallucinated data | Only real data allowed |
+| Always called AI | Skip AI if no data |
+| Fake IDs (12345) | Real booking IDs |
+| Fake names (John Doe) | Real guest names |
 
 ---
 
-*Last updated: 2026-02-04*
+## Config (config.json)
+
+```json
+{
+  "heartbeat": {
+    "enabled": true,
+    "every": "30m",
+    "model": "claude-3-haiku-20240307",
+    "activeHours": { "start": 8, "end": 22 },
+    "skipIfBusy": true
+  }
+}
+```
+
+---
+
+## Testing
+
+```bash
+# Trigger manual heartbeat
+curl -X POST https://oracle-agent-production-546e.up.railway.app/api/heartbeat/trigger
+
+# Check status
+curl https://oracle-agent-production-546e.up.railway.app/api/heartbeat/status
+```
+
+---
+
+*Last updated: 2026-02-05*
+*Version: 3.0 (Real Data System)*
