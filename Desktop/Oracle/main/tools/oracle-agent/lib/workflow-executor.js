@@ -193,24 +193,35 @@ function createWorkflowScript(workflow) {
 
 /**
  * Open Terminal.app and run workflow
+ * ใช้ `open` command แทน AppleScript เพื่อหลีกเลี่ยง permission issues
  */
 function openTerminalWithWorkflow(scriptPath, callback) {
-  // AppleScript to open Terminal and run the script
-  const appleScript = `
-    tell application "Terminal"
-      activate
-      do script "${scriptPath}"
-    end tell
-  `;
-
-  exec(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`, (error, stdout, stderr) => {
+  // Method 1: Try using 'open' command with Terminal
+  // This opens a new Terminal window and runs the script
+  exec(`open -a Terminal "${scriptPath}"`, (error, stdout, stderr) => {
     if (error) {
-      console.error('[Workflow] Error opening Terminal:', error);
-      callback?.(error);
+      console.error('[Workflow] Error opening Terminal with open command:', error);
+
+      // Method 2: Fallback to AppleScript (may need permission)
+      console.log('[Workflow] Trying AppleScript fallback...');
+      const appleScript = `tell application "Terminal"
+        activate
+        do script "${scriptPath}"
+      end tell`;
+
+      exec(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`, (err2, stdout2, stderr2) => {
+        if (err2) {
+          console.error('[Workflow] AppleScript also failed:', err2.message);
+          callback?.(err2);
+          return;
+        }
+        console.log('[Workflow] Terminal opened via AppleScript');
+        callback?.(null, { success: true, scriptPath, method: 'applescript' });
+      });
       return;
     }
     console.log('[Workflow] Terminal opened with workflow script');
-    callback?.(null, { success: true, scriptPath });
+    callback?.(null, { success: true, scriptPath, method: 'open' });
   });
 }
 

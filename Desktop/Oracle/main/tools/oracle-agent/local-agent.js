@@ -110,12 +110,14 @@ try {
   };
 }
 
-// Dynamic import for workflow-executor
+// Dynamic import for workflow-executor (use absolute path for launchd)
 let workflow;
 try {
-  workflow = (await import('./lib/workflow-executor.js')).default;
+  const workflowPath = path.join(__dirname, 'lib', 'workflow-executor.js');
+  workflow = (await import(workflowPath)).default;
+  console.log('[LOCAL-AGENT] Workflow module loaded successfully');
 } catch (e) {
-  console.error('Warning: Could not load workflow module:', e.message);
+  console.error('[LOCAL-AGENT] Warning: Could not load workflow module:', e.message);
   workflow = null;
 }
 
