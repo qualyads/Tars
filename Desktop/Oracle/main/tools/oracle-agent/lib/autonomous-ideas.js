@@ -427,15 +427,42 @@ async function runThinkingCycle(config) {
     console.log(`[IDEAS] Score: ${bestIdea.score?.totalScore || 0}`);
     console.log(`[IDEAS] Recommendation: ${bestIdea.score?.recommendation}`);
 
-    // 5. Notify Tars about ideas
-    let summaryMessage = `🧠 **Oracle คิด Ideas ใหม่!**\n\n`;
-    summaryMessage += `พบ ${scoredIdeas.length} ideas:\n\n`;
+    // 5. Filter for high-quality ideas only (score >= 60 or recommendation GO/MAYBE)
+    const qualityIdeas = scoredIdeas.filter(idea => {
+      const score = idea.score?.totalScore || 0;
+      const rec = idea.score?.recommendation;
+      const revenuePotential = idea.score?.scores?.revenuePotential || 0;
+      return score >= 60 || rec === 'GO' || revenuePotential >= 60;
+    });
 
-    for (let i = 0; i < Math.min(3, scoredIdeas.length); i++) {
-      const idea = scoredIdeas[i];
+    // Only notify if there are quality ideas worth reporting
+    if (qualityIdeas.length === 0) {
+      console.log('[IDEAS] No high-quality ideas this cycle, skipping notification');
+      return {
+        success: true,
+        executed: false,
+        ideas: scoredIdeas,
+        bestIdea,
+        skippedNotification: true
+      };
+    }
+
+    // Build quality-focused message
+    let summaryMessage = `💡 **Oracle พบโอกาสทำเงิน!**\n\n`;
+
+    for (let i = 0; i < Math.min(3, qualityIdeas.length); i++) {
+      const idea = qualityIdeas[i];
+      const revenue = idea.score?.scores?.revenuePotential || 0;
+      const feasibility = idea.score?.scores?.feasibility || 0;
+
       summaryMessage += `${i + 1}. **${idea.name}** (${idea.score?.totalScore || 0}/100)\n`;
       summaryMessage += `   ${idea.tagline}\n`;
-      summaryMessage += `   ${idea.score?.recommendation || 'N/A'}\n\n`;
+      summaryMessage += `   💰 Revenue: ${revenue}/100 | 🔧 Feasibility: ${feasibility}/100\n`;
+      summaryMessage += `   📊 ${idea.score?.recommendation || 'N/A'}\n`;
+      if (idea.monetization) {
+        summaryMessage += `   💵 ${idea.monetization}\n`;
+      }
+      summaryMessage += `\n`;
     }
 
     // 6. Auto-execute if score is high enough
@@ -469,8 +496,7 @@ async function runThinkingCycle(config) {
         await notifyTars(`❌ ไม่สามารถ execute idea: ${execResult.error}`, config);
       }
     } else {
-      summaryMessage += `\n💡 ยังไม่ execute อัตโนมัติ (score < ${CONFIG.autoExecuteThreshold})\n`;
-      summaryMessage += `ถ้าต้องการทำ idea ไหน บอกได้เลยครับ!`;
+      summaryMessage += `สนใจ idea ไหน บอกได้เลยครับ! 🚀`;
 
       await notifyTars(summaryMessage, config);
     }
