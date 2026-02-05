@@ -706,6 +706,42 @@ app.post('/webhook/line', async (req, res) => {
 
         const lowerMsg = userMessage.toLowerCase();
 
+        // =================================================================
+        // AI Result Validator - ใช้ AI เช็คผลลัพธ์ว่าทำงานจริงไหม
+        // =================================================================
+        async function validateWithAI(action, result, context = {}) {
+          try {
+            const validatePrompt = `ตรวจสอบว่าคำสั่งทำงานสำเร็จจริงไหม:
+
+Action: ${action}
+Result: ${JSON.stringify(result)}
+Context: ${JSON.stringify(context)}
+
+วิเคราะห์:
+1. คำสั่งทำงานสำเร็จจริงไหม?
+2. มี error หรือ warning อะไรไหม?
+3. ผลลัพธ์ตรงกับที่คาดหวังไหม?
+
+ตอบ JSON: {"verified": true/false, "message": "อธิบายสั้นๆ", "issues": ["ปัญหา (ถ้ามี)"]}`;
+
+            const validateResponse = await claude.chat([{ role: 'user', content: validatePrompt }], {
+              model: 'claude-3-haiku-20240307',
+              max_tokens: 150
+            });
+
+            const validateText = validateResponse.content?.[0]?.text || validateResponse;
+            const jsonMatch = validateText.match(/\{[^}]+\}/);
+            if (jsonMatch) {
+              const validation = JSON.parse(jsonMatch[0]);
+              console.log(`[AI-VALIDATOR] ${action}:`, validation);
+              return validation;
+            }
+          } catch (err) {
+            console.error('[AI-VALIDATOR] Error:', err.message);
+          }
+          return { verified: true, message: 'Could not validate' };
+        }
+
         // Execute based on AI intent
         let localAgentResult = null;
         if (localAgentIntent && localAgentIntent.action !== 'none') {
@@ -716,8 +752,18 @@ app.post('/webhook/line', async (req, res) => {
               const folderName = localAgentIntent.name;
               const targetPath = `/Users/tanakitchaithip/Desktop/${folderName}`;
               localAgentResult = await localAgentServer.fileOperation('mkdir', { filePath: targetPath });
+
+              // AI Validation: เช็คว่าโฟลเดอร์ถูกสร้างจริงไหม
               if (localAgentResult.success) {
-                contextString += `\n\n[LOCAL_AGENT_RESULT: สร้างโฟลเดอร์ "${folderName}" บน Desktop สำเร็จแล้ว ✅]`;
+                // เช็คซ้ำว่าโฟลเดอร์มีอยู่จริง
+                const verifyResult = await localAgentServer.executeShell(`ls -la ~/Desktop | grep "${folderName}"`);
+                const validation = await validateWithAI('mkdir', { ...localAgentResult, verifyOutput: verifyResult.stdout }, { folderName, targetPath });
+
+                if (validation.verified && verifyResult.success && verifyResult.stdout.includes(folderName)) {
+                  contextString += `\n\n[LOCAL_AGENT_RESULT: สร้างโฟลเดอร์ "${folderName}" บน Desktop สำเร็จแล้ว ✅ (AI verified)]`;
+                } else {
+                  contextString += `\n\n[LOCAL_AGENT_WARNING: สร้างโฟลเดอร์แล้วแต่ AI ไม่แน่ใจว่าสำเร็จ - ${validation.message}]`;
+                }
               } else {
                 contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error}]`;
               }
@@ -785,12 +831,27 @@ app.post('/webhook/line', async (req, res) => {
               });
 
               if (localAgentResult.success) {
-                contextString += `\n\n[LOCAL_AGENT_RESULT: 🚀 Workflow เริ่มแล้ว!
-- Terminal จะเปิดขึ้นมาให้ดู progress
+                // AI Validation: เช็คว่า Terminal เปิดจริงไหม (รอสักครู่แล้วเช็ค)
+                await new Promise(resolve => setTimeout(resolve, 2000)); // รอ 2 วิ
+                const termCheck = await localAgentServer.executeShell('pgrep -x Terminal || pgrep -x iTerm2 || echo "not_found"');
+                const scriptCheck = await localAgentServer.executeShell(`ls /tmp/oracle-workflows/ 2>/dev/null | grep workflow || echo "no_script"`);
+
+                const validation = await validateWithAI('workflow', {
+                  workflowResult: localAgentResult,
+                  terminalRunning: termCheck.stdout,
+                  scriptCreated: scriptCheck.stdout
+                }, { projectName, prompt: prompt.slice(0, 50) });
+
+                if (validation.verified) {
+                  contextString += `\n\n[LOCAL_AGENT_RESULT: 🚀 Workflow เริ่มแล้ว! (AI verified ✅)
+- Terminal เปิดแล้วให้ดู progress
 - Project: ${projectName}
-- Claude Opus จะทำงานให้
+- Claude Opus กำลังทำงาน
 ${shouldDeploy ? '- จะ deploy ขึ้น Railway เมื่อเสร็จ' : '- ไม่ deploy'}
 - เสร็จแล้วจะแจ้งใน LINE พร้อมลิงค์]`;
+                } else {
+                  contextString += `\n\n[LOCAL_AGENT_WARNING: Workflow อาจไม่ได้เริ่มต้นถูกต้อง - ${validation.message}]`;
+                }
               } else {
                 contextString += `\n\n[LOCAL_AGENT_ERROR: ${localAgentResult.error}]`;
               }
