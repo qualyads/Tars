@@ -18,7 +18,8 @@
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import Anthropic from '@anthropic-ai/sdk';
+// Use claude.js with failover instead of direct Anthropic
+import claude from './claude.js';
 
 // Import Beds24 API functions
 import {
@@ -53,11 +54,7 @@ class HeartbeatManager {
     this.lastRun = null;
     this.notifiedBookings = new Set(); // Track notified booking IDs
     this.onNotify = null; // Callback for notifications
-
-    // Initialize Anthropic client
-    this.anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY
-    });
+    // Uses claude.js with failover (no direct Anthropic client needed)
   }
 
   /**
@@ -393,14 +390,11 @@ HEARTBEAT_OK`;
       // Step 3: Build prompt with real data
       const prompt = this.buildPromptWithRealData(realData);
 
-      // Step 4: Call Claude with real data
-      const response = await this.anthropic.messages.create({
-        model: this.config.model,
-        max_tokens: 1024,
-        messages: [{ role: 'user', content: prompt }]
-      });
-
-      const responseText = response.content[0]?.text || '';
+      // Step 4: Call Claude with failover (uses claude.js)
+      const responseText = await claude.chat(
+        [{ role: 'user', content: prompt }],
+        { model: 'claude-3-haiku-20240307', max_tokens: 1024 }
+      );
       console.log('[HEARTBEAT] Response:', responseText.substring(0, 100) + '...');
 
       // Step 5: Check if HEARTBEAT_OK
