@@ -117,6 +117,9 @@ import autonomousIdeas from './lib/autonomous-ideas.js';
 // Phase 8: API Hunter - หา API, ทดสอบ, วิเคราะห์โอกาส
 import apiHunter from './lib/api-hunter.js';
 
+// Phase 10: Forbes Weekly Summary
+import forbesWeekly from './lib/forbes-weekly.js';
+
 // Phase 9: Unified Memory & Practical AGI
 import memoryApiRouter from './lib/memory-api.js';
 import { initUnifiedMemory } from './lib/unified-memory.js';
@@ -2721,6 +2724,35 @@ app.get('/api/ideas/research/:category', async (req, res) => {
 });
 
 // =============================================================================
+// FORBES WEEKLY SUMMARY - สรุปข่าว Forbes ทุกสัปดาห์
+// =============================================================================
+
+// Get Forbes summary status
+app.get('/api/forbes/status', (req, res) => {
+  res.json(forbesWeekly.getStatus());
+});
+
+// Trigger manual run
+app.post('/api/forbes/run', async (req, res) => {
+  console.log('[FORBES] Manual run triggered');
+  try {
+    const result = await forbesWeekly.runNow(config);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get latest summary
+app.get('/api/forbes/latest', (req, res) => {
+  const summary = forbesWeekly.getLatestSummary();
+  if (!summary) {
+    return res.json({ message: 'No summaries yet. Trigger with POST /api/forbes/run' });
+  }
+  res.json(summary);
+});
+
+// =============================================================================
 // API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส
 // =============================================================================
 
@@ -4464,6 +4496,28 @@ setTimeout(async () => {
     console.error('[IDEAS] Startup thinking error:', error.message);
   }
 }, 30000); // 30 seconds after startup
+
+// =============================================================================
+// FORBES WEEKLY SUMMARY - สรุปข่าว Forbes ทุกวันจันทร์ 09:00
+// =============================================================================
+
+cron.schedule(config.schedule.forbes_summary || '0 9 * * 1', async () => {
+  console.log('[FORBES] 📰 Weekly Forbes Summary triggered');
+  logSystemEvent('system', 'forbes_summary_start', {});
+
+  try {
+    const result = await forbesWeekly.runWeeklySummary(config);
+    console.log('[FORBES] Summary result:', result.success ? 'success' : 'failed');
+    logSystemEvent('system', 'forbes_summary_complete', {
+      success: result.success,
+      stories: result.storiesCount,
+      articles: result.articlesAnalyzed
+    });
+  } catch (error) {
+    console.error('[FORBES] Summary error:', error);
+    logError('system', error, { source: 'forbes-weekly' });
+  }
+}, { timezone: config.agent.timezone });
 
 // =============================================================================
 // API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส (ทุก 2 ชม.)

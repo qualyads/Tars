@@ -106,7 +106,8 @@
     "rank_check": "0 9 * * 1",
     "investment_check": "0 8,12,18 * * *",
     "session_summarize": "0 23 * * *",
-    "terminal_summarize": "30 23 * * *"
+    "terminal_summarize": "30 23 * * *",
+    "forbes_summary": "0 9 * * 1"
   },
 
   "heartbeat": {
