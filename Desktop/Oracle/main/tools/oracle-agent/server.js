@@ -583,13 +583,23 @@ app.post('/webhook/line', async (req, res) => {
 
             if (isHotelQuery) {
               // Get Beds24 data
+              console.log('[ROUTER] Hotel query detected, fetching Beds24...');
               const today = new Date().toISOString().split('T')[0];
-              const bookings = await beds24.getBookings({ arrivalTo: today, departureFrom: today }).catch(() => []);
-              const occupiedRooms = bookings.filter(b => b.status !== 'cancelled').length;
-              context += `\nBeds24 Data (วันนี้ ${today}):\n`;
-              context += `- ห้องที่มีคนพัก: ${occupiedRooms} ห้อง\n`;
-              context += `- Bookings: ${JSON.stringify(bookings.slice(0, 5).map(b => ({ room: b.roomId, guest: b.guestName, status: b.status })))}\n`;
+              try {
+                const bookings = await beds24.getBookings({ arrivalTo: today, departureFrom: today });
+                const occupiedRooms = bookings.filter(b => b.status !== 'cancelled').length;
+                context += `\nBeds24 Data (วันนี้ ${today}):\n`;
+                context += `- ห้องที่มีคนพัก: ${occupiedRooms} ห้อง\n`;
+                context += `- ห้องทั้งหมด: 11 ห้อง\n`;
+                context += `- ห้องว่าง: ${11 - occupiedRooms} ห้อง\n`;
+                console.log(`[ROUTER] Beds24 context: ${occupiedRooms} occupied`);
+              } catch (e) {
+                console.log(`[ROUTER] Beds24 error: ${e.message}`);
+                context += `\nBeds24: ไม่สามารถดึงข้อมูลได้\n`;
+              }
             }
+
+            console.log(`[ROUTER] Context built: ${context.length} chars`);
 
             // 3. Add system knowledge
             const systemPrompt = `คุณคือ Oracle - AI assistant ของ Tars
