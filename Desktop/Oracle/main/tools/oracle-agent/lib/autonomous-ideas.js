@@ -401,10 +401,12 @@ async function saveIdeasToOracleMemory(ideas) {
           `mkdir -p "${ORACLE_MEMORY_PATH}/logs" && echo "${base64Content}" | base64 -d > "${filePath}"`
         );
 
-        if (result.success) {
-          console.log('[IDEAS] Saved ideas via Local Agent shell');
+        console.log('[IDEAS] Local Agent result:', JSON.stringify(result));
+
+        if (result && result.success) {
+          console.log('[IDEAS] Saved ideas via Local Agent shell to:', filePath);
         } else {
-          console.error('[IDEAS] Local Agent write failed:', result.error);
+          console.error('[IDEAS] Local Agent write failed:', result?.error || 'Unknown error');
         }
       } catch (e) {
         console.error('[IDEAS] Local Agent write error:', e.message);
