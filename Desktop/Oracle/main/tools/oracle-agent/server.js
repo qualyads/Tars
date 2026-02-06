@@ -3761,6 +3761,155 @@ app.post('/api/calendar/quick-add', async (req, res) => {
   }
 });
 
+// =============================================================================
+// SEARCH CONSOLE API
+// =============================================================================
+
+app.get('/api/search-console/status', (req, res) => {
+  res.json(searchConsole.getStatus());
+});
+
+app.get('/api/search-console/sites', async (req, res) => {
+  try {
+    const sites = await searchConsole.listSites();
+    res.json({ success: true, count: sites.length, sites });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/search-console/summary', async (req, res) => {
+  try {
+    const { site } = req.query;
+    if (!site) return res.status(400).json({ error: 'site parameter required' });
+    const summary = await searchConsole.getSummary(site);
+    res.json({ success: true, ...summary });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/search-console/queries', async (req, res) => {
+  try {
+    const { site, limit, startDate, endDate } = req.query;
+    if (!site) return res.status(400).json({ error: 'site parameter required' });
+    const queries = await searchConsole.topQueries(site, {
+      limit: parseInt(limit) || 20, startDate, endDate
+    });
+    res.json({ success: true, count: queries.length, queries });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/search-console/pages', async (req, res) => {
+  try {
+    const { site, limit, startDate, endDate } = req.query;
+    if (!site) return res.status(400).json({ error: 'site parameter required' });
+    const pages = await searchConsole.topPages(site, {
+      limit: parseInt(limit) || 20, startDate, endDate
+    });
+    res.json({ success: true, count: pages.length, pages });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/search-console/keyword', async (req, res) => {
+  try {
+    const { site, q, limit } = req.query;
+    if (!site || !q) return res.status(400).json({ error: 'site and q required' });
+    const results = await searchConsole.queryPerformance(site, q, {
+      limit: parseInt(limit) || 10
+    });
+    res.json({ success: true, count: results.length, results });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/search-console/devices', async (req, res) => {
+  try {
+    const { site } = req.query;
+    if (!site) return res.status(400).json({ error: 'site parameter required' });
+    const devices = await searchConsole.byDevice(site);
+    res.json({ success: true, devices });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// =============================================================================
+// GOOGLE BUSINESS PROFILE API
+// =============================================================================
+
+app.get('/api/business/status', (req, res) => {
+  res.json(googleBusiness.getStatus());
+});
+
+app.get('/api/business/accounts', async (req, res) => {
+  try {
+    const accounts = await googleBusiness.listAccounts();
+    res.json({ success: true, count: accounts.length, accounts });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/business/locations', async (req, res) => {
+  try {
+    const { account } = req.query;
+    const locations = await googleBusiness.listLocations(account);
+    res.json({ success: true, count: locations.length, locations });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/business/summary', async (req, res) => {
+  try {
+    const summary = await googleBusiness.getSummary();
+    res.json({ success: true, ...summary });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/business/reviews', async (req, res) => {
+  try {
+    const { location, limit } = req.query;
+    if (!location) return res.status(400).json({ error: 'location required' });
+    const reviews = await googleBusiness.getReviews(location, {
+      pageSize: parseInt(limit) || 20
+    });
+    res.json({ success: true, ...reviews });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/business/reviews/reply', async (req, res) => {
+  try {
+    const { reviewName, comment } = req.body;
+    if (!reviewName || !comment) return res.status(400).json({ error: 'reviewName and comment required' });
+    const result = await googleBusiness.replyToReview(reviewName, comment);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/business/post', async (req, res) => {
+  try {
+    const { location, summary, callToAction, mediaUrl, event } = req.body;
+    if (!location || !summary) return res.status(400).json({ error: 'location and summary required' });
+    const result = await googleBusiness.createPost(location, { summary, callToAction, mediaUrl, event });
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Daily Digest
 app.get('/api/digest/status', (req, res) => {
   res.json(dailyDigest.getStatus());

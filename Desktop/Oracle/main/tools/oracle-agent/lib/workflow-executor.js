@@ -1,8 +1,6 @@
 /**
- * Workflow Executor
- * เปิด Terminal.app รัน Claude Code + Deploy Railway
- *
- * @version 1.0.0
+ * Workflow Executor v7.0
+ * รัน Claude foreground + background paste commands
  */
 
 import { exec } from 'child_process';
@@ -10,326 +8,191 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
-// =============================================================================
-// CONFIGURATION
-// =============================================================================
-
 const ORACLE_URL = process.env.ORACLE_URL || 'https://oracle-agent-production-546e.up.railway.app';
-const WORK_DIR = process.env.WORK_DIR || '/Users/tanakitchaithip/Desktop/Oracle';
+const WORK_DIR = '/Users/tanakitchaithip/Desktop/Oracle';
 const SCRIPTS_DIR = '/tmp/oracle-workflows';
 
-// =============================================================================
-// WORKFLOW TEMPLATES
-// =============================================================================
-
-/**
- * Generate workflow script
- */
 function generateWorkflowScript(workflow) {
-  const {
-    id,
-    projectName,
-    projectPath,
-    prompt,
-    model = 'opus',
-    deploy = true,
-    notifyLine = true
-  } = workflow;
+  const { id, projectName, projectPath, prompt, model = 'opus', deploy = true, notifyLine = true } = workflow;
+
+  const escapedPrompt = prompt.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$');
 
   const script = `#!/bin/bash
-# ============================================
-# Oracle Workflow Script
+# Oracle Workflow v8.0 - Direct prompt injection
 # ID: ${id}
-# Project: ${projectName}
-# ============================================
 
-set -e  # Exit on error
-
-# Colors
-RED='\\033[0;31m'
-GREEN='\\033[0;32m'
-YELLOW='\\033[1;33m'
-BLUE='\\033[0;34m'
-NC='\\033[0m' # No Color
-
+clear
 echo ""
-echo -e "\${BLUE}╔════════════════════════════════════════════╗\${NC}"
-echo -e "\${BLUE}║  🤖 Oracle Workflow - ${projectName}\${NC}"
-echo -e "\${BLUE}╚════════════════════════════════════════════╝\${NC}"
+echo "╔════════════════════════════════════════════════════════════╗"
+echo "║  🤖 Oracle Workflow - ${projectName}"
+echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
 
-# Notify Oracle: Started
-echo -e "\${YELLOW}📡 Notifying Oracle: Workflow started...\${NC}"
-curl -s -X POST "${ORACLE_URL}/api/workflow/status" \\
-  -H "Content-Type: application/json" \\
-  -d '{"id":"${id}","status":"started","projectName":"${projectName}"}' > /dev/null 2>&1 || true
+# Notify Oracle
+curl -s -X POST "${ORACLE_URL}/api/workflow/status" -H "Content-Type: application/json" -d '{"id":"${id}","status":"started"}' > /dev/null 2>&1
 
-# Step 1: Create project directory
-echo ""
-echo -e "\${GREEN}📁 Step 1: Creating project directory...\${NC}"
+# Step 1: Create project
+echo "━━━ Step 1: Creating project directory ━━━"
 mkdir -p "${projectPath}"
-cd "${projectPath}"
-echo "   Created: ${projectPath}"
-
-# Step 2: Initialize and run Claude Code
-echo ""
-echo -e "\${GREEN}🧠 Step 2: Running Claude Code (${model})...\${NC}"
-echo "   Prompt: ${prompt.replace(/"/g, '\\"').substring(0, 100)}..."
+echo "✓ Created: ${projectPath}"
 echo ""
 
-# Notify Oracle: Claude started
-curl -s -X POST "${ORACLE_URL}/api/workflow/status" \\
-  -H "Content-Type: application/json" \\
-  -d '{"id":"${id}","status":"claude_running","message":"Claude Code กำลังทำงาน..."}' > /dev/null 2>&1 || true
+# Step 2: Launch Claude with initial prompt
+echo "━━━ Step 2: Launching Claude Code (${model}) ━━━"
+echo "📍 Working dir: ${WORK_DIR}"
+echo "📝 Project: ${projectPath}"
+echo "📋 Task: ${escapedPrompt}"
+echo ""
 
-# Run Claude Code
 cd "${WORK_DIR}"
-claude --model ${model} -p "${prompt.replace(/"/g, '\\"')}" --yes --output-format text
 
-# Check if project was created
-if [ ! -d "${projectPath}" ] || [ -z "$(ls -A ${projectPath} 2>/dev/null)" ]; then
-  echo -e "\${RED}❌ Error: Project directory is empty\${NC}"
-  curl -s -X POST "${ORACLE_URL}/api/workflow/status" \\
-    -H "Content-Type: application/json" \\
-    -d '{"id":"${id}","status":"error","message":"Project directory is empty"}' > /dev/null 2>&1 || true
-  exit 1
-fi
+echo "🚀 Starting Claude Code with initial prompt..."
+echo ""
+
+# Run Claude in interactive mode with initial prompt using heredoc
+# The prompt argument starts the session with this message
+claude --model ${model} --dangerously-skip-permissions "\$(cat <<'PROMPT'
+load memory
+
+หลังจาก load memory แล้ว ให้ทำ task นี้:
+สร้างโปรเจคที่ ${projectPath}
+
+${escapedPrompt}
+PROMPT
+)"
 
 echo ""
-echo -e "\${GREEN}✅ Claude Code completed!\${NC}"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "✅ Claude session ended"
+echo ""
+
+# Check if files were created
+echo "━━━ Checking results ━━━"
+if [ -z "\$(ls -A ${projectPath} 2>/dev/null)" ]; then
+    echo "⚠️ No files in project directory"
+    FILES_CREATED="false"
+else
+    echo "✅ Files created:"
+    ls -la "${projectPath}"
+    FILES_CREATED="true"
+fi
 
 ${deploy ? `
-# Step 3: Deploy to Railway
-echo ""
-echo -e "\${GREEN}🚀 Step 3: Deploying to Railway...\${NC}"
-cd "${projectPath}"
+if [ "\$FILES_CREATED" = "true" ]; then
+    echo ""
+    echo "━━━ Step 3: Deploying to Railway ━━━"
+    cd "${projectPath}"
 
-# Notify Oracle: Deploying
-curl -s -X POST "${ORACLE_URL}/api/workflow/status" \\
-  -H "Content-Type: application/json" \\
-  -d '{"id":"${id}","status":"deploying","message":"กำลัง deploy ขึ้น Railway..."}' > /dev/null 2>&1 || true
+    curl -s -X POST "${ORACLE_URL}/api/workflow/status" -H "Content-Type: application/json" -d '{"id":"${id}","status":"deploying"}' > /dev/null 2>&1
 
-# Initialize Railway if needed
-if [ ! -f "railway.json" ]; then
-  echo "   Initializing Railway project..."
-  railway init --name "${projectName}" 2>/dev/null || true
+    if [ ! -f "railway.json" ]; then
+        echo "Initializing Railway..."
+        railway init --name "${projectName}"
+    fi
+
+    echo "Deploying..."
+    railway up
+
+    RAILWAY_URL=\$(railway status 2>/dev/null | grep -oE 'https://[^ ]+' | head -1)
+    if [ -z "\$RAILWAY_URL" ]; then
+        RAILWAY_URL="https://${projectName}.up.railway.app"
+    fi
+    echo "✅ URL: \$RAILWAY_URL"
+else
+    RAILWAY_URL=""
+    echo "⏭️ Skipping deploy (no files)"
 fi
-
-# Deploy
-railway up --detach
-
-# Wait for deployment
-echo "   Waiting for deployment..."
-sleep 30
-
-# Get deployment URL
-RAILWAY_URL=$(railway status 2>/dev/null | grep -o 'https://[^ ]*' | head -1 || echo "")
-
-if [ -z "$RAILWAY_URL" ]; then
-  RAILWAY_URL="https://${projectName}.up.railway.app"
-fi
-
-echo ""
-echo -e "\${GREEN}✅ Deployed successfully!\${NC}"
-echo -e "   URL: \${BLUE}$RAILWAY_URL\${NC}"
 ` : `
 RAILWAY_URL=""
-echo ""
-echo -e "\${YELLOW}⏭️  Skipping deployment (deploy=false)\${NC}"
+echo "⏭️ Skipping deployment"
 `}
 
-# Step 4: Notify completion
+# Notify completion
 echo ""
-echo -e "\${GREEN}📡 Step 4: Notifying Oracle...\${NC}"
-
+echo "━━━ Notifying Oracle ━━━"
 ${notifyLine ? `
-curl -s -X POST "${ORACLE_URL}/api/workflow/complete" \\
-  -H "Content-Type: application/json" \\
-  -d "{
-    \\"id\\": \\"${id}\\",
-    \\"status\\": \\"completed\\",
-    \\"projectName\\": \\"${projectName}\\",
-    \\"projectPath\\": \\"${projectPath}\\",
-    \\"url\\": \\"$RAILWAY_URL\\",
-    \\"notifyLine\\": true
-  }"
+curl -s -X POST "${ORACLE_URL}/api/workflow/complete" -H "Content-Type: application/json" -d '{"id":"${id}","status":"completed","projectName":"${projectName}","projectPath":"${projectPath}","url":"'\$RAILWAY_URL'","notifyLine":true}'
+echo "✓ LINE notified"
 ` : `
-curl -s -X POST "${ORACLE_URL}/api/workflow/complete" \\
-  -H "Content-Type: application/json" \\
-  -d '{"id":"${id}","status":"completed","notifyLine":false}' > /dev/null 2>&1 || true
+curl -s -X POST "${ORACLE_URL}/api/workflow/complete" -H "Content-Type: application/json" -d '{"id":"${id}","status":"completed"}' > /dev/null 2>&1
 `}
 
-# Done
 echo ""
-echo -e "\${BLUE}╔════════════════════════════════════════════╗\${NC}"
-echo -e "\${BLUE}║  ✅ Workflow Completed!                    \${NC}"
-echo -e "\${BLUE}╚════════════════════════════════════════════╝\${NC}"
+echo "╔════════════════════════════════════════════════════════════╗"
+echo "║  ✅ Workflow Completed!                                     ║"
+echo "╚════════════════════════════════════════════════════════════╝"
+${deploy ? 'echo "🔗 URL: $RAILWAY_URL"' : ''}
 echo ""
-${deploy ? 'echo -e "🔗 URL: ${BLUE}$RAILWAY_URL${NC}"' : ''}
-echo ""
-echo "กด Enter เพื่อปิดหน้าต่างนี้..."
+echo "Press Enter to close..."
 read
 `;
 
   return script;
 }
 
-/**
- * Create and save workflow script
- */
 function createWorkflowScript(workflow) {
-  // Ensure scripts directory exists
   if (!fs.existsSync(SCRIPTS_DIR)) {
     fs.mkdirSync(SCRIPTS_DIR, { recursive: true });
   }
-
   const scriptPath = path.join(SCRIPTS_DIR, `workflow-${workflow.id}.sh`);
-  const script = generateWorkflowScript(workflow);
-
-  fs.writeFileSync(scriptPath, script, { mode: 0o755 });
-
+  fs.writeFileSync(scriptPath, generateWorkflowScript(workflow), { mode: 0o755 });
   return scriptPath;
 }
 
-/**
- * Open Terminal.app and run workflow
- * ใช้ `open` command แทน AppleScript เพื่อหลีกเลี่ยง permission issues
- */
 function openTerminalWithWorkflow(scriptPath, callback) {
-  // Method 1: Try using 'open' command with Terminal
-  // This opens a new Terminal window and runs the script
-  exec(`open -a Terminal "${scriptPath}"`, (error, stdout, stderr) => {
+  // Use Warp terminal instead of Terminal.app for better automation support
+  exec(`open -a Warp "${scriptPath}"`, (error) => {
     if (error) {
-      console.error('[Workflow] Error opening Terminal with open command:', error);
-
-      // Method 2: Fallback to AppleScript (may need permission)
-      console.log('[Workflow] Trying AppleScript fallback...');
-      const appleScript = `tell application "Terminal"
-        activate
-        do script "${scriptPath}"
-      end tell`;
-
-      exec(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`, (err2, stdout2, stderr2) => {
-        if (err2) {
-          console.error('[Workflow] AppleScript also failed:', err2.message);
-          callback?.(err2);
+      // Fallback to Terminal if Warp not available
+      console.log('[Workflow] Warp not found, trying Terminal...');
+      exec(`open -a Terminal "${scriptPath}"`, (error2) => {
+        if (error2) {
+          console.error('[Workflow] Error:', error2);
+          callback?.(error2);
           return;
         }
-        console.log('[Workflow] Terminal opened via AppleScript');
-        callback?.(null, { success: true, scriptPath, method: 'applescript' });
+        console.log('[Workflow] Terminal opened');
+        callback?.(null, { success: true, scriptPath });
       });
       return;
     }
-    console.log('[Workflow] Terminal opened with workflow script');
-    callback?.(null, { success: true, scriptPath, method: 'open' });
+    console.log('[Workflow] Warp opened');
+    callback?.(null, { success: true, scriptPath });
   });
 }
 
-/**
- * Execute a workflow
- * @param {Object} options - Workflow options
- * @returns {Object} - Workflow info
- */
 function executeWorkflow(options) {
-  const {
-    projectName,
-    prompt,
-    model = 'opus',
-    deploy = true,
-    notifyLine = true,
-    projectPath = null
-  } = options;
+  const { projectName, prompt, model = 'opus', deploy = true, notifyLine = true, projectPath = null } = options;
 
-  // Generate workflow ID
   const id = uuidv4().substring(0, 8);
-
-  // Determine project path
-  // สร้างโปรเจคที่ ~/Desktop/projects (ไม่ใช่ใน Oracle folder)
   const finalProjectPath = projectPath || `/Users/tanakitchaithip/Desktop/projects/${projectName}`;
 
-  const workflow = {
-    id,
-    projectName,
-    projectPath: finalProjectPath,
-    prompt,
-    model,
-    deploy,
-    notifyLine,
-    createdAt: new Date().toISOString()
-  };
-
-  // Create script
+  const workflow = { id, projectName, projectPath: finalProjectPath, prompt, model, deploy, notifyLine };
   const scriptPath = createWorkflowScript(workflow);
-  console.log(`[Workflow] Created script: ${scriptPath}`);
 
-  // Open Terminal and run
-  openTerminalWithWorkflow(scriptPath, (error) => {
-    if (error) {
-      console.error('[Workflow] Failed to start:', error);
-    }
-  });
+  console.log(`[Workflow] Created: ${scriptPath}`);
+  openTerminalWithWorkflow(scriptPath);
 
-  return {
-    success: true,
-    workflowId: id,
-    scriptPath,
-    message: `Workflow started! Terminal จะเปิดขึ้นมาให้ดู progress`
-  };
+  return { success: true, workflowId: id, scriptPath, message: 'Workflow started!' };
 }
 
-/**
- * List active workflows
- */
 function listWorkflows() {
-  if (!fs.existsSync(SCRIPTS_DIR)) {
-    return [];
-  }
-
-  const files = fs.readdirSync(SCRIPTS_DIR);
-  return files
-    .filter(f => f.startsWith('workflow-') && f.endsWith('.sh'))
-    .map(f => {
-      const id = f.replace('workflow-', '').replace('.sh', '');
-      const stat = fs.statSync(path.join(SCRIPTS_DIR, f));
-      return {
-        id,
-        scriptPath: path.join(SCRIPTS_DIR, f),
-        createdAt: stat.birthtime
-      };
-    });
+  if (!fs.existsSync(SCRIPTS_DIR)) return [];
+  return fs.readdirSync(SCRIPTS_DIR).filter(f => f.startsWith('workflow-')).map(f => ({
+    id: f.replace('workflow-', '').replace(/\.(sh|exp)$/, ''),
+    scriptPath: path.join(SCRIPTS_DIR, f)
+  }));
 }
 
-/**
- * Clean up old workflow scripts
- */
 function cleanupWorkflows(maxAgeHours = 24) {
-  if (!fs.existsSync(SCRIPTS_DIR)) {
-    return 0;
-  }
-
-  const now = Date.now();
+  if (!fs.existsSync(SCRIPTS_DIR)) return 0;
   const maxAge = maxAgeHours * 60 * 60 * 1000;
   let cleaned = 0;
-
-  const files = fs.readdirSync(SCRIPTS_DIR);
-  for (const f of files) {
-    const filePath = path.join(SCRIPTS_DIR, f);
-    const stat = fs.statSync(filePath);
-    if (now - stat.mtimeMs > maxAge) {
-      fs.unlinkSync(filePath);
-      cleaned++;
-    }
+  for (const f of fs.readdirSync(SCRIPTS_DIR)) {
+    const p = path.join(SCRIPTS_DIR, f);
+    if (Date.now() - fs.statSync(p).mtimeMs > maxAge) { fs.unlinkSync(p); cleaned++; }
   }
-
   return cleaned;
 }
 
-export default {
-  executeWorkflow,
-  generateWorkflowScript,
-  createWorkflowScript,
-  openTerminalWithWorkflow,
-  listWorkflows,
-  cleanupWorkflows,
-  SCRIPTS_DIR
-};
+export default { executeWorkflow, createWorkflowScript, openTerminalWithWorkflow, listWorkflows, cleanupWorkflows, SCRIPTS_DIR };

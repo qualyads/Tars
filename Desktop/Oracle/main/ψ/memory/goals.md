@@ -1,166 +1,125 @@
-# Goals & Constraints
+# Goals & Task Board
 
-> WHY - Priorities, Constraints, Trade-offs
+> โหลดทุก boot → เก็บแค่ active!
+> ทำสำเร็จ → ย้ายไป archive/completed-goals.md
 
 ---
 
-## Ultimate Goal
+## North Star
 
 > **"รวยและประสบความสำเร็จที่สุดเท่าที่ทำได้"**
-> อยากรวยตั้งแต่เด็ก
 
-### Paths to Wealth
-- **Passive Income** - แสวงหารายได้แบบ passive อยู่เสมอ
-- สร้างธุรกิจ SaaS
-- ใช้ Oracle Framework สำหรับ AI-human collaboration
-- สร้าง memory และ context ที่สะสมได้
+**Paths:** Passive Income | SaaS | Oracle Framework | AI-human collaboration
 
-### Inspiration
-- Forbes (Claude ต้องสรุปให้)
-- SaaS Millionaires ใหม่ๆ (เรียนรู้จากเขา)
-- บุคคลระดับโลก / Role models
+**Priority #1 ด้านโปรเจคเว็บ: SEO** — ซีเรียสมาก ใช้ Search Console API ติดตามผล
 
 ---
 
-## Reality & Constraints
+## Constraints
 
-### Financial
-| รายการ | จำนวน | หมายเหตุ |
-|--------|-------|----------|
-| เงินใช้ส่วนตัว | 10,000-20,000 บาท/เดือน | จำกัด |
-| รายได้โรงแรม | 400,000-600,000 บาท/เดือน | เงินกิจการ ไม่ใช่เงินใช้ |
-| ค่า API | ไม่จำกัด | ยินดีจ่าย |
-
-- ธุรกิจที่พัก: บางช่วง Low season
-- อยากลงทุนทุกชนิด แต่เงินน้อย
-
-### Time
-- ไม่มีเวลาลงทุน
-- ไม่มีเวลาหาโอกาส
-- ต้องการระบบที่ทำงานแทน
-
-### Implication
-- ยิ่งต้องการ Automation มากขึ้น
-- Claude ต้องหาโอกาสให้ Tars
-- Claude ต้อง monitor และแจ้งเมื่อเจอโอกาสดี
+| ด้าน | รายละเอียด |
+|------|-----------|
+| เงินส่วนตัว | 10-20K/เดือน (จำกัด) |
+| รายได้โรงแรม | 400-600K/เดือน (เงินกิจการ) |
+| ค่า API | ไม่จำกัด |
+| เวลา | ไม่มี → ต้อง Automate ทุกอย่าง |
 
 ---
 
-## Claude's Monitoring Duties
+## 📋 Task Board
 
-### ไม่มีเวลาดู (Claude ต้อง monitor)
-- ราคาทอง
-- การลงทุนอื่นๆ
-- เศรษฐกิจโลก
-- โอกาสลงทุนที่น่าสนใจ
-- บุคคลระดับโลก / Role models
-- SaaS Millionaires ใหม่ๆ
+> ⏳ Backlog | 🔜 Up Next | 🔄 In Progress | เสร็จ → ย้ายไป completed-goals.md
 
-### Algorithm ที่ต้องอัปเดทเสมอ
-1. **SEO Algorithm** - Google updates ล่าสุด
-2. **AI Algorithm** - Model ใหม่, capabilities
-3. **CRO Algorithm** - Conversion best practices
-4. **Search Algorithm** - Google, Bing changes
-5. **Marketing Algorithm** - Trends, platforms
-6. **AI Search Algorithm** - ChatGPT, Perplexity, Gemini
-7. **AI Competition & Development**
-8. **อื่นๆ ที่ Tars ไม่รู้แต่ควรรู้**
+### 🔄 In Progress
 
-### Claude's Duty: Stay Ahead
-- Monitor ทุก algorithm changes
-- แจ้ง Tars ทันทีเมื่อมี update สำคัญ
-- เตรียมแผนรับมือ AI disruption
-- แนะนำสิ่งที่ Tars ควรรู้แต่ไม่รู้ว่าต้องรู้
+| # | Task | Owner | Priority | Due | Project | Notes |
+|---|------|-------|----------|-----|---------|-------|
+| - | (ว่าง) | | | | | |
 
----
+### ✅ Recently Completed
+| # | Task | Completed | Notes |
+|---|------|-----------|-------|
+| 18 | Memory Recall Protocol ให้ทำงานถูก | 2026-02-06 | v7.0 Pointer + On-Demand, ลด boot 95% |
+| 1 | สร้าง Google Cloud Project + OAuth2 | 2026-02-06 | Project: oracle-agent-486604, Account: info@visionxbrain.com |
+| 2 | เชื่อม Gmail API | 2026-02-06 | lib/gmail.js + 9 endpoints (inbox, search, send, draft, etc.) |
+| 3 | เชื่อม Calendar API | 2026-02-06 | lib/google-calendar.js + 7 endpoints (today, upcoming, create, etc.) |
 
-## Claude's Teaching Duty
+### 🔜 Up Next
 
-> Claude เป็นเลขา ต้องสอนให้ Tars เก่งขึ้นเรื่อยๆ
+| # | Task | Owner | Priority | Blocked By | Project | Notes |
+|---|------|-------|----------|------------|---------|-------|
+| 21 | เพิ่ม Google account vxb.visionxbrain@gmail.com | Tar+Claude | 🟡 Medium | - | API Integration | test user เพิ่มแล้ว, รัน `node google-oauth.js vxb` แล้ว login |
+| 22 | SEO Report อัตโนมัติ (สั่งผ่าน LINE) | Claude | 🔴 High | - | SEO | Search Console API พร้อม, สร้าง report template |
+| 23 | Weekly SEO Dashboard ส่งให้ลูกค้า | Claude | 🔴 High | #22 | SEO | สรุป clicks/imp/keyword ทุกสัปดาห์ |
+| 24 | Keyword Alert (แจ้งเตือนหลุดหน้าแรก) | Claude | 🟡 Medium | #22 | SEO | monitor keyword สำคัญ |
+| 25 | เพิ่มเว็บลูกค้าใน Search Console | Tar | 🟡 Medium | - | SEO | ให้ลูกค้า verify แล้วเพิ่ม VXB เป็น user |
 
-### ด้านเศรษฐกิจ & การลงทุน
-- สอนเรื่องทอง, หุ้น, crypto, อสังหา
-- อธิบาย indicators (Fear & Greed, RSI, etc.)
-- ให้คำแนะนำ ซื้อ/ขาย/รอ พร้อมเหตุผล
-- สอนหลักการของ Warren Buffett, Ray Dalio
-- อัพเดทเศรษฐกิจโลก
+**VXB SEO - Webflow Focus**
+| # | Task | Owner | Priority | Phase | Notes |
+|---|------|-------|----------|-------|-------|
+| 26 | ปรับ meta title/desc หน้าที่ pos 3-10 | Claude | 🔴 High | Phase 1 | Quick win: รับทำ ai search, รับทำ geo, รับทำ website saas |
+| 27 | เขียนบทความ "Webflow คืออะไร" ฉบับสมบูรณ์ | Claude | 🔴 High | Phase 1 | 43 imp แต่ pos 57 = ไม่มีหน้าดีๆ ต้องสร้างใหม่ |
+| 28 | เขียนหน้า "รับทำ Webflow" | Claude | 🔴 High | Phase 2 | keyword หลักของธุรกิจ แต่ยังไม่มีหน้าเลย! |
+| 29 | เขียนบทความ "รับทำ UX/UI" | Claude | 🔴 High | Phase 2 | รวม 140 imp (ux 87 + ui 53) |
+| 30 | เขียน "Webflow vs WordPress 2026" | Claude | 🟡 Medium | Phase 2 | 33 imp, pos 43-61 ต้องทำใหม่ |
+| 31 | ตั้ง Weekly SEO Report → LINE | Claude | 🟡 Medium | Phase 3 | Search Console API พร้อม |
+| 32 | Keyword Alert หลุด top 10 → LINE | Claude | 🟡 Medium | Phase 3 | monitor keyword สำคัญทุกวัน |
+| 33 | Auto Blog supporting content ต่อเนื่อง | Claude | 🟡 Medium | Phase 3 | ใช้ Webflow Mapper + keyword data |
 
-### ด้านอื่นๆ
-- Business strategy
-- Marketing & Sales
-- AI & Technology
-- SaaS metrics
-- Hospitality industry
+### ⏳ Backlog
 
-### วิธีสอน
-- ไม่สอนเยอะจนน่าเบื่อ
-- สอดแทรกในทุก report
-- ทีละนิด สะสมไปเรื่อยๆ
-- ใช้ภาษาง่าย ตัวอย่างจริง
+**API Integration**
+| # | Task | Owner | Priority | Needs | Project |
+|---|------|-------|----------|-------|---------|
+| 4 | Search Console API | Claude | 🔴 High | OAuth2 + เขียนโค้ด | Google APIs |
+| 5 | Business Profile API | Claude | 🔴 High | OAuth2 + เขียนโค้ด | Google APIs |
+| 6 | Google Ads API | Claude | 🟡 Medium | Research ก่อน | Google APIs |
+| 7 | Shopify Integration | Claude | 🟡 Medium | Store URL + Admin Token | Ecommerce |
+| 8 | Lazada Integration | Claude | 🟡 Medium | App Key + App Secret | Ecommerce |
+| 9 | Shopee Integration | Claude | 🟡 Medium | Partner ID + Key | Ecommerce |
+| 10 | LINE MyShop | Claude | 🟡 Medium | Research | Ecommerce |
+| 11 | 2C2P/Omise Payment | Claude | 🟡 Medium | Account setup | Payment |
+| 12 | WhatsApp Business | Claude | 🟡 Medium | Business account | Messaging |
+| 13 | TikTok Shop | Claude | 🟢 Low | Research | Ecommerce |
+| 14 | Facebook/IG Shop | Claude | 🟢 Low | Research | Ecommerce |
 
----
+**Business Ideas**
+| # | Task | Owner | Priority | Needs | Project |
+|---|------|-------|----------|-------|---------|
+| 15 | Domain Flipping - หา domain ดี | Claude | 🟡 Medium | Research + 600-800 บาท | Side Income |
+| 16 | Ebook - ร่างเนื้อหา | Claude | 🟡 Medium | เลือกหัวข้อ | Side Income |
+| 17 | Hotel Channel Manager - Research | Claude | 🟢 Low | Market research | SaaS |
 
-## Current Priorities (Top 3)
-
-1. **SaaS Revenue** - สร้างรายได้จาก SaaS projects
-2. **Hotel Optimization** - เพิ่ม efficiency ที่พักทั้ง 5 แห่ง
-3. **Automation** - ลดงาน manual ให้มากที่สุด
-
----
-
-## 🚨 API INTEGRATION GOALS - ห้ามลืม! (2026-02-05)
-
-### Google APIs (5 ตัว)
-
-| # | API | โค้ด | Credentials | Priority | Purpose |
-|---|-----|------|-------------|----------|---------|
-| 1 | **Gmail** | ✅ `gmail-pubsub.js` | ❌ | High | รับ email แจ้ง LINE, auto-draft |
-| 2 | **Calendar** | ✅ `google-calendar.js` | ❌ | High | ดู/สร้าง events, เตือนนัด |
-| 3 | **Search Console** | ❌ | ❌ | High | ดู ranking, keywords, performance |
-| 4 | **Business Profile** | ❌ | ❌ | High | Auto post โปรโมชั่น, รูป, events |
-| 5 | **Google Ads** | ❌ | ❌ | Research | Automate ads |
-
-**ต้องการ:** Google Cloud Project + OAuth2 credentials (CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN)
-
-### Ecommerce APIs (3 ตัว)
-
-| # | Platform | Credentials ที่ต้องมี | Use Case |
-|---|----------|----------------------|----------|
-| 1 | **Shopify** | Store URL + Admin API Access Token | จัดการ orders, products, inventory, customers |
-| 2 | **Lazada** | Seller Center → App Key + App Secret | รับ orders, sync stock, update price |
-| 3 | **Shopee** | Seller Center → Partner ID + Partner Key | รับ orders, sync stock, chat with buyers |
-
-**เป้าหมาย Ecommerce:**
-- Sync stock ข้าม platforms อัตโนมัติ
-- รับแจ้งเตือน order ผ่าน LINE ทันที
-- Auto-reply ลูกค้าเบื้องต้น
-- Dashboard รวมยอดขายทุก platform
-
-### Related APIs ที่น่าทำต่อ
-
-| API | Purpose | Priority |
-|-----|---------|----------|
-| LINE MyShop | ขายของผ่าน LINE | Medium |
-| TikTok Shop | ขยายไป TikTok | Low |
-| Facebook/IG Shop | Social commerce | Low |
-| 2C2P/Omise | Thai payment gateway | Medium |
-| WhatsApp Business | Customer service | Medium |
+**Oracle System**
+| # | Task | Owner | Priority | Needs | Project |
+|---|------|-------|----------|-------|---------|
+| ~~18~~ | ~~ย้ายไป In Progress~~ | | | | |
+| 19 | Sync stock ข้าม platforms | Claude | 🟡 Medium | Ecommerce APIs ก่อน | Automation |
+| 20 | Dashboard รวมยอดขาย | Claude | 🟡 Medium | Ecommerce APIs ก่อน | Automation |
 
 ---
 
-## Business Interests
+## Claude's Standing Duties (ทำทุกวัน)
 
-### Domain Flipping
-- ต้นทุน: 600-800 บาท/โดเมน
-- เป้าหมาย: มีรายได้ภายใน 7 วัน
-- Constraint: เงินน้อย ต้องเห็นผลเร็ว
+| เวลา | งาน | Owner |
+|-------|-----|-------|
+| เริ่ม session | รายงานทอง + BTC + Fear & Greed | Claude |
+| เริ่ม session | เช็ค task board → แนะนำว่าวันนี้ทำอะไรดี | Claude |
+| ทุกวัน | Monitor algorithm changes | Claude |
+| ทุกวัน | หาโอกาสธุรกิจ/passive income | Claude |
+| สอดแทรก | สอน Tar เรื่องลงทุน/ธุรกิจ ทีละนิด | Claude |
 
-### Ebook
-- สนใจเขียน Ebook ขาย (Passive income)
-- ปัญหา: ไม่มีเวลาเขียน
-- Solution: Claude ช่วยเขียน/ร่าง
+---
 
-### Hotel Channel Manager
-- Big Dream: สร้าง Hotel Channel Manager ของตัวเอง
-- ขายเป็น SaaS ทั่วโลก
-- Passive income จาก hospitality tech
+## Someday / Maybe
+
+> ไอเดียที่น่าสนใจแต่ยังไม่ urgent
+
+- Forbes สรุปทุกสัปดาห์
+- SaaS Millionaires case study
+- Hospitality industry trends
+- AI disruption preparation
+
+---
+
+*Last updated: 2026-02-06*

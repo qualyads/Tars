@@ -110,10 +110,13 @@ launchctl stop com.oracle.local-agent
 ```
 
 **Terminal aliases (in ~/.zshrc):**
-- `loadmemory` - รัน local agent manual
+- `line-24` - รัน full stack (Claude + tunnel + agent)
 - `oracle-status` - เช็คสถานะ
 - `oracle-logs` - ดู log
 - `oracle-restart` - restart service
+
+**Chat commands (พิมพ์ใน Claude Code):**
+- `load memory` / `ดึงความจำ` - โหลดความจำ Oracle (ψ files + Supabase)
 
 ---
 

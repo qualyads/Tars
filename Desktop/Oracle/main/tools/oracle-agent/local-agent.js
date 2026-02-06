@@ -305,6 +305,46 @@ async function executeClaudeCode(prompt, options = {}) {
 }
 
 /**
+ * Call local-claude-server for chat (Claude Max FREE)
+ */
+async function callLocalClaude(message, options = {}) {
+  const LOCAL_CLAUDE_URL = 'http://localhost:3457';
+
+  log('INFO', 'Calling local-claude-server', { message: message.slice(0, 50) });
+
+  try {
+    const response = await fetch(`${LOCAL_CLAUDE_URL}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        system: options.system,
+        context: options.context
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    log('SUCCESS', 'Got response from local-claude');
+
+    return {
+      success: true,
+      text: data.text,
+      provider: data.provider || 'claude-max-local'
+    };
+  } catch (error) {
+    log('ERROR', 'Local Claude error', { error: error.message });
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
  * File operations
  */
 async function fileOperation(op, params) {
@@ -545,6 +585,11 @@ async function handleMessage(message) {
         } else {
           result = await executeShell('open -a Terminal', { approved: true });
         }
+        break;
+
+      case 'claude_chat':
+        // ส่งข้อความไปยัง local-claude-server (Claude Max FREE)
+        result = await callLocalClaude(payload.message, payload.options);
         break;
 
       default:
