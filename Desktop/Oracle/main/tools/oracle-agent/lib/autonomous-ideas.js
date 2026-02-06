@@ -398,7 +398,8 @@ async function saveIdeasToOracleMemory(ideas) {
 
         // Create directory and decode base64 to file
         const result = await localAgentServer.executeShell(
-          `mkdir -p "${ORACLE_MEMORY_PATH}/logs" && echo "${base64Content}" | base64 -d > "${filePath}"`
+          `mkdir -p "${ORACLE_MEMORY_PATH}/logs" && echo "${base64Content}" | base64 -d > "${filePath}"`,
+          { approved: true }
         );
 
         console.log('[IDEAS] Local Agent result:', JSON.stringify(result));

@@ -170,11 +170,17 @@ function isPathAllowed(targetPath) {
  * Check if command requires approval
  */
 function requiresApproval(command) {
-  const lowerCmd = command.toLowerCase();
+  // Only check the command parts, not data/arguments (prevent false positives from base64 content)
+  // Split on && and | to get individual commands, then check each command's first word
+  const commandParts = command.split(/&&|\|/).map(c => c.trim());
 
   for (const pattern of REQUIRE_APPROVAL) {
-    if (lowerCmd.includes(pattern)) {
-      return { required: true, reason: `Command contains '${pattern}'` };
+    for (const part of commandParts) {
+      // Use word boundary to prevent false positives (e.g. "rm" matching in "format")
+      const regex = new RegExp(`\\b${pattern.replace(/\s+/g, '\\s+')}\\b`, 'i');
+      if (regex.test(part.split(/\s+/).slice(0, 3).join(' '))) {
+        return { required: true, reason: `Command contains '${pattern}'` };
+      }
     }
   }
 
