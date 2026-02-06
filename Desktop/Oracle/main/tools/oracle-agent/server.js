@@ -200,7 +200,7 @@ async function checkLocalHealth() {
       res.on('end', () => {
         try {
           const result = JSON.parse(data);
-          localStatus.online = result.status === 'online';
+          localStatus.online = result.status === 'online' || result.status === 'healthy';
           localStatus.lastCheck = Date.now();
           console.log(`[ROUTER] Local health: ${localStatus.online ? 'ONLINE' : 'OFFLINE'}`);
           resolve(localStatus.online);
@@ -554,20 +554,83 @@ app.post('/webhook/line', async (req, res) => {
     // FAILOVER ROUTER: Check Local first, then handle locally
     // ==========================================================================
 
-    // Check if Local server is online
-    const localOnline = await checkLocalHealth();
+    // Check if Local Agent is connected (for Claude Max FREE via WebSocket)
+    const isLocalAgentConnected = localAgentServer.isConnected();
 
+    if (isLocalAgentConnected) {
+      // Route via WebSocket to local-agent → local-claude-server (Claude Max FREE)
+      console.log('[ROUTER] Using WebSocket → Local Agent → Claude Max (FREE)');
+
+      for (const event of events) {
+        if (event.type === 'message' && event.message.type === 'text') {
+          const userMessage = event.message.text;
+          const replyToken = event.replyToken;
+          const userId = event.source.userId;
+
+          try {
+            // Build context from Railway's knowledge
+            let context = '';
+
+            // 1. Get user profile
+            const userProfile = await db.getUserProfile(userId).catch(() => null);
+            if (userProfile) {
+              context += `User: ${userProfile.displayName || 'Tars'}\n`;
+            }
+
+            // 2. Check if message is about hotel/room/booking
+            const hotelKeywords = ['ห้อง', 'ที่พัก', 'booking', 'จอง', 'เต็ม', 'ว่าง', 'occupancy'];
+            const isHotelQuery = hotelKeywords.some(kw => userMessage.toLowerCase().includes(kw));
+
+            if (isHotelQuery) {
+              // Get Beds24 data
+              const today = new Date().toISOString().split('T')[0];
+              const bookings = await beds24.getBookings({ arrivalTo: today, departureFrom: today }).catch(() => []);
+              const occupiedRooms = bookings.filter(b => b.status !== 'cancelled').length;
+              context += `\nBeds24 Data (วันนี้ ${today}):\n`;
+              context += `- ห้องที่มีคนพัก: ${occupiedRooms} ห้อง\n`;
+              context += `- Bookings: ${JSON.stringify(bookings.slice(0, 5).map(b => ({ room: b.roomId, guest: b.guestName, status: b.status })))}\n`;
+            }
+
+            // 3. Add system knowledge
+            const systemPrompt = `คุณคือ Oracle - AI assistant ของ Tars
+ตอบภาษาไทย กระชับ ตรงประเด็น
+ถ้ามี context ให้ใช้ข้อมูลจาก context ตอบ`;
+
+            const result = await localAgentServer.executeClaudeChat(userMessage, {
+              system: systemPrompt,
+              context: context || undefined
+            });
+
+            if (result.success && result.text) {
+              // Reply via LINE
+              await line.reply(replyToken, result.text + '\n\n🟢 claude-max');
+              console.log('[ROUTER] Replied via Claude Max (WebSocket)');
+            } else {
+              throw new Error(result.error || 'No response from local Claude');
+            }
+          } catch (wsError) {
+            console.log(`[ROUTER] WebSocket error: ${wsError.message}, falling back to API`);
+            // Continue to handle locally with API
+            break;
+          }
+        }
+      }
+
+      res.status(200).send('OK (via WebSocket)');
+      return;
+    }
+
+    // Fallback: Check HTTP tunnel (legacy)
+    const localOnline = await checkLocalHealth();
     if (localOnline && LOCAL_TUNNEL_URL) {
-      // Forward to Local (uses Claude Max - FREE)
-      console.log('[ROUTER] Forwarding to Local (Claude Max - FREE)');
+      console.log('[ROUTER] Forwarding to Local via HTTP tunnel');
       try {
         const result = await forwardToLocal('/webhook', req.body);
         console.log(`[ROUTER] Local responded: ${result.status}`);
         res.status(200).send('OK (via Local)');
         return;
       } catch (forwardError) {
-        console.log(`[ROUTER] Forward failed: ${forwardError.message}, handling locally`);
-        // Fall through to handle locally
+        console.log(`[ROUTER] Forward failed: ${forwardError.message}`);
       }
     }
 

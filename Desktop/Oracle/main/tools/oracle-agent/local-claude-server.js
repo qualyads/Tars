@@ -23,6 +23,11 @@ app.use(express.json());
 const PORT = process.env.PORT || 3457;
 const LOCK_FILE = '/tmp/oracle-local-claude.lock';
 
+// Default Oracle System Prompt (ถ้าไม่มี system ส่งมา)
+const ORACLE_SYSTEM = `คุณคือ Oracle - AI assistant ของ Tars
+ตอบภาษาไทย กระชับ ตรงประเด็น
+ถ้ามี context ให้ใช้ข้อมูลจาก context ตอบ`;
+
 // Lock file to prevent duplicate instances
 function checkAndCreateLock() {
   if (fs.existsSync(LOCK_FILE)) {
@@ -81,11 +86,13 @@ app.post('/chat', async (req, res) => {
   console.log(`[LOCAL-CLAUDE] Received: ${message.substring(0, 50)}...`);
 
   try {
-    // Build prompt with system + context
+    // Build prompt with Oracle system + context
     let fullPrompt = '';
-    if (system) {
-      fullPrompt += `<system>\n${system}\n</system>\n\n`;
-    }
+
+    // Always include Oracle identity
+    const systemPrompt = system || ORACLE_SYSTEM;
+    fullPrompt += `<system>\n${systemPrompt}\n</system>\n\n`;
+
     if (context) {
       fullPrompt += `<context>\n${context}\n</context>\n\n`;
     }
