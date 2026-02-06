@@ -384,18 +384,22 @@ async function saveIdeasToOracleMemory(ideas) {
   if (!fs.existsSync(ORACLE_MEMORY_PATH)) {
     console.log('[IDEAS] Oracle memory path not found (running on Railway?), using Local Agent...');
 
-    // Try to save via Local Agent WebSocket
+    // Try to save via Local Agent shell command
     if (localAgentServer.isConnected()) {
       try {
         const today = new Date().toISOString().split('T')[0];
         const content = buildIdeasMarkdown(ideas);
+        const filePath = `${ORACLE_MEMORY_PATH}/logs/${today}-ideas.md`;
 
-        await localAgentServer.send({
-          type: 'write_file',
-          path: `${ORACLE_MEMORY_PATH}/logs/${today}-ideas.md`,
-          content: content
-        });
-        console.log('[IDEAS] Sent ideas to Local Agent for saving');
+        // Escape content for shell
+        const escapedContent = content.replace(/'/g, "'\\''");
+
+        // Use shell command to write file
+        await localAgentServer.executeShell(`mkdir -p "${ORACLE_MEMORY_PATH}/logs" && cat > "${filePath}" << 'IDEASEOF'
+${content}
+IDEASEOF`);
+
+        console.log('[IDEAS] Saved ideas via Local Agent shell');
       } catch (e) {
         console.error('[IDEAS] Local Agent write error:', e.message);
       }
