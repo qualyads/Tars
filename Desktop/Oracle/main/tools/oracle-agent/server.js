@@ -702,13 +702,8 @@ app.post('/webhook/line', async (req, res) => {
         // =====================================================================
         // PHASE 5.5: MEMORY CONSOLIDATION - บันทึก short-term memory
         // =====================================================================
-        memoryConsolidation.addShortTerm({
-          type: 'conversation',
-          content: userMessage,
-          context: { channel: 'line', userId, sentiment: sentiment.mood },
-          importance: sentiment.urgency === 'high' ? 4 : 3,
-          tags: ['line', sentiment.mood]
-        });
+        // TODO: addShortTerm ยังไม่ได้ implement
+        // memoryConsolidation.addShortTerm({...});
 
         // Phase 3.5: Log user message to JSONL
         logUserMessage(sessionId, userMessage, {
@@ -1401,6 +1396,10 @@ ${shouldDeploy ? '- จะ deploy ขึ้น Railway เมื่อเสร�
         // MEMORY CONSOLIDATION CONTEXT - ดึงข้อมูลจาก long-term memory ทุกครั้ง
         // =====================================================================
         try {
+          // Skip if function not available
+          if (!memoryConsolidation.getContextForAI) {
+            throw new Error('getContextForAI not implemented');
+          }
           const memoryContext = memoryConsolidation.getContextForAI(userMessage);
 
           // Add learnings (ความรู้ที่จำไว้)
@@ -3601,57 +3600,45 @@ app.post('/api/digest/generate', async (req, res) => {
   }
 });
 
-// Memory Consolidation
+// Memory Consolidation - wrapped with error handling (many functions not implemented yet)
 app.get('/api/memory-consolidation/status', (req, res) => {
-  res.json(memoryConsolidation.getStatus());
+  res.json({ status: 'not_implemented', message: 'Memory consolidation functions not fully implemented' });
 });
 
 app.get('/api/memory-consolidation/stats', (req, res) => {
-  res.json(memoryConsolidation.getStats());
+  res.json({ status: 'not_implemented' });
 });
 
 app.get('/api/memory-consolidation/preferences', (req, res) => {
-  res.json(memoryConsolidation.getPreferences());
+  res.json({ preferences: [] });
 });
 
 app.get('/api/memory-consolidation/query', (req, res) => {
-  const options = {
-    type: req.query.type,
-    search: req.query.search,
-    tags: req.query.tags ? req.query.tags.split(',') : null,
-    minImportance: req.query.minImportance ? parseInt(req.query.minImportance) : null,
-    limit: parseInt(req.query.limit) || 10
-  };
-  res.json(memoryConsolidation.query(options));
+  res.json({ results: [], status: 'not_implemented' });
 });
 
 app.get('/api/memory-consolidation/related/:entity', (req, res) => {
-  res.json(memoryConsolidation.getRelated(req.params.entity));
+  res.json({ related: [], status: 'not_implemented' });
 });
 
 app.get('/api/memory-consolidation/context', (req, res) => {
-  const topic = req.query.topic || null;
-  res.json(memoryConsolidation.getContextForAI(topic));
+  res.json({ context: {}, status: 'not_implemented' });
 });
 
 app.post('/api/memory-consolidation/add-short-term', (req, res) => {
-  const memory = memoryConsolidation.addShortTerm(req.body);
-  res.json({ success: true, memory });
+  res.json({ success: false, error: 'not_implemented' });
 });
 
 app.post('/api/memory-consolidation/add-learning', (req, res) => {
-  const learning = memoryConsolidation.addLearning(req.body);
-  res.json({ success: true, learning });
+  res.json({ success: false, error: 'not_implemented' });
 });
 
 app.post('/api/memory-consolidation/add-preference', (req, res) => {
-  memoryConsolidation.addPreference(req.body);
-  res.json({ success: true });
+  res.json({ success: false, error: 'not_implemented' });
 });
 
 app.post('/api/memory-consolidation/add-fact', (req, res) => {
-  memoryConsolidation.addFact(req.body);
-  res.json({ success: true });
+  res.json({ success: false, error: 'not_implemented' });
 });
 
 app.post('/api/memory-consolidation/consolidate', async (req, res) => {
