@@ -1,0 +1,30 @@
+{
+  "last_qt": "QT2026020002",
+  "last_bl": "BL2026020001",
+  "last_rc": null,
+  "last_client": "ทีดีที เทรดดิ้ง",
+  "note": "QT รันเลขต่อจาก PDF ใบเก่า 28 ใบ | BL/RC ยังไม่เคยออก — เริ่ม 0001 เมื่อใช้งานจริง",
+  "history": [
+    {
+      "qt": "QT2025090001",
+      "client": "RB Co.",
+      "date": "2025-09",
+      "source": "PDF filename"
+    },
+    {
+      "qt": "QT2026020002",
+      "client": "ทีดีที เทรดดิ้ง",
+      "date": "2026-02",
+      "source": "Oracle generated"
+    },
+    {
+      "bl": "BL2026020001",
+      "ref": "QT2026020002",
+      "client": "ทีดีที เทรดดิ้ง",
+      "date": "2026-02",
+      "amount": 115000,
+      "note": "งวดที่ 1 — 50% ก่อนเริ่มงาน",
+      "source": "Oracle generated"
+    }
+  ]
+}
