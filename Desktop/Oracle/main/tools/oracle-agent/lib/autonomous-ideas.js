@@ -391,15 +391,19 @@ async function saveIdeasToOracleMemory(ideas) {
         const content = buildIdeasMarkdown(ideas);
         const filePath = `${ORACLE_MEMORY_PATH}/logs/${today}-ideas.md`;
 
-        // Escape content for shell
-        const escapedContent = content.replace(/'/g, "'\\''");
+        // Use base64 encoding to safely pass content
+        const base64Content = Buffer.from(content).toString('base64');
 
-        // Use shell command to write file
-        await localAgentServer.executeShell(`mkdir -p "${ORACLE_MEMORY_PATH}/logs" && cat > "${filePath}" << 'IDEASEOF'
-${content}
-IDEASEOF`);
+        // Create directory and decode base64 to file
+        const result = await localAgentServer.executeShell(
+          `mkdir -p "${ORACLE_MEMORY_PATH}/logs" && echo "${base64Content}" | base64 -d > "${filePath}"`
+        );
 
-        console.log('[IDEAS] Saved ideas via Local Agent shell');
+        if (result.success) {
+          console.log('[IDEAS] Saved ideas via Local Agent shell');
+        } else {
+          console.error('[IDEAS] Local Agent write failed:', result.error);
+        }
       } catch (e) {
         console.error('[IDEAS] Local Agent write error:', e.message);
       }
