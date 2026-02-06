@@ -318,30 +318,43 @@ async function saveIdeasToSupabase(ideas) {
   }
 
   try {
-    const summary = ideas.slice(0, 5).map((idea, i) =>
-      `${i + 1}. ${idea.name} (Score: ${idea.score?.totalScore || 0}) - ${idea.tagline}`
-    ).join('\n');
+    // Save each idea separately for easy search
+    for (const idea of ideas.slice(0, 5)) {
+      const content = `💡 SaaS Idea: ${idea.name}
 
-    const content = `Ideas Generated ${new Date().toISOString().split('T')[0]}:\n${summary}`;
+📝 **${idea.tagline || 'No tagline'}**
 
-    let embedding = null;
-    try {
-      embedding = await generateEmbedding(content);
-    } catch (e) {
-      console.log('[IDEAS] Embedding error:', e.message);
+❓ ปัญหา: ${idea.problem || 'N/A'}
+✅ วิธีแก้: ${idea.solution || 'N/A'}
+👥 กลุ่มเป้าหมาย: ${idea.targetUsers || 'N/A'}
+💰 วิธีหาเงิน: ${idea.monetization || 'N/A'}
+🛠️ MVP: ${idea.mvpScope || 'N/A'}
+⏱️ เวลาสร้าง: ${idea.estimatedHours || 8} ชม.
+
+📊 Score: ${idea.score?.totalScore || 0}/100
+📋 Recommendation: ${idea.score?.recommendation || 'MAYBE'}
+💰 Revenue: ${idea.score?.scores?.revenuePotential || 0}/100
+🔧 Feasibility: ${idea.score?.scores?.feasibility || 0}/100`;
+
+      let embedding = null;
+      try {
+        embedding = await generateEmbedding(`${idea.name} ${idea.problem} ${idea.solution} ${idea.targetUsers}`);
+      } catch (e) {
+        console.log('[IDEAS] Embedding error:', e.message);
+      }
+
+      const searchText = `${idea.name} ${idea.tagline} ${idea.problem} ${idea.solution}`.toLowerCase().substring(0, 1000);
+
+      await query(`
+        INSERT INTO episodic_memory (user_id, content, context, memory_type, importance, search_text${embedding ? ', embedding' : ''})
+        VALUES ($1, $2, $3, $4, $5, $6${embedding ? ', $7' : ''})
+      `, embedding
+        ? ['tars', content, { source: 'idea-engine', idea_name: idea.name, score: idea.score?.totalScore }, 'idea', 0.8, searchText, embedding]
+        : ['tars', content, { source: 'idea-engine', idea_name: idea.name, score: idea.score?.totalScore }, 'idea', 0.8, searchText]
+      );
     }
 
-    const searchText = content.toLowerCase().substring(0, 1000);
-
-    await query(`
-      INSERT INTO episodic_memory (user_id, content, context, memory_type, importance, search_text${embedding ? ', embedding' : ''})
-      VALUES ($1, $2, $3, $4, $5, $6${embedding ? ', $7' : ''})
-    `, embedding
-      ? ['tars', content, { source: 'autonomous-ideas', count: ideas.length }, 'idea', 0.8, searchText, embedding]
-      : ['tars', content, { source: 'autonomous-ideas', count: ideas.length }, 'idea', 0.8, searchText]
-    );
-
-    console.log('[IDEAS] Saved to Supabase:', ideas.length, 'ideas');
+    console.log('[IDEAS] Saved to Supabase:', Math.min(5, ideas.length), 'ideas');
   } catch (error) {
     console.error('[IDEAS] Supabase save error:', error.message);
   }

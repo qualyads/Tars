@@ -4432,8 +4432,8 @@ cron.schedule('45 23 * * *', async () => {
 // AUTONOMOUS IDEA ENGINE - Oracle คิดเอง ทำเอง (ทุก 30 นาที)
 // =============================================================================
 
-// Think every 30 minutes during active hours (8:00-22:00)
-cron.schedule('*/30 * * * *', async () => {
+// Think every 15 minutes during active hours (8:00-22:00)
+cron.schedule('*/15 * * * *', async () => {
   const hour = new Date().getHours();
   // Only run during active hours (8:00 - 22:00 Bangkok time)
   if (hour < 8 || hour >= 22) {
@@ -4441,7 +4441,7 @@ cron.schedule('*/30 * * * *', async () => {
     return;
   }
 
-  console.log('[IDEAS] 🧠 Autonomous Thinking Cycle triggered (every 30 min)');
+  console.log('[IDEAS] 🧠 Autonomous Thinking Cycle triggered (every 15 min)');
   logSystemEvent('system', 'ideas_thinking_start', {});
 
   try {
