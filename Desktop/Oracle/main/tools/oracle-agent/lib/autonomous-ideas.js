@@ -447,23 +447,48 @@ async function runThinkingCycle(config) {
       };
     }
 
-    // Build quality-focused message
+    // Build detailed Thai message
     let summaryMessage = `💡 **Oracle พบโอกาสทำเงิน!**\n\n`;
 
     for (let i = 0; i < Math.min(3, qualityIdeas.length); i++) {
       const idea = qualityIdeas[i];
       const revenue = idea.score?.scores?.revenuePotential || 0;
       const feasibility = idea.score?.scores?.feasibility || 0;
+      const total = idea.score?.totalScore || 0;
 
-      summaryMessage += `${i + 1}. **${idea.name}** (${idea.score?.totalScore || 0}/100)\n`;
-      summaryMessage += `   ${idea.tagline}\n`;
-      summaryMessage += `   💰 Revenue: ${revenue}/100 | 🔧 Feasibility: ${feasibility}/100\n`;
-      summaryMessage += `   📊 ${idea.score?.recommendation || 'N/A'}\n`;
-      if (idea.monetization) {
-        summaryMessage += `   💵 ${idea.monetization}\n`;
+      summaryMessage += `━━━━━━━━━━━━━━━━━━━━\n`;
+      summaryMessage += `${i + 1}. **${idea.name}** (${total}/100)\n\n`;
+
+      // Problem & Solution (Thai)
+      if (idea.problem) {
+        summaryMessage += `❓ **ปัญหา:** ${idea.problem}\n`;
       }
-      summaryMessage += `\n`;
+      if (idea.solution) {
+        summaryMessage += `✅ **วิธีแก้:** ${idea.solution}\n`;
+      }
+
+      // Target users
+      if (idea.targetUsers) {
+        summaryMessage += `👥 **กลุ่มเป้าหมาย:** ${idea.targetUsers}\n`;
+      }
+
+      // Monetization
+      if (idea.monetization) {
+        summaryMessage += `💰 **วิธีหาเงิน:** ${idea.monetization}\n`;
+      }
+
+      // MVP Scope
+      if (idea.mvpScope) {
+        summaryMessage += `🛠️ **MVP:** ${idea.mvpScope}\n`;
+      }
+
+      // Scores
+      summaryMessage += `\n📊 Revenue: ${revenue} | Feasibility: ${feasibility}\n`;
+      summaryMessage += `📋 ${idea.score?.recommendation || 'MAYBE'}\n\n`;
     }
+
+    summaryMessage += `━━━━━━━━━━━━━━━━━━━━\n`;
+    summaryMessage += `สนใจ idea ไหนบอกได้เลยครับ! 🚀`;
 
     // 6. Auto-execute if score is high enough
     if (bestIdea.score?.totalScore >= CONFIG.autoExecuteThreshold &&
