@@ -307,6 +307,160 @@ ${idea.mvpScope}
 }
 
 // =============================================================================
+// SAVE TO LOCAL ORACLE MEMORY (ψ/memory/)
+// =============================================================================
+
+const ORACLE_MEMORY_PATH = '/Users/tanakitchaithip/Desktop/Oracle/main/ψ/memory';
+
+/**
+ * Build markdown content from ideas for saving to files
+ */
+function buildIdeasMarkdown(ideas) {
+  const today = new Date().toISOString().split('T')[0];
+  let content = `# 💡 Oracle Ideas Engine - ${today}\n\n`;
+  content += `Generated: ${new Date().toLocaleString('th-TH')}\n\n`;
+  content += `---\n\n`;
+
+  for (let i = 0; i < ideas.length; i++) {
+    const idea = ideas[i];
+    const score = idea.score?.totalScore || 0;
+    const rec = idea.score?.recommendation || 'MAYBE';
+
+    content += `## ${i + 1}. ${idea.name} (${score}/100) ${rec === 'GO' ? '🚀' : rec === 'SKIP' ? '⏭️' : '🤔'}\n\n`;
+    content += `**${idea.tagline || 'No tagline'}**\n\n`;
+
+    if (idea.problem) content += `❓ **ปัญหา:** ${idea.problem}\n\n`;
+    if (idea.solution) content += `✅ **วิธีแก้:** ${idea.solution}\n\n`;
+    if (idea.targetUsers) content += `👥 **กลุ่มเป้าหมาย:** ${idea.targetUsers}\n\n`;
+    if (idea.monetization) content += `💰 **วิธีหาเงิน:** ${idea.monetization}\n\n`;
+    if (idea.mvpScope) content += `🛠️ **MVP Scope:** ${idea.mvpScope}\n\n`;
+    if (idea.estimatedHours) content += `⏱️ **เวลาสร้าง:** ${idea.estimatedHours} ชม.\n\n`;
+
+    if (idea.features?.length > 0) {
+      content += `**Features:**\n`;
+      idea.features.forEach(f => content += `- ${f}\n`);
+      content += '\n';
+    }
+
+    if (idea.techStack?.length > 0) {
+      content += `**Tech Stack:** ${idea.techStack.join(', ')}\n\n`;
+    }
+
+    // Scores breakdown
+    if (idea.score?.scores) {
+      const s = idea.score.scores;
+      content += `**📊 Scores:**\n`;
+      content += `| Metric | Score |\n|--------|-------|\n`;
+      if (s.feasibility) content += `| Feasibility | ${s.feasibility}/100 |\n`;
+      if (s.marketDemand) content += `| Market Demand | ${s.marketDemand}/100 |\n`;
+      if (s.revenuePotential) content += `| Revenue Potential | ${s.revenuePotential}/100 |\n`;
+      if (s.competition) content += `| Competition | ${s.competition}/100 |\n`;
+      if (s.maintenance) content += `| Maintenance | ${s.maintenance}/100 |\n`;
+      if (s.tarsFit) content += `| Tars Fit | ${s.tarsFit}/100 |\n`;
+      content += '\n';
+    }
+
+    if (idea.score?.reasoning) {
+      content += `**💭 Reasoning:** ${idea.score.reasoning}\n\n`;
+    }
+
+    if (idea.score?.risks?.length > 0) {
+      content += `**⚠️ Risks:** ${idea.score.risks.join(', ')}\n\n`;
+    }
+
+    content += `---\n\n`;
+  }
+
+  return content;
+}
+
+async function saveIdeasToOracleMemory(ideas) {
+  if (!ideas || ideas.length === 0) {
+    console.log('[IDEAS] No ideas to save to Oracle memory');
+    return;
+  }
+
+  // Check if running on local Mac (path exists)
+  if (!fs.existsSync(ORACLE_MEMORY_PATH)) {
+    console.log('[IDEAS] Oracle memory path not found (running on Railway?), using Local Agent...');
+
+    // Try to save via Local Agent WebSocket
+    if (localAgentServer.isConnected()) {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const content = buildIdeasMarkdown(ideas);
+
+        await localAgentServer.send({
+          type: 'write_file',
+          path: `${ORACLE_MEMORY_PATH}/logs/${today}-ideas.md`,
+          content: content
+        });
+        console.log('[IDEAS] Sent ideas to Local Agent for saving');
+      } catch (e) {
+        console.error('[IDEAS] Local Agent write error:', e.message);
+      }
+    }
+    return;
+  }
+
+  try {
+    // 1. Save to logs/YYYY-MM-DD-ideas.md
+    const today = new Date().toISOString().split('T')[0];
+    const logsDir = path.join(ORACLE_MEMORY_PATH, 'logs');
+    const logFile = path.join(logsDir, `${today}-ideas.md`);
+
+    // Build markdown content using helper function
+    let content = buildIdeasMarkdown(ideas);
+
+    // Ensure logs directory exists
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+
+    // Append to existing file if exists, otherwise create new
+    if (fs.existsSync(logFile)) {
+      const existing = fs.readFileSync(logFile, 'utf8');
+      content = existing + '\n\n---\n\n# 🔄 Next Cycle\n\n' + content.split('---\n\n').slice(1).join('---\n\n');
+    }
+
+    fs.writeFileSync(logFile, content);
+    console.log(`[IDEAS] Saved to Oracle memory: ${logFile}`);
+
+    // 2. Update knowledge/saas-ideas.md (top ideas only)
+    const knowledgeDir = path.join(ORACLE_MEMORY_PATH, 'knowledge');
+    const saasFile = path.join(knowledgeDir, 'saas-ideas.md');
+
+    const topIdeas = ideas.filter(i => (i.score?.totalScore || 0) >= 60).slice(0, 10);
+
+    if (topIdeas.length > 0) {
+      let saasContent = `# 💡 SaaS Ideas - Top Picks\n\n`;
+      saasContent += `Last updated: ${new Date().toLocaleString('th-TH')}\n\n`;
+      saasContent += `Ideas with score >= 60\n\n---\n\n`;
+
+      for (const idea of topIdeas) {
+        const score = idea.score?.totalScore || 0;
+        saasContent += `## ${idea.name} (${score}/100)\n\n`;
+        saasContent += `${idea.tagline || ''}\n\n`;
+        if (idea.problem) saasContent += `- **ปัญหา:** ${idea.problem}\n`;
+        if (idea.solution) saasContent += `- **วิธีแก้:** ${idea.solution}\n`;
+        if (idea.monetization) saasContent += `- **หาเงิน:** ${idea.monetization}\n`;
+        if (idea.estimatedHours) saasContent += `- **เวลา:** ${idea.estimatedHours} ชม.\n`;
+        saasContent += '\n---\n\n';
+      }
+
+      if (!fs.existsSync(knowledgeDir)) {
+        fs.mkdirSync(knowledgeDir, { recursive: true });
+      }
+      fs.writeFileSync(saasFile, saasContent);
+      console.log(`[IDEAS] Updated knowledge: ${saasFile}`);
+    }
+
+  } catch (error) {
+    console.error('[IDEAS] Oracle memory save error:', error.message);
+  }
+}
+
+// =============================================================================
 // SAVE TO SUPABASE
 // =============================================================================
 
@@ -428,6 +582,9 @@ async function runThinkingCycle(config) {
 
     // Save to Supabase (persistent memory)
     await saveIdeasToSupabase(scoredIdeas);
+
+    // Save to Oracle memory files (ψ/memory/)
+    await saveIdeasToOracleMemory(scoredIdeas);
 
     // 4. Find best idea
     const bestIdea = scoredIdeas[0];
