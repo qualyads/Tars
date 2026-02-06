@@ -107,7 +107,9 @@
     "investment_check": "0 8,12,18 * * *",
     "session_summarize": "0 23 * * *",
     "terminal_summarize": "30 23 * * *",
-    "forbes_summary": "0 9 * * 1"
+    "forbes_summary": "0 9 * * 1",
+    "hospitality_trends": "30 9 * * 1",
+    "weekly_revenue": "0 10 * * 1"
   },
 
   "heartbeat": {

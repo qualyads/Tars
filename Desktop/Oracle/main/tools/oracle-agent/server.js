@@ -63,6 +63,9 @@ import codingOrchestrator from './lib/coding-orchestrator.js';
 import modelFailover from './lib/model-failover.js';
 import webhookIngress, { createBeds24Handler, createStripeHandler, createGitHubHandler } from './lib/webhook-ingress.js';
 import gmailPubSub from './lib/gmail-pubsub.js';
+import gmailClient from './lib/gmail.js';
+import searchConsole from './lib/search-console.js';
+import googleBusiness from './lib/google-business.js';
 import queueManager from './lib/queue-manager.js';
 import thinkingLevels from './lib/thinking-levels.js';
 import memory from './lib/memory.js';
@@ -119,6 +122,10 @@ import apiHunter from './lib/api-hunter.js';
 
 // Phase 10: Forbes Weekly Summary
 import forbesWeekly from './lib/forbes-weekly.js';
+
+// Phase 11: Hospitality Trends + Weekly Revenue Dashboard
+import hospitalityTrends from './lib/hospitality-trends.js';
+import weeklyRevenue from './lib/weekly-revenue.js';
 
 // Phase 9: Unified Memory & Practical AGI
 import memoryApiRouter from './lib/memory-api.js';
@@ -2753,6 +2760,58 @@ app.get('/api/forbes/latest', (req, res) => {
 });
 
 // =============================================================================
+// HOSPITALITY TRENDS - เทรนด์โรงแรม/ท่องเที่ยว + วิเคราะห์ปาย
+// =============================================================================
+
+app.get('/api/hospitality/status', (req, res) => {
+  res.json(hospitalityTrends.getStatus());
+});
+
+app.post('/api/hospitality/run', async (req, res) => {
+  console.log('[HOSP] Manual run triggered');
+  try {
+    const result = await hospitalityTrends.runNow(config);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/hospitality/latest', (req, res) => {
+  const summary = hospitalityTrends.getLatestSummary();
+  if (!summary) {
+    return res.json({ message: 'No summaries yet. Trigger with POST /api/hospitality/run' });
+  }
+  res.json(summary);
+});
+
+// =============================================================================
+// WEEKLY REVENUE DASHBOARD - สรุปยอด Beds24 ทุกสัปดาห์
+// =============================================================================
+
+app.get('/api/weekly-revenue/status', (req, res) => {
+  res.json(weeklyRevenue.getStatus());
+});
+
+app.post('/api/weekly-revenue/run', async (req, res) => {
+  console.log('[REVENUE] Manual run triggered');
+  try {
+    const result = await weeklyRevenue.runNow(config);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/weekly-revenue/latest', (req, res) => {
+  const report = weeklyRevenue.getLatestReport();
+  if (!report) {
+    return res.json({ message: 'No reports yet. Trigger with POST /api/weekly-revenue/run' });
+  }
+  res.json(report);
+});
+
+// =============================================================================
 // API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส
 // =============================================================================
 
@@ -2944,6 +3003,113 @@ app.post('/api/gmail/process', async (req, res) => {
 app.post('/api/gmail/reset-stats', (req, res) => {
   gmailPubSub.resetStats();
   res.json({ success: true, message: 'Stats reset' });
+});
+
+// =============================================================================
+// GMAIL API (Direct)
+// =============================================================================
+
+// Gmail summary (unread count + recent)
+app.get('/api/gmail/summary', async (req, res) => {
+  try {
+    const summary = await gmailClient.getSummary();
+    res.json({ success: true, ...summary });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// List inbox messages
+app.get('/api/gmail/inbox', async (req, res) => {
+  try {
+    const maxResults = parseInt(req.query.max) || 10;
+    const messages = await gmailClient.listMessages({ maxResults });
+    res.json({ success: true, count: messages.length, messages });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Search emails
+app.get('/api/gmail/search', async (req, res) => {
+  try {
+    const { q, max } = req.query;
+    if (!q) return res.status(400).json({ error: 'q parameter required' });
+    const messages = await gmailClient.search(q, parseInt(max) || 10);
+    res.json({ success: true, count: messages.length, messages });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get unread messages
+app.get('/api/gmail/unread', async (req, res) => {
+  try {
+    const max = parseInt(req.query.max) || 5;
+    const messages = await gmailClient.getUnread(max);
+    res.json({ success: true, count: messages.length, messages });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Read specific message
+app.get('/api/gmail/message/:id', async (req, res) => {
+  try {
+    const format = req.query.format || 'full';
+    const message = await gmailClient.getMessage(req.params.id, format);
+    res.json({ success: true, message });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Send email
+app.post('/api/gmail/send', async (req, res) => {
+  try {
+    const { to, subject, body, cc, bcc } = req.body;
+    if (!to || !subject || !body) {
+      return res.status(400).json({ error: 'to, subject, body required' });
+    }
+    const result = await gmailClient.send({ to, subject, body, cc, bcc });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Create draft
+app.post('/api/gmail/draft', async (req, res) => {
+  try {
+    const { to, subject, body } = req.body;
+    if (!to || !subject || !body) {
+      return res.status(400).json({ error: 'to, subject, body required' });
+    }
+    const result = await gmailClient.createDraft({ to, subject, body });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Mark as read
+app.post('/api/gmail/read/:id', async (req, res) => {
+  try {
+    await gmailClient.markAsRead(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Archive message
+app.post('/api/gmail/archive/:id', async (req, res) => {
+  try {
+    await gmailClient.archive(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // =============================================================================
@@ -4516,6 +4682,50 @@ cron.schedule(config.schedule.forbes_summary || '0 9 * * 1', async () => {
   } catch (error) {
     console.error('[FORBES] Summary error:', error);
     logError('system', error, { source: 'forbes-weekly' });
+  }
+}, { timezone: config.agent.timezone });
+
+// =============================================================================
+// HOSPITALITY TRENDS - เทรนด์โรงแรม/ท่องเที่ยว (ทุกวันจันทร์ 09:30)
+// =============================================================================
+
+cron.schedule(config.schedule.hospitality_trends || '30 9 * * 1', async () => {
+  console.log('[HOSP] 🏨 Weekly Hospitality Trends triggered');
+  logSystemEvent('system', 'hospitality_trends_start', {});
+
+  try {
+    const result = await hospitalityTrends.runWeeklySummary(config);
+    console.log('[HOSP] Result:', result.success ? 'success' : 'failed');
+    logSystemEvent('system', 'hospitality_trends_complete', {
+      success: result.success,
+      stories: result.storiesCount,
+      articles: result.articlesAnalyzed
+    });
+  } catch (error) {
+    console.error('[HOSP] Error:', error);
+    logError('system', error, { source: 'hospitality-trends' });
+  }
+}, { timezone: config.agent.timezone });
+
+// =============================================================================
+// WEEKLY REVENUE DASHBOARD - สรุปยอด Beds24 (ทุกวันจันทร์ 10:00)
+// =============================================================================
+
+cron.schedule(config.schedule.weekly_revenue || '0 10 * * 1', async () => {
+  console.log('[REVENUE] 📊 Weekly Revenue Report triggered');
+  logSystemEvent('system', 'weekly_revenue_start', {});
+
+  try {
+    const result = await weeklyRevenue.runWeeklyReport(config);
+    console.log('[REVENUE] Result:', result.success ? 'success' : 'failed');
+    logSystemEvent('system', 'weekly_revenue_complete', {
+      success: result.success,
+      revenue: result.report?.metrics?.totalRevenue,
+      occupancy: result.report?.metrics?.avgOccupancy
+    });
+  } catch (error) {
+    console.error('[REVENUE] Error:', error);
+    logError('system', error, { source: 'weekly-revenue' });
   }
 }, { timezone: config.agent.timezone });
 
