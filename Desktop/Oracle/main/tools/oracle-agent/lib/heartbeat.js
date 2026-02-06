@@ -357,18 +357,18 @@ HEARTBEAT_OK`;
   /**
    * Run heartbeat check with REAL DATA
    */
-  async runHeartbeat() {
+  async runHeartbeat({ force = false } = {}) {
     if (this.isRunning) {
       console.log('[HEARTBEAT] Already running, skipping...');
       return null;
     }
 
-    if (this.config.skipIfBusy && this.mainQueueBusy) {
+    if (!force && this.config.skipIfBusy && this.mainQueueBusy) {
       console.log('[HEARTBEAT] Main queue busy, skipping...');
       return null;
     }
 
-    if (!this.isActiveHours()) {
+    if (!force && !this.isActiveHours()) {
       console.log('[HEARTBEAT] Outside active hours, skipping...');
       return null;
     }
@@ -477,8 +477,8 @@ HEARTBEAT_OK`;
    * Manual trigger (for testing or CLI)
    */
   async trigger() {
-    console.log('[HEARTBEAT] Manual trigger...');
-    return await this.runHeartbeat();
+    console.log('[HEARTBEAT] Manual trigger (bypass active hours)...');
+    return await this.runHeartbeat({ force: true });
   }
 
   /**
