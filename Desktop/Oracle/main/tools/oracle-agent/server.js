@@ -557,7 +557,8 @@ app.post('/webhook/line', async (req, res) => {
     // Check if Local Agent is connected (for Claude Max FREE via WebSocket)
     const isLocalAgentConnected = localAgentServer.isConnected();
 
-    if (isLocalAgentConnected) {
+    if (false && isLocalAgentConnected) {
+      // DISABLED: Claude Max ยังมีปัญหา context ไม่ครบ
       // Route via WebSocket to local-agent → local-claude-server (Claude Max FREE)
       console.log('[ROUTER] Using WebSocket → Local Agent → Claude Max (FREE)');
 

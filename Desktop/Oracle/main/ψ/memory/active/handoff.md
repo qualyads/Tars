@@ -177,6 +177,55 @@ curl -H "X-API-Key: oracle-memory-secret-2026" \
 
 ---
 
+## 🚧 งานที่ยังไม่เสร็จ: LINE Bot + Claude Max (FREE) ❌ PAUSED
+
+**สถานะ:** ปิดไว้ก่อน กลับไปใช้ OpenAI API
+**เหตุผล:** Context ไม่ถูกส่งไป CLI ทำให้ตอบมั่ว
+
+### ปัญหา: ทำไม Claude Max ไม่ฉลาดเท่า API?
+
+| Anthropic API (ปกติ) | Claude Max (local) |
+|---------------------|-------------------|
+| ✅ Full context จาก server.js | ❌ แค่ message เดียว |
+| ✅ Session history | ❌ Stateless ทุก message |
+| ✅ Auto-recall (ดึง memory) | ❌ ไม่มี |
+| ✅ Tools (Beds24, etc.) | ❌ CLI ไม่มี tools |
+| ✅ Intent detection | ❌ ไม่มี |
+
+### Architecture ที่ทำไว้
+
+```
+LINE → Railway → WebSocket → local-agent → local-claude → Claude CLI (haiku)
+```
+
+**ปัญหาที่พบ:**
+1. `claude_chat_response` ไม่ถูก handle (แก้แล้ว ✅)
+2. `db is not defined` - ใช้ผิด module (แก้แล้ว ✅)
+3. lock file ค้าง - ต้อง rm /tmp/oracle-local-agent.lock
+4. **Context ไม่ครบ** - Railway ต้อง pre-fetch ทุกอย่างก่อนส่ง
+
+### สิ่งที่ต้องทำต่อ
+
+1. **Pre-fetch context ให้ครบ:**
+   - User profile ✅
+   - Beds24 data (ถ้าถามเรื่องห้อง) - มี bug
+   - Session history
+   - Auto-recall memories
+
+2. **หรือทางเลือกอื่น:**
+   - ใช้ Claude Code SDK แทน CLI
+   - หรือ Anthropic API with rate limit
+
+### Files ที่แก้ไข
+```
+server.js - WebSocket routing + context building
+lib/local-agent-server.js - เพิ่ม claude_chat_response
+local-claude-server.js - Oracle system prompt
+local-agent.js - claude_chat handler
+```
+
+---
+
 ## Known Items
 
 ### Parcel Tracking
