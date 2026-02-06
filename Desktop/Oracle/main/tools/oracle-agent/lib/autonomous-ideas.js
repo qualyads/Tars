@@ -145,6 +145,8 @@ async function generateIdeas(trends) {
 
   const ideaPrompt = `คุณเป็น startup idea generator ที่เก่งมาก
 
+**สำคัญมาก: ตอบเป็นภาษาไทยทั้งหมด! ห้ามใช้ภาษาอังกฤษหรือภาษาจีน!**
+
 จาก trends เหล่านี้:
 ${JSON.stringify(trends, null, 2)}
 
@@ -157,19 +159,19 @@ ${JSON.stringify(trends, null, 2)}
 Context ของ Tars:
 ${CONFIG.tarsContext}
 
-ตอบเป็น JSON array:
+ตอบเป็น JSON array (ภาษาไทยทั้งหมด ยกเว้น techStack):
 [
   {
-    "name": "ชื่อโปรเจค (short, memorable)",
-    "tagline": "One-liner description",
-    "problem": "ปัญหาที่แก้",
-    "solution": "วิธีแก้",
-    "features": ["feature1", "feature2", "feature3"],
+    "name": "ชื่อโปรเจคภาษาไทย (สั้น จำง่าย ห้ามใช้ภาษาจีน)",
+    "tagline": "คำอธิบายสั้นๆ ภาษาไทย",
+    "problem": "ปัญหาที่แก้ (ภาษาไทย)",
+    "solution": "วิธีแก้ (ภาษาไทย)",
+    "features": ["ฟีเจอร์1 ภาษาไทย", "ฟีเจอร์2", "ฟีเจอร์3"],
     "techStack": ["Next.js", "..."],
-    "monetization": "วิธีหาเงิน",
-    "mvpScope": "สิ่งที่ต้องทำใน MVP",
+    "monetization": "วิธีหาเงิน (ภาษาไทย)",
+    "mvpScope": "สิ่งที่ต้องทำใน MVP (ภาษาไทย)",
     "estimatedHours": 8-16,
-    "targetUsers": "กลุ่มเป้าหมาย"
+    "targetUsers": "กลุ่มเป้าหมาย (ภาษาไทย)"
   }
 ]
 

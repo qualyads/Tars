@@ -4429,19 +4429,12 @@ cron.schedule('45 23 * * *', async () => {
 }, { timezone: config.agent.timezone });
 
 // =============================================================================
-// AUTONOMOUS IDEA ENGINE - Oracle คิดเอง ทำเอง (ทุก 30 นาที)
+// AUTONOMOUS IDEA ENGINE - Oracle คิดเอง ทำเอง (ทุก 6 ชั่วโมง)
 // =============================================================================
 
-// Think every 15 minutes during active hours (8:00-22:00)
-cron.schedule('*/15 * * * *', async () => {
-  const hour = new Date().getHours();
-  // Only run during active hours (8:00 - 22:00 Bangkok time)
-  if (hour < 8 || hour >= 22) {
-    console.log('[IDEAS] Outside active hours, skipping...');
-    return;
-  }
-
-  console.log('[IDEAS] 🧠 Autonomous Thinking Cycle triggered (every 15 min)');
+// Think every 6 hours (0:00, 6:00, 12:00, 18:00)
+cron.schedule('0 0,6,12,18 * * *', async () => {
+  console.log('[IDEAS] 🧠 Autonomous Thinking Cycle triggered (every 6 hours)');
   logSystemEvent('system', 'ideas_thinking_start', {});
 
   try {
