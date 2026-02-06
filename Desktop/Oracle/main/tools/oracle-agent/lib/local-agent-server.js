@@ -144,6 +144,7 @@ function handleMessage(ws, message) {
     case 'workflow_response':
     case 'open_app_response':
     case 'open_terminal_response':
+    case 'claude_chat_response':
       // Handle command response
       const pending = pendingCommands.get(data.id);
       if (pending) {
@@ -291,6 +292,13 @@ async function openApp(appName, options = {}) {
   return sendCommand('open_app', { appName }, options);
 }
 
+/**
+ * Execute Claude Chat via local-agent → local-claude-server (Claude Max FREE)
+ */
+async function executeClaudeChat(message, chatOptions = {}, options = {}) {
+  return sendCommand('claude_chat', { message, options: chatOptions }, { ...options, timeout: 90000 });
+}
+
 // =============================================================================
 // STATUS & UTILITIES
 // =============================================================================
@@ -379,6 +387,7 @@ export default {
   executeWorkflow,
   openTerminal,
   openApp,
+  executeClaudeChat,
 
   // Status
   getStatus,
