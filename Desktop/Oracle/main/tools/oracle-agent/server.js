@@ -2318,7 +2318,7 @@ app.post('/webhook/trackingmore', async (req, res) => {
 
       // Send LINE notification to owner
       if (config.line?.owner_id) {
-        await line.pushMessage(config.line.owner_id, message);
+        await line.push(config.line.owner_id, message);
         console.log('[TRACKINGMORE] Sent LINE notification for', trackingNumber);
       }
     }
@@ -2613,7 +2613,7 @@ app.post('/api/workflow/complete', async (req, res) => {
       if (url) message += `🔗 URL: ${url}\n`;
       message += `\n🕐 ${new Date().toLocaleString('th-TH')}`;
 
-      await line.pushMessage(config.line.owner_id, message);
+      await line.push(config.line.owner_id, message);
       console.log('[WORKFLOW] LINE notification sent');
     } catch (err) {
       console.error('[WORKFLOW] Failed to send LINE notification:', err.message);
@@ -2838,7 +2838,7 @@ app.post('/api/revenue/send', async (req, res) => {
     }
 
     if (config.line?.owner_id) {
-      await line.pushMessage(config.line.owner_id, report.message);
+      await line.push(config.line.owner_id, report.message);
     }
 
     res.json({ ...report, sent: true });
@@ -4504,7 +4504,7 @@ cron.schedule('0 9,11,13,15,17,19,21 * * *', async () => {
       message += `\nต้องการให้ทำไหมครับ?`;
 
       if (config.line?.owner_id) {
-        await line.pushMessage(config.line.owner_id, message);
+        await line.push(config.line.owner_id, message);
       }
     }
   } catch (error) {
@@ -4538,7 +4538,7 @@ cron.schedule('0 8-21 * * *', async () => {
       console.log('[REVENUE] Sending report to LINE...');
 
       if (config.line?.owner_id) {
-        await line.pushMessage(config.line.owner_id, report.message);
+        await line.push(config.line.owner_id, report.message);
         console.log('[REVENUE] Report sent successfully');
         logSystemEvent('system', 'revenue_report_sent', {
           hour,

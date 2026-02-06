@@ -330,7 +330,7 @@ ${thought.detail}
 
   try {
     if (config.line?.owner_id) {
-      await line.pushMessage(config.line.owner_id, message);
+      await line.push(config.line.owner_id, message);
       console.log('[AUTONOMOUS] Thought sent to LINE');
     }
   } catch (err) {

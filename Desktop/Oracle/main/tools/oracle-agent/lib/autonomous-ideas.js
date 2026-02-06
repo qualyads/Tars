@@ -357,7 +357,7 @@ const LINE_OWNER_ID = 'Uba2ae89ff15d0ca1ea673058844f287c';
 async function notifyTars(message, config) {
   const ownerId = config?.line?.owner_id || LINE_OWNER_ID;
   try {
-    await line.pushMessage(ownerId, message);
+    await line.push(ownerId, message);
     console.log('[IDEAS] LINE notification sent');
   } catch (e) {
     console.error('[IDEAS] LINE notification error:', e.message);
