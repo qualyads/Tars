@@ -48,7 +48,7 @@ export async function autoRecall(userMessage, userId = 'tars') {
             AND user_id = $2
           ORDER BY embedding <=> $1::vector
           LIMIT 5
-        `, [`[${embedding.join(',')}]`, userId]);
+        `, [embedding, userId]);  // embedding already formatted as "[1,2,3,...]"
 
         context.relevantMemories = similarResult.rows.filter(r => r.similarity > 0.3);
       }
