@@ -7,7 +7,8 @@
  * - sequential: Each agent sees previous responses
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+// Use claude.js with failover
+import claude from './claude.js';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
@@ -80,9 +81,7 @@ const DEFAULT_GROUPS = {
 
 class BroadcastManager {
   constructor() {
-    this.anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY
-    });
+    // Uses claude.js with failover (no direct Anthropic client)
     this.agents = { ...DEFAULT_AGENTS, ...(config.broadcast?.agents || {}) };
     this.groups = { ...DEFAULT_GROUPS, ...(config.broadcast?.groups || {}) };
   }
@@ -168,26 +167,21 @@ class BroadcastManager {
     const startTime = Date.now();
 
     try {
-      const response = await this.anthropic.messages.create({
-        model: agent.model,
-        max_tokens: options.maxTokens || 1024,
-        system: agent.systemPrompt,
-        messages: [
-          { role: 'user', content: message }
-        ]
-      });
+      const responseText = await claude.chat(
+        [{ role: 'user', content: message }],
+        { system: agent.systemPrompt, model: agent.model, max_tokens: options.maxTokens || 1024 }
+      );
 
-      const responseText = response.content[0]?.text || '';
       const runtime = Date.now() - startTime;
 
       return {
         agentId: agent.id,
         agentName: agent.name,
-        response: responseText,
+        response: responseText || '',
         model: agent.model,
         runtime,
-        tokensIn: response.usage?.input_tokens || 0,
-        tokensOut: response.usage?.output_tokens || 0,
+        tokensIn: 0, // not available with failover
+        tokensOut: 0,
         status: 'success'
       };
     } catch (error) {

@@ -10,7 +10,8 @@
  * - Cost optimization (Haiku for sub-agents)
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+// Use claude.js with failover
+import claude from './claude.js';
 import { v4 as uuid } from 'uuid';
 import PQueue from 'p-queue';
 
@@ -26,9 +27,7 @@ const DEFAULT_CONFIG = {
 class SubAgentManager {
   constructor(config = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY
-    });
+    // Uses claude.js with failover (no direct Anthropic client)
 
     // Queue for concurrent execution
     this.queue = new PQueue({ concurrency: this.config.maxConcurrent });
@@ -207,21 +206,17 @@ If there's nothing meaningful to report, respond with: ANNOUNCE_SKIP`;
   }
 
   /**
-   * Call Claude API
+   * Call Claude API with failover
    */
   async _callClaude(systemPrompt, task, model) {
-    const response = await this.anthropic.messages.create({
-      model: model,
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: [
-        { role: 'user', content: task }
-      ]
-    });
+    const text = await claude.chat(
+      [{ role: 'user', content: task }],
+      { system: systemPrompt, model, max_tokens: 4096 }
+    );
 
     return {
-      text: response.content[0]?.text || '',
-      usage: response.usage
+      text: text || '',
+      usage: {} // usage not available with failover
     };
   }
 
