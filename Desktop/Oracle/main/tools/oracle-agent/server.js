@@ -572,9 +572,9 @@ app.post('/webhook/line', async (req, res) => {
             let context = '';
 
             // 1. Get user profile
-            const userProfile = await db.getUserProfile(userId).catch(() => null);
+            const userProfile = userProfiles.getProfile(userId);
             if (userProfile) {
-              context += `User: ${userProfile.displayName || 'Tars'}\n`;
+              context += `User: ${userProfile.name || 'Tars'}\n`;
             }
 
             // 2. Check if message is about hotel/room/booking
