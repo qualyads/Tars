@@ -1,68 +1,57 @@
 # Session Handoff
 
-**From:** Session 2026-02-07 (SEO Content + Sitemap Audit + Deploy)
+**From:** Session 2026-02-07 (SEO Engine v2.0 Redesign)
 **To:** Next Session
 
 ---
 
 ## What We Did This Session
 
-### 1. Fix SEO AI Analysis ✅
-- Model ID → `claude-sonnet-4-5-20250929`
-- `skipAutoRecall: true` ป้องกัน memory injection
-- Response parsing fix
-- **Commit:** `305264948`
+### 1. SEO Engine v2.0 — Complete Redesign ✅
+ตาม Tar feedback 4 ข้อ:
 
-### 2. Sitemap Audit Feature ✅
-- `runSitemapAudit()` ใน seo-engine.js
-- Fetch sitemap.xml → compare กับ Search Console data
-- Find: not-indexed, high-potential, low-performers, not-in-sitemap
-- API: `POST /api/seo/sitemap-audit`
-- ทำงานอัตโนมัติหลัง weekly report (cron)
-- **ผล audit:** 736 sitemap URLs, 554 in SC, coverage 40.9%, 435 not indexed
-- **Commit:** `87f790f49`
+| ปัญหา Tar ชี้ | Solution |
+|---------------|----------|
+| Report เป็น data dump ไม่ actionable | ทุก item มี action ที่ Oracle ทำ/จะทำ |
+| evp, inp ไม่ใช่สิ่งที่อยากรู้ | Business keyword filter (30+ patterns) |
+| 435 pages not indexed ไม่แก้ | Auto-fix: sitemap ping + categorize by type |
+| แนะนำให้ Tar ทำ | AI prompt เปลี่ยนเป็น Oracle execute เอง |
 
-### 3. SEO Action Plan ✅
-- `data/seo-action-plan.md` — meta recommendations + content outlines
-- ครอบคลุม: /ai-search-geo, /services/n8n, /shopify, /ux-ui, /academy
-- พบ CRO page: 333 imp, pos 6.5, 0 clicks!
-- พบ Blog หลายหน้า blog/blog-* ไม่อยู่ใน sitemap
+**Changes in `seo-engine.js`:**
+- `BUSINESS_KEYWORD_PATTERNS` — 30+ regex patterns สำหรับ filter business keywords
+- `isBusinessKeyword()`, `filterBusinessKeywords()` — utility functions
+- `CORE_PAGE_PATTERNS` — /services/, /ai-search-geo, /academy
+- `SUPPORTING_PAGE_PATTERNS` — /blog/, /showcase/, /integration
+- `fetchSCData()` — returns `businessQueries` + `corePages` + `supportingPages`
+- `autoFixIndexing()` — NEW: ping sitemap + categorize not-indexed (core vs location-service vs location vs blog)
+- `generateSEOAnalysis()` — NEW prompt: Oracle-executes mindset, no recommendations to owner
+- `sendReportNotification()` — NEW format: Core Pages → Business Keywords → AI Summary → Auto-actions → Plan
+- `runKeywordAlert()` — monitors business keywords only + service page traffic drops
+- `runWeeklyReport()` — includes auto-fix actions + indexing data
+- `runSitemapAudit()` — categorized not-indexed + auto-fix actions
 
-### 4. เขียน 4 บทความ SEO ✅
-| File | Lines | Size | Topic |
-|------|-------|------|-------|
-| `content/รับทำ-webflow.md` | 424 | 60KB | Landing page รับทำ Webflow |
-| `content/webflow-คืออะไร.md` | 656 | 52KB | คู่มือ Webflow 2026 |
-| `content/รับทำ-ux-ui.md` | 617 | 44KB | บริการ UX/UI Design |
-| `content/webflow-vs-wordpress-2026.md` | 980 | 52KB | Comparison article |
+### 2. Deploy to Railway ✅
+- 3x deploy: initial → refine corePages → final with categorization
+- All 3 endpoints tested successfully
 
-- **Commit:** `c7bea5359`
-
-### 5. Deploy Railway ✅
-- `railway up` deploy sitemap audit code
-- Tested: `POST /api/seo/sitemap-audit` → success, coverage 40.9%
-
-### 6. Update Task Board ✅
-- Marked tasks #22-32 as completed in goals.md
-- Added Tar's tasks (upload content to Webflow, fix blog 404, connect GitHub repo)
+### 3. Test Results ✅
+| Endpoint | Result |
+|----------|--------|
+| POST /api/seo/report | Grade C, 5 biz KWs, 6 core pages, 42 blog pages, 4 auto actions |
+| POST /api/seo/alert-check | 0 alerts, 10 biz keywords monitored |
+| POST /api/seo/sitemap-audit | 40.9% coverage, 6 core NOT indexed, 91 location-service (normal) |
 
 ---
 
-## Files Changed
+## Sitemap Audit v2 — Not Indexed Breakdown
 
-```
-Created:
-├── main/tools/oracle-agent/data/content/รับทำ-webflow.md
-├── main/tools/oracle-agent/data/content/webflow-คืออะไร.md
-├── main/tools/oracle-agent/data/content/รับทำ-ux-ui.md
-├── main/tools/oracle-agent/data/content/webflow-vs-wordpress-2026.md
-├── main/tools/oracle-agent/data/seo-action-plan.md
-
-Modified:
-├── main/tools/oracle-agent/lib/seo-engine.js   # Sitemap audit functions
-├── main/tools/oracle-agent/server.js            # Sitemap audit endpoint + cron
-├── main/ψ/memory/goals.md                       # Task board updated
-```
+| Type | Count | Action |
+|------|-------|--------|
+| 🔴 Core Services | 6 | CRITICAL — ต้อง fix |
+| 🏙️ Location-Services | 91 | Programmatic — ปกติ |
+| 📍 Location | 46 | รอ Google crawl |
+| 📝 Blog | 144 | รอ crawl |
+| 📄 Other | 148 | Review needed |
 
 ---
 
@@ -76,37 +65,28 @@ Modified:
 | 4 | Upload "Webflow คืออะไร" ขึ้น blog | HIGH | content/webflow-คืออะไร.md |
 | 5 | Upload "รับทำ UX/UI" ขึ้น blog | HIGH | content/รับทำ-ux-ui.md |
 | 6 | Upload "Webflow vs WordPress 2026" ขึ้น blog | MEDIUM | content/webflow-vs-wordpress-2026.md |
-| 7 | Connect GitHub repo ใน Railway | MEDIUM | Settings > Source > qualyads/Tars |
-| 8 | จ่าย Railway subscription | MEDIUM | past due warning |
 
 ## TODO — Claude ทำต่อ session หน้า
 
 | Task | Priority |
 |------|----------|
-| แก้ meta CRO page (333 imp, pos 6.5, 0 clicks) | HIGH |
-| เพิ่ม blog/blog-* URLs เข้า sitemap | MEDIUM |
+| เช็ค 6 core service pages ที่ not indexed → ทำไมหาย? | HIGH |
+| Auto-create internal links strategy | HIGH |
 | Auto Blog supporting content | MEDIUM |
+| Schema markup auto-injection | MEDIUM |
 
 ---
 
-## Sitemap Audit Findings (Key)
-
-| Issue | Count | Action |
-|-------|-------|--------|
-| Not in Search Console | 435 | ส่วนใหญ่ location pages — ต้องรอ Google crawl |
-| High Potential (imp>20, 0 clicks) | 10 | แก้ meta desc + title |
-| Not in Sitemap (อยู่ใน SC) | 10+ | เพิ่มเข้า sitemap ใน Webflow |
-| CRO page 333 imp 0 clicks | 1 | URGENT: แก้ meta |
-
----
-
-## SEO Engine Status
+## SEO Engine Status v2.0
 
 | Feature | Status |
 |---------|--------|
-| Weekly Report (Mon 10:30) | ✅ AI Analysis + LINE |
-| Keyword Alert (Daily 08:00) | ✅ |
-| Sitemap Audit (after weekly) | ✅ NEW |
+| Weekly Report (Mon 10:30) | ✅ v2.0 — Business focused |
+| Keyword Alert (Daily 08:00) | ✅ v2.0 — Business keywords only |
+| Sitemap Audit (after weekly) | ✅ v2.0 — Auto-fix + categorize |
+| Business Keyword Filter | ✅ NEW |
+| Auto Sitemap Ping | ✅ NEW |
+| Not-Indexed Categorization | ✅ NEW |
 | Search Console API | ✅ |
 | Railway Deploy | ✅ Manual (railway up) |
 
@@ -116,7 +96,8 @@ Modified:
 
 | ไฟล์ | Path |
 |------|------|
-| SEO Engine | `main/tools/oracle-agent/lib/seo-engine.js` |
+| SEO Engine v2.0 | `main/tools/oracle-agent/lib/seo-engine.js` |
+| Search Console | `main/tools/oracle-agent/lib/search-console.js` |
 | SEO Action Plan | `main/tools/oracle-agent/data/seo-action-plan.md` |
 | Content Articles | `main/tools/oracle-agent/data/content/` |
 | Task Board | `main/ψ/memory/goals.md` |

@@ -66,6 +66,8 @@ import gmailPubSub from './lib/gmail-pubsub.js';
 import gmailClient from './lib/gmail.js';
 import searchConsole from './lib/search-console.js';
 import googleBusiness from './lib/google-business.js';
+import ga4 from './lib/google-analytics.js';
+import sheets from './lib/google-sheets.js';
 import queueManager from './lib/queue-manager.js';
 import thinkingLevels from './lib/thinking-levels.js';
 import memory from './lib/memory.js';
@@ -2883,6 +2885,56 @@ app.post('/api/seo/sitemap-audit', async (req, res) => {
   }
 });
 
+app.post('/api/seo/inspect', async (req, res) => {
+  console.log('[SEO] URL Inspection triggered via API');
+  try {
+    const { urls } = req.body || {};
+    const siteUrl = config.seo?.siteUrl || 'sc-domain:visionxbrain.com';
+
+    if (urls && Array.isArray(urls)) {
+      // Inspect specific URLs
+      const results = [];
+      for (const url of urls.slice(0, 20)) {
+        try {
+          const result = await searchConsole.inspectUrl(siteUrl, url);
+          results.push(result);
+          await new Promise(r => setTimeout(r, 300));
+        } catch (e) {
+          results.push({ url, error: e.message });
+        }
+      }
+      res.json({ success: true, results });
+    } else {
+      // Auto: inspect core not-indexed pages from last audit
+      const result = await seoEngine.runSitemapAudit(config.seo);
+      res.json(result);
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/seo/sitemaps', async (req, res) => {
+  try {
+    const siteUrl = config.seo?.siteUrl || 'sc-domain:visionxbrain.com';
+    const sitemaps = await searchConsole.listSitemaps(siteUrl);
+    res.json({ success: true, sitemaps });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/seo/submit-sitemap', async (req, res) => {
+  try {
+    const siteUrl = config.seo?.siteUrl || 'sc-domain:visionxbrain.com';
+    const sitemapUrl = req.body?.sitemapUrl || 'https://www.visionxbrain.com/sitemap.xml';
+    const result = await searchConsole.submitSitemap(siteUrl, sitemapUrl);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // =============================================================================
 // API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส
 // =============================================================================
@@ -3980,6 +4032,146 @@ app.post('/api/business/post', async (req, res) => {
   }
 });
 
+// ==========================================
+// Google Analytics 4 (GA4)
+// ==========================================
+
+app.get('/api/ga4/status', (req, res) => {
+  res.json(ga4.getStatus());
+});
+
+app.get('/api/ga4/summary', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const summary = await ga4.getSummary({ startDate, endDate });
+    res.json({ success: true, ...summary });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/ga4/traffic', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const data = await ga4.getTrafficSummary({ startDate, endDate });
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/ga4/sources', async (req, res) => {
+  try {
+    const { startDate, endDate, limit } = req.query;
+    const data = await ga4.getTrafficSources({ startDate, endDate, limit: parseInt(limit) || 20 });
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/ga4/pages', async (req, res) => {
+  try {
+    const { startDate, endDate, limit } = req.query;
+    const data = await ga4.getTopPages({ startDate, endDate, limit: parseInt(limit) || 20 });
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/ga4/trends', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const data = await ga4.getDailyTrends({ startDate, endDate });
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/ga4/conversions', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const data = await ga4.getConversions({ startDate, endDate });
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/ga4/devices', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const data = await ga4.getByDevice({ startDate, endDate });
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/ga4/countries', async (req, res) => {
+  try {
+    const { startDate, endDate, limit } = req.query;
+    const data = await ga4.getByCountry({ startDate, endDate, limit: parseInt(limit) || 10 });
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// Google Sheets
+// ==========================================
+
+app.get('/api/sheets/status', (req, res) => {
+  res.json(sheets.getStatus());
+});
+
+app.get('/api/sheets/read', async (req, res) => {
+  try {
+    const { id, range } = req.query;
+    if (!id || !range) return res.status(400).json({ error: 'id and range required' });
+    const data = await sheets.getValues(id, range);
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/sheets/append', async (req, res) => {
+  try {
+    const { id, range, values } = req.body;
+    if (!id || !range || !values) return res.status(400).json({ error: 'id, range, and values required' });
+    const result = await sheets.appendValues(id, range, values);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/sheets/update', async (req, res) => {
+  try {
+    const { id, range, values } = req.body;
+    if (!id || !range || !values) return res.status(400).json({ error: 'id, range, and values required' });
+    const result = await sheets.updateValues(id, range, values);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/sheets/info', async (req, res) => {
+  try {
+    const { id } = req.query;
+    if (!id) return res.status(400).json({ error: 'id required' });
+    const data = await sheets.getSpreadsheet(id);
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Daily Digest
 app.get('/api/digest/status', (req, res) => {
   res.json(dailyDigest.getStatus());
@@ -4992,6 +5184,21 @@ cron.schedule(config.schedule.seo_keyword_alert || '0 8 * * *', async () => {
   } catch (error) {
     console.error('[SEO] Alert error:', error);
     logError('system', error, { source: 'seo-engine-alert' });
+  }
+}, { timezone: config.agent.timezone });
+
+// =============================================================================
+// SEO ENGINE - Auto Submit Sitemap (ทุกวัน 06:00)
+// =============================================================================
+
+cron.schedule('0 6 * * *', async () => {
+  console.log('[SEO] 🗺️ Auto Sitemap Submit triggered');
+  const siteUrl = config.seo?.siteUrl || 'sc-domain:visionxbrain.com';
+  try {
+    const result = await searchConsole.submitSitemap(siteUrl, 'https://www.visionxbrain.com/sitemap.xml');
+    console.log('[SEO] Sitemap auto-submitted:', result.success ? 'OK' : 'failed');
+  } catch (error) {
+    console.error('[SEO] Auto sitemap error:', error.message);
   }
 }, { timezone: config.agent.timezone });
 

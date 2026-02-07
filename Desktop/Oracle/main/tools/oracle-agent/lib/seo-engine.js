@@ -1,10 +1,14 @@
 /**
- * SEO Auto-Optimize Engine v1.0
- * Monitor VisionXBrain SEO → วิเคราะห์ → แนะนำ action → ส่ง LINE
+ * SEO Auto-Optimize Engine v2.0
+ * Monitor VisionXBrain SEO → วิเคราะห์ → AUTO-EXECUTE → รายงานผล
  *
- * Pipeline: Search Console → Compare → AI Analysis → Notify
+ * v2.0 Changes (Tar feedback):
+ * 1. Business keywords only — ไม่แสดง random keywords (evp, inp)
+ * 2. Focus /services/ pages — core business pages
+ * 3. Auto-fix indexing — ping sitemap, categorize issues
+ * 4. Oracle executes — ไม่ recommend ให้ Tar ทำ
  *
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 import searchConsole from './search-console.js';
@@ -26,6 +30,50 @@ const CONFIG = {
   oracleMemoryPath: '/Users/tanakitchaithip/Desktop/Oracle/main/ψ/memory',
   dataFile: path.join(__dirname, '../data/seo-report.json'),
 };
+
+// =============================================================================
+// BUSINESS KEYWORD FILTER
+// =============================================================================
+
+// Keywords ที่เกี่ยวกับธุรกิจ VisionXBrain เท่านั้น
+const BUSINESS_KEYWORD_PATTERNS = [
+  /รับทำ/i, /ทำเว็บ/i, /สร้างเว็บ/i, /ออกแบบเว็บ/i,
+  /webflow/i, /web\s*design/i, /web\s*dev/i, /website/i,
+  /seo/i, /search\s*engine/i, /google\s*rank/i,
+  /ux/i, /ui/i, /user\s*experience/i, /user\s*interface/i,
+  /shopify/i, /e-?commerce/i, /ร้านค้าออนไลน์/i,
+  /n8n/i, /automation/i, /automate/i, /ออโต/i,
+  /digital\s*market/i, /การตลาดออนไลน์/i,
+  /cro/i, /conversion/i, /landing\s*page/i,
+  /ai\s*search/i, /geo/i, /chatgpt/i, /ai\s*agent/i,
+  /visionxbrain/i, /vision\s*x/i, /vxb/i,
+  /agency/i, /บริษัท/i, /โปรเจค/i,
+  /wordpress/i, /wix/i, /squarespace/i, // comparison keywords
+  /เว็บไซต์/i, /หน้าเว็บ/i, /โฮสต์/i, /hosting/i,
+  /branding/i, /แบรนด์/i, /logo/i, /โลโก้/i,
+];
+
+function isBusinessKeyword(keyword) {
+  return BUSINESS_KEYWORD_PATTERNS.some(pattern => pattern.test(keyword));
+}
+
+function filterBusinessKeywords(queries) {
+  return queries.filter(q => isBusinessKeyword(q.keys[0]));
+}
+
+// Core business pages (NOT blog — blog is supporting content)
+const CORE_PAGE_PATTERNS = [
+  '/services/',
+  '/ai-search-geo',
+  '/academy',
+];
+
+// Supporting pages
+const SUPPORTING_PAGE_PATTERNS = [
+  '/blog/',
+  '/showcase/',
+  '/integration',
+];
 
 // =============================================================================
 // DATA STORAGE
@@ -92,7 +140,7 @@ async function fetchSCData(siteUrl, startDate, endDate, keywordCount) {
 
   const [topQueries, topPages, byDevice, byDate] = await Promise.all([
     searchConsole.topQueries(siteUrl, { limit: keywordCount, startDate, endDate }),
-    searchConsole.topPages(siteUrl, { limit: 20, startDate, endDate }),
+    searchConsole.topPages(siteUrl, { limit: 50, startDate, endDate }),
     searchConsole.byDevice(siteUrl, { startDate, endDate }),
     searchConsole.byDate(siteUrl, { startDate, endDate, days: 7 }),
   ]);
@@ -105,9 +153,28 @@ async function fetchSCData(siteUrl, startDate, endDate, keywordCount) {
     ? Math.round((topQueries.reduce((sum, q) => sum + q.position, 0) / topQueries.length) * 10) / 10
     : 0;
 
+  // Filter: business keywords only
+  const businessQueries = filterBusinessKeywords(topQueries);
+
+  // Filter: core business pages (services, homepage)
+  const corePages = topPages.filter(p => {
+    const pagePath = p.keys[0].replace(/https?:\/\/[^/]+/, '');
+    return CORE_PAGE_PATTERNS.some(pattern => pagePath.startsWith(pattern))
+      || pagePath === '/' || pagePath === '';
+  });
+
+  // Supporting pages (blog, showcase)
+  const supportingPages = topPages.filter(p => {
+    const pagePath = p.keys[0].replace(/https?:\/\/[^/]+/, '');
+    return SUPPORTING_PAGE_PATTERNS.some(pattern => pagePath.startsWith(pattern));
+  });
+
   return {
     topQueries,
+    businessQueries,
     topPages,
+    corePages,
+    supportingPages,
     byDevice,
     byDate,
     totals: { clicks: totalClicks, impressions: totalImpressions, ctr: avgCtr, position: avgPosition },
@@ -166,45 +233,40 @@ function comparePeriodsData(current, previous) {
 // AI ANALYSIS
 // =============================================================================
 
-async function generateSEOAnalysis(currentData, comparison) {
-  const prompt = `คุณเป็น SEO Strategist มืออาชีพ วิเคราะห์ performance ของ visionxbrain.com (Webflow Agency ไทย)
+async function generateSEOAnalysis(currentData, comparison, autoActions) {
+  // ใช้ business keywords + service pages เท่านั้น
+  const bizKeywords = currentData.businessQueries || [];
+  const svcPages = currentData.corePages || [];
 
-**ข้อมูลสัปดาห์นี้:**
-- Clicks: ${currentData.totals.clicks}
-- Impressions: ${currentData.totals.impressions.toLocaleString()}
-- CTR: ${currentData.totals.ctr}%
-- Avg Position: ${currentData.totals.position}
+  const prompt = `คุณเป็น Oracle — AI SEO Engine ของ VisionXBrain (Webflow Agency ไทย, รับทำเว็บ/UX/UI/Shopify/N8N)
 
-**Top Keywords:**
-${currentData.topQueries.slice(0, 15).map((q, i) =>
-  `${i + 1}. "${q.keys[0]}" — pos ${q.position}, clicks ${q.clicks}, imp ${q.impressions}, CTR ${q.ctr}%`
-).join('\n')}
+**IMPORTANT:** คุณเป็น AI ที่ต้อง execute เอง — ห้ามแนะนำให้ owner ทำ! ทุก action ต้องเป็นสิ่งที่ระบบ auto-execute ได้
 
-**Top Pages:**
-${currentData.topPages.slice(0, 10).map((p, i) =>
-  `${i + 1}. ${p.keys[0].replace('https://www.visionxbrain.com', '')} — clicks ${p.clicks}, imp ${p.impressions}`
-).join('\n')}
+**Service Pages Performance:**
+${svcPages.slice(0, 15).map((p, i) => {
+  const pagePath = p.keys[0].replace('https://www.visionxbrain.com', '') || '/';
+  return `${i + 1}. ${pagePath} — ${p.clicks} clicks, ${p.impressions} imp, CTR ${p.ctr}%, pos ${p.position}`;
+}).join('\n') || '(ไม่มีข้อมูล service pages)'}
 
-**Device Breakdown:**
-${currentData.byDevice.map(d => `${d.keys[0]}: clicks ${d.clicks}, CTR ${d.ctr}%`).join(', ')}
+**Business Keywords (เฉพาะที่เกี่ยวกับธุรกิจ):**
+${bizKeywords.slice(0, 15).map((q, i) =>
+  `${i + 1}. "${q.keys[0]}" — pos ${q.position}, ${q.clicks} clicks, ${q.impressions} imp, CTR ${q.ctr}%`
+).join('\n') || '(ไม่มี business keywords)'}
 
-${comparison ? `**เทียบสัปดาห์ก่อน:**
-- Clicks: ${comparison.clicksChange > 0 ? '+' : ''}${comparison.clicksChange}%
-- Impressions: ${comparison.impressionsChange > 0 ? '+' : ''}${comparison.impressionsChange}%
-- CTR Change: ${comparison.ctrChange > 0 ? '+' : ''}${comparison.ctrChange}%
-- Position: ${comparison.positionChange > 0 ? '↑' : '↓'}${Math.abs(comparison.positionChange)}
+**Overview:** Clicks ${currentData.totals.clicks} | Imp ${currentData.totals.impressions} | CTR ${currentData.totals.ctr}% | Pos ${currentData.totals.position}
 
-Keywords ขึ้น: ${comparison.keywordsUp.slice(0, 5).map(k => `"${k.keyword}" ↑${k.change}`).join(', ') || 'ไม่มี'}
-Keywords ตก: ${comparison.keywordsDown.slice(0, 5).map(k => `"${k.keyword}" ↓${Math.abs(k.change)}`).join(', ') || 'ไม่มี'}` : '(ไม่มีข้อมูลสัปดาห์ก่อน)'}
+${comparison ? `**WoW:** Clicks ${comparison.clicksChange > 0 ? '+' : ''}${comparison.clicksChange}% | Imp ${comparison.impressionsChange > 0 ? '+' : ''}${comparison.impressionsChange}% | Pos ${comparison.positionChange > 0 ? '↑' : '↓'}${Math.abs(comparison.positionChange)}` : ''}
+
+${autoActions ? `**Auto-actions ที่ทำไปแล้ว:** ${autoActions.join(', ')}` : ''}
 
 ตอบเป็น JSON:
 {
-  "grade": "A/A+/B+/B/C/D/F",
-  "assessment": "ประเมินภาพรวม 2-3 ประโยค",
-  "opportunities": ["keyword/topic ที่มี potential แต่ยังไม่ได้ push"],
-  "problems": ["ปัญหาที่ต้องแก้"],
-  "recommendations": ["action ที่ควรทำสัปดาห์นี้"],
-  "contentGaps": ["หัวข้อที่ควรเขียนบทความ พร้อมเหตุผล"]
+  "grade": "A+/A/B+/B/C/D/F",
+  "summary": "สรุป 1 ประโยค: สัปดาห์นี้เป็นยังไง",
+  "wins": ["สิ่งที่ดีขึ้น (ถ้ามี)"],
+  "risks": ["สิ่งที่ต้องระวัง — เฉพาะที่กระทบธุรกิจจริง"],
+  "autoExecutePlan": ["สิ่งที่ Oracle จะทำอัตโนมัติสัปดาห์หน้า (เช่น: เขียน content, optimize meta, สร้าง internal links)"],
+  "highPriorityPages": ["หน้าที่มี impression สูงแต่ CTR ต่ำ — Oracle จะ auto-optimize"]
 }
 
 ตอบ JSON เท่านั้น:`;
@@ -215,7 +277,6 @@ Keywords ตก: ${comparison.keywordsDown.slice(0, 5).map(k => `"${k.keyword}" 
       max_tokens: 2000,
       skipAutoRecall: true,
     });
-    // claude.chat() returns string directly, not API response object
     const text = typeof response === 'string' ? response : (response.content?.[0]?.text || JSON.stringify(response));
     console.log('[SEO] AI response length:', text.length);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -228,7 +289,160 @@ Keywords ตก: ${comparison.keywordsDown.slice(0, 5).map(k => `"${k.keyword}" 
   } catch (e) {
     console.error('[SEO] AI analysis error:', e.message, e.stack?.split('\n')[1]);
   }
-  return { assessment: 'ไม่สามารถวิเคราะห์ได้', grade: '?' };
+  return { summary: 'ไม่สามารถวิเคราะห์ได้', grade: '?' };
+}
+
+// =============================================================================
+// AUTO-FIX: INDEXING & SITEMAP PING
+// =============================================================================
+
+async function autoFixIndexing(sitemapUrls, notIndexed, siteUrl) {
+  const actions = [];
+
+  // 1. Submit sitemap via Search Console API (proper way — not just ping)
+  try {
+    const sitemapUrl = 'https://www.visionxbrain.com/sitemap.xml';
+    const result = await searchConsole.submitSitemap(siteUrl || 'sc-domain:visionxbrain.com', sitemapUrl);
+    if (result.success) {
+      actions.push(`✅ Sitemap submitted → Google SC API (${sitemapUrls?.length || 0} URLs)`);
+      console.log('[SEO] Sitemap submitted via API');
+    }
+  } catch (e) {
+    // Fallback to ping if API fails (e.g. scope not upgraded yet)
+    console.error('[SEO] Sitemap submit error:', e.message, '— fallback to ping');
+    try {
+      const sitemapUrl = 'https://www.visionxbrain.com/sitemap.xml';
+      const pingUrl = `https://www.google.com/ping?sitemap=${encodeURIComponent(sitemapUrl)}`;
+      const resp = await fetch(pingUrl);
+      if (resp.ok) {
+        actions.push(`Sitemap ping → Google (fallback, ${sitemapUrls?.length || 0} URLs)`);
+      }
+    } catch (e2) {
+      console.error('[SEO] Sitemap ping also failed:', e2.message);
+    }
+  }
+
+  // 2. Categorize not-indexed pages
+  // Note: VXB has programmatic /services/ pages per location (e.g. /services/web-design-chiang-mai)
+  // These are "location services" — different from core service pages
+  const CORE_SERVICE_SLUGS = [
+    'n8n-automation', 'shopify', 'ux-ui-design', 'web-design', 'seo',
+    'webflow', 'digital-marketing', 'branding', 'logo', 'copywriting',
+  ];
+
+  const notIndexedByType = {
+    coreServices: [],  // /services/n8n, /services/shopify etc.
+    locationServices: [], // /services/web-design-chiang-mai etc.
+    location: [],
+    blog: [],
+    other: [],
+  };
+
+  for (const url of notIndexed) {
+    const p = url.replace(/https?:\/\/[^/]+/, '');
+    if (p.startsWith('/services/')) {
+      // Check if it's a core service or location-specific service
+      const slug = p.replace('/services/', '').split('/')[0];
+      const isCore = CORE_SERVICE_SLUGS.some(cs => slug.startsWith(cs) || slug.includes(cs));
+      if (isCore) notIndexedByType.coreServices.push(url);
+      else notIndexedByType.locationServices.push(url);
+    } else if (p.startsWith('/location/')) {
+      notIndexedByType.location.push(url);
+    } else if (p.startsWith('/blog/')) {
+      notIndexedByType.blog.push(url);
+    } else {
+      notIndexedByType.other.push(url);
+    }
+  }
+
+  // 3. Inspect core service pages that are NOT indexed — find out WHY
+  let inspectionResults = [];
+  if (notIndexedByType.coreServices.length > 0) {
+    try {
+      const inspection = await inspectNotIndexedPages(
+        siteUrl || 'sc-domain:visionxbrain.com',
+        notIndexedByType.coreServices,
+        10 // max 10 core pages
+      );
+      inspectionResults = inspection.results;
+      if (inspection.actions.length > 0) {
+        actions.push(...inspection.actions);
+      }
+      actions.push(`🔍 Inspected ${inspectionResults.length}/${notIndexedByType.coreServices.length} core pages via URL Inspection API`);
+    } catch (e) {
+      actions.push(`⚠️ URL Inspection failed: ${e.message}`);
+    }
+  }
+
+  if (notIndexedByType.coreServices.length > 0) {
+    actions.push(`🔴 ${notIndexedByType.coreServices.length} core service pages NOT indexed`);
+  }
+
+  if (notIndexedByType.locationServices.length > 0) {
+    actions.push(`${notIndexedByType.locationServices.length} location-service pages (programmatic — ปกติ)`);
+  }
+
+  if (notIndexedByType.location.length > 0) {
+    actions.push(`${notIndexedByType.location.length} location pages (รอ Google crawl)`);
+  }
+
+  if (notIndexedByType.blog.length > 0) {
+    actions.push(`${notIndexedByType.blog.length} blog pages not indexed`);
+  }
+
+  return { actions, notIndexedByType, inspectionResults };
+}
+
+// =============================================================================
+// URL INSPECTION — เช็คสาเหตุที่ไม่ indexed
+// =============================================================================
+
+async function inspectNotIndexedPages(siteUrl, notIndexedUrls, maxPages = 20) {
+  console.log(`[SEO] Inspecting ${Math.min(notIndexedUrls.length, maxPages)} not-indexed pages...`);
+
+  const urlsToInspect = notIndexedUrls.slice(0, maxPages);
+  const results = [];
+  const actions = [];
+
+  for (const url of urlsToInspect) {
+    try {
+      const result = await searchConsole.inspectUrl(siteUrl, url);
+      results.push(result);
+
+      const pagePath = url.replace(/https?:\/\/[^/]+/, '');
+      const state = result.coverageState || 'Unknown';
+      const fetch_state = result.pageFetchState || '';
+
+      console.log(`[SEO] ${pagePath}: ${state} | fetch: ${fetch_state}`);
+
+      // Categorize and log action taken
+      if (state.includes('Discovered') && state.includes('not indexed')) {
+        // Google knows about it but hasn't crawled — sitemap resubmit helps
+        actions.push(`${pagePath}: Discovered but not crawled → sitemap resubmitted`);
+      } else if (state.includes('Crawled') && state.includes('not indexed')) {
+        // Google crawled but decided not to index — quality/duplicate issue
+        actions.push(`${pagePath}: Crawled but not indexed → content quality issue`);
+      } else if (fetch_state === 'SOFT_404' || fetch_state === 'NOT_FOUND') {
+        actions.push(`${pagePath}: ${fetch_state} → page broken!`);
+      } else if (result.robotsTxtState === 'DISALLOWED') {
+        actions.push(`${pagePath}: Blocked by robots.txt`);
+      } else if (result.indexingState === 'BLOCKED_BY_META_TAG') {
+        actions.push(`${pagePath}: Blocked by noindex meta tag`);
+      }
+
+      // Rate limit: 300ms between requests
+      await new Promise(r => setTimeout(r, 300));
+    } catch (e) {
+      console.error(`[SEO] Inspect error for ${url}:`, e.message);
+      // If we get 403, scope probably not upgraded yet
+      if (e.message.includes('403')) {
+        actions.push('⚠️ URL Inspection API: need read-write scope (run node google-oauth.js)');
+        break;
+      }
+    }
+  }
+
+  return { results, actions };
 }
 
 // =============================================================================
@@ -293,16 +507,28 @@ function saveToLocal(report) {
     md += `| CTR | ${t.ctr}% | ${c ? `${c.ctrChange > 0 ? '+' : ''}${c.ctrChange}%` : ''} |\n`;
     md += `| Avg Position | ${t.position} | ${c ? `${c.positionChange > 0 ? '↑' : '↓'}${Math.abs(c.positionChange)}` : ''} |\n\n`;
 
-    md += `## 🔑 Top Keywords\n\n`;
+    const bizQueries = report.currentData.businessQueries || [];
+    const corePages = report.currentData.corePages || [];
+
+    md += `## 🏢 Core Pages\n\n`;
+    md += `| Page | Clicks | Impressions | CTR | Position |\n`;
+    md += `|------|--------|-------------|-----|----------|\n`;
+    for (const p of corePages.slice(0, 15)) {
+      const pagePath = p.keys[0].replace('https://www.visionxbrain.com', '') || '/';
+      md += `| ${pagePath} | ${p.clicks} | ${p.impressions} | ${p.ctr}% | ${p.position} |\n`;
+    }
+    md += '\n';
+
+    md += `## 🔑 Business Keywords\n\n`;
     md += `| # | Keyword | Position | Clicks | Impressions | CTR |\n`;
     md += `|---|---------|----------|--------|-------------|-----|\n`;
-    for (let i = 0; i < Math.min(report.currentData.topQueries.length, 20); i++) {
-      const q = report.currentData.topQueries[i];
+    for (let i = 0; i < Math.min(bizQueries.length, 20); i++) {
+      const q = bizQueries[i];
       md += `| ${i + 1} | ${q.keys[0]} | ${q.position} | ${q.clicks} | ${q.impressions} | ${q.ctr}% |\n`;
     }
     md += '\n';
 
-    md += `## 📄 Top Pages\n\n`;
+    md += `## 📄 All Pages (reference)\n\n`;
     md += `| Page | Clicks | Impressions | CTR | Position |\n`;
     md += `|------|--------|-------------|-----|----------|\n`;
     for (const p of report.currentData.topPages.slice(0, 10)) {
@@ -330,11 +556,19 @@ function saveToLocal(report) {
 
     if (a) {
       md += `## 🎯 AI Analysis (Grade: ${a.grade})\n\n`;
-      md += `**Assessment:** ${a.assessment}\n\n`;
-      if (a.opportunities?.length) md += `**Opportunities:**\n${a.opportunities.map(o => `- ${o}`).join('\n')}\n\n`;
-      if (a.problems?.length) md += `**Problems:**\n${a.problems.map(p => `- ${p}`).join('\n')}\n\n`;
-      if (a.recommendations?.length) md += `**Recommendations:**\n${a.recommendations.map(r => `- ${r}`).join('\n')}\n\n`;
-      if (a.contentGaps?.length) md += `**Content Gaps:**\n${a.contentGaps.map(g => `- ${g}`).join('\n')}\n`;
+      if (a.summary) md += `**Summary:** ${a.summary}\n\n`;
+      if (a.wins?.length) md += `**Wins:**\n${a.wins.map(w => `- ${w}`).join('\n')}\n\n`;
+      if (a.risks?.length) md += `**Risks:**\n${a.risks.map(r => `- ${r}`).join('\n')}\n\n`;
+      if (a.autoExecutePlan?.length) md += `**Oracle Auto-Execute Plan:**\n${a.autoExecutePlan.map(p => `- ${p}`).join('\n')}\n\n`;
+      if (a.highPriorityPages?.length) md += `**High Priority Pages:**\n${a.highPriorityPages.map(p => `- ${p}`).join('\n')}\n`;
+    }
+
+    // Auto-actions taken
+    if (report.autoActions?.length) {
+      md += `\n## 🔧 Auto-Actions Taken\n\n`;
+      for (const action of report.autoActions) {
+        md += `- ✅ ${action}\n`;
+      }
     }
 
     if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
@@ -353,48 +587,88 @@ async function sendReportNotification(report) {
   const t = report.currentData.totals;
   const c = report.comparison;
   const a = report.analysis;
+  const bizKeywords = report.currentData.businessQueries || [];
+  const corePages = report.currentData.corePages || [];
+  const supportPages = report.currentData.supportingPages || [];
 
-  let msg = `🔍 Weekly SEO Report — ${report.weekLabel}\n`;
-  if (a?.grade) msg += `🎯 Grade: ${a.grade}\n`;
+  let msg = `📊 VXB SEO — ${report.weekLabel}`;
+  if (a?.grade) msg += ` [${a.grade}]`;
   msg += '\n';
 
-  msg += `📊 Clicks: ${t.clicks}`;
-  if (c) msg += ` (${c.clicksChange > 0 ? '+' : ''}${c.clicksChange}%)`;
-  msg += ` | Imp: ${t.impressions >= 1000 ? (t.impressions / 1000).toFixed(1) + 'K' : t.impressions}`;
-  if (c) msg += ` (${c.impressionsChange > 0 ? '+' : ''}${c.impressionsChange}%)`;
-  msg += '\n';
+  // One-line summary
+  msg += `Clicks ${t.clicks}`;
+  if (c) msg += `(${c.clicksChange > 0 ? '+' : ''}${c.clicksChange}%)`;
+  msg += ` | Imp ${t.impressions >= 1000 ? (t.impressions / 1000).toFixed(1) + 'K' : t.impressions}`;
+  if (c) msg += `(${c.impressionsChange > 0 ? '+' : ''}${c.impressionsChange}%)`;
+  msg += ` | CTR ${t.ctr}%\n\n`;
 
-  msg += `📈 CTR: ${t.ctr}% | Avg Pos: ${t.position}`;
-  if (c) msg += ` (${c.positionChange > 0 ? '↑' : '↓'}${Math.abs(c.positionChange)})`;
-  msg += '\n\n';
-
-  // Top keywords
-  msg += `🔑 Keywords:\n`;
-  for (let i = 0; i < Math.min(report.currentData.topQueries.length, 8); i++) {
-    const q = report.currentData.topQueries[i];
-    let line = `${i + 1}. "${q.keys[0]}" pos ${q.position}`;
-
-    // Show change if comparison available
-    if (c) {
-      const upK = c.keywordsUp.find(k => k.keyword === q.keys[0]);
-      const downK = c.keywordsDown.find(k => k.keyword === q.keys[0]);
-      if (upK) line += ` ↑${upK.change}`;
-      if (downK) line += ` ↓${Math.abs(downK.change)}`;
+  // Core Business Pages — services, AI search, academy
+  if (corePages.length > 0) {
+    msg += `🏢 Core Pages:\n`;
+    for (const p of corePages.slice(0, 8)) {
+      const pagePath = p.keys[0].replace('https://www.visionxbrain.com', '') || '/';
+      const clickIcon = p.clicks > 0 ? '✅' : '⚠️';
+      msg += `${clickIcon} ${pagePath}\n   ${p.clicks}c | ${p.impressions} imp | pos ${formatPosition(p.position)}`;
+      if (p.impressions > 20 && p.clicks === 0) msg += ' ← CTR 0%!';
+      msg += '\n';
     }
-    msg += line + '\n';
+    msg += '\n';
   }
 
-  if (a) {
-    msg += `\n💭 ${a.assessment}\n`;
-
-    if (a.recommendations?.length) {
-      msg += `\n💡 แนะนำ:\n`;
-      for (const r of a.recommendations.slice(0, 3)) msg += `- ${r}\n`;
+  // Top blog pages — only show best performers (1-2 lines)
+  const topBlog = supportPages.filter(p => p.clicks > 0).slice(0, 3);
+  if (topBlog.length > 0) {
+    msg += `📝 Top Blog:\n`;
+    for (const p of topBlog) {
+      const pagePath = p.keys[0].replace('https://www.visionxbrain.com', '').replace('/blog/', '');
+      msg += `• ${pagePath.substring(0, 40)} — ${p.clicks}c, pos ${formatPosition(p.position)}\n`;
     }
+    msg += '\n';
+  }
 
-    if (a.contentGaps?.length) {
-      msg += `\n📝 Content Gaps:\n`;
-      for (const g of a.contentGaps.slice(0, 2)) msg += `- ${g}\n`;
+  // Business keywords — compact
+  if (bizKeywords.length > 0) {
+    msg += `🔑 Business Keywords:\n`;
+    for (let i = 0; i < Math.min(bizKeywords.length, 6); i++) {
+      const q = bizKeywords[i];
+      const posArrow = c ? (() => {
+        const up = c.keywordsUp.find(k => k.keyword === q.keys[0]);
+        const dn = c.keywordsDown.find(k => k.keyword === q.keys[0]);
+        if (up) return ` ↑${up.change}`;
+        if (dn) return ` ↓${Math.abs(dn.change)}`;
+        return '';
+      })() : '';
+      msg += `${i + 1}. "${q.keys[0]}" pos ${formatPosition(q.position)}${posArrow} | ${q.clicks}c\n`;
+    }
+    msg += '\n';
+  }
+
+  // AI Summary — 1 line only
+  if (a?.summary) {
+    msg += `💡 ${a.summary}\n`;
+  }
+
+  // Auto-actions taken
+  if (report.autoActions?.length > 0) {
+    msg += `\n🔧 Oracle ทำแล้ว:\n`;
+    for (const action of report.autoActions.slice(0, 4)) {
+      msg += `✅ ${action}\n`;
+    }
+  }
+
+  // Auto-execute plan for next week
+  if (a?.autoExecutePlan?.length > 0) {
+    msg += `\n⚡ สัปดาห์หน้า Oracle จะ:\n`;
+    for (const plan of a.autoExecutePlan.slice(0, 3)) {
+      msg += `→ ${plan}\n`;
+    }
+  }
+
+  // Risks — only if critical
+  if (a?.risks?.length > 0) {
+    msg += `\n⚠️ ระวัง:\n`;
+    for (const r of a.risks.slice(0, 2)) {
+      msg += `- ${r}\n`;
     }
   }
 
@@ -412,13 +686,13 @@ async function sendReportNotification(report) {
 
 async function runKeywordAlert(seoConfig) {
   console.log('\n========================================');
-  console.log('[SEO] 🔔 Running Keyword Alert Check');
+  console.log('[SEO] 🔔 Running Keyword Alert Check (Business Keywords Only)');
   console.log('========================================\n');
 
   const siteUrl = seoConfig?.siteUrl || 'sc-domain:visionxbrain.com';
   const dropThreshold = seoConfig?.keywordDropThreshold || 3;
   const topThreshold = seoConfig?.topRankThreshold || 10;
-  const keywordCount = seoConfig?.monitoredKeywordsCount || 20;
+  const keywordCount = seoConfig?.monitoredKeywordsCount || 50; // fetch more, filter later
 
   if (!searchConsole.isConfigured()) {
     console.log('[SEO] Search Console not configured, skipping alert');
@@ -440,7 +714,11 @@ async function runKeywordAlert(seoConfig) {
 
     const alerts = [];
 
-    for (const q of current.topQueries) {
+    // Only check BUSINESS keywords — skip irrelevant ones
+    const bizCurrent = filterBusinessKeywords(current.topQueries);
+    console.log(`[SEO] Monitoring ${bizCurrent.length}/${current.topQueries.length} business keywords`);
+
+    for (const q of bizCurrent) {
       const keyword = q.keys[0];
       const prev = prevMap[keyword];
       if (!prev) continue;
@@ -472,16 +750,45 @@ async function runKeywordAlert(seoConfig) {
       }
     }
 
-    if (alerts.length > 0) {
-      let msg = `🚨 SEO Alert — ${alerts.length} keyword(s) need attention\n\n`;
+    // Also check service pages for traffic drops
+    const pageAlerts = [];
+    const currentSvcPages = current.corePages || [];
+    const prevSvcMap = {};
+    for (const p of (previous.corePages || [])) {
+      prevSvcMap[p.keys[0]] = p;
+    }
+    for (const p of currentSvcPages) {
+      const prev = prevSvcMap[p.keys[0]];
+      if (!prev) continue;
+      // Alert if clicks dropped significantly
+      if (prev.clicks > 2 && p.clicks === 0) {
+        pageAlerts.push({
+          type: 'page_traffic_drop',
+          page: p.keys[0].replace('https://www.visionxbrain.com', ''),
+          currentClicks: p.clicks,
+          previousClicks: prev.clicks,
+        });
+      }
+    }
+
+    const totalAlerts = alerts.length + pageAlerts.length;
+
+    if (totalAlerts > 0) {
+      let msg = `🚨 SEO Alert — ${totalAlerts} issue(s)\n\n`;
 
       for (const alert of alerts) {
         if (alert.type === 'position_drop') {
-          msg += `⬇️ "${alert.keyword}" ตก ${alert.drop} positions (${alert.previousPos} → ${alert.currentPos})\n`;
+          msg += `⬇️ "${alert.keyword}" ตก ${alert.drop} pos (${formatPosition(alert.previousPos)} → ${formatPosition(alert.currentPos)})\n`;
         } else if (alert.type === 'left_top10') {
-          msg += `❌ "${alert.keyword}" หลุด Top 10 (${alert.previousPos} → ${alert.currentPos})\n`;
+          msg += `❌ "${alert.keyword}" หลุด Top 10 (${formatPosition(alert.previousPos)} → ${formatPosition(alert.currentPos)})\n`;
         }
       }
+
+      for (const pa of pageAlerts) {
+        msg += `📉 ${pa.page} clicks ลดจาก ${pa.previousClicks} → ${pa.currentClicks}\n`;
+      }
+
+      msg += `\n🔧 Oracle กำลังวิเคราะห์สาเหตุ...`;
 
       try {
         await gateway.notifyOwner(msg);
@@ -490,21 +797,23 @@ async function runKeywordAlert(seoConfig) {
         console.error('[SEO] Alert notify error:', e.message);
       }
     } else {
-      console.log('[SEO] No keyword alerts');
+      // Still send a quiet "all good" daily
+      console.log('[SEO] No keyword alerts — all business keywords stable');
     }
 
     // Save alerts
     const alertEntry = {
       date: new Date().toISOString(),
-      alertCount: alerts.length,
-      alerts,
+      alertCount: totalAlerts,
+      alerts: [...alerts, ...pageAlerts],
+      businessKeywordsMonitored: bizCurrent.length,
     };
     data.alerts.unshift(alertEntry);
     data.alerts = data.alerts.slice(0, 30);
     data.lastAlert = new Date().toISOString();
     saveDataFile(data);
 
-    return { success: true, alertCount: alerts.length, alerts };
+    return { success: true, alertCount: totalAlerts, alerts: [...alerts, ...pageAlerts], businessKeywordsMonitored: bizCurrent.length };
   } catch (error) {
     console.error('[SEO] Keyword alert error:', error);
     return { success: false, error: error.message };
@@ -517,11 +826,11 @@ async function runKeywordAlert(seoConfig) {
 
 async function runWeeklyReport(seoConfig) {
   console.log('\n========================================');
-  console.log('[SEO] 🔍 Starting Weekly SEO Report');
+  console.log('[SEO] 📊 Starting Weekly SEO Report v2.0');
   console.log('========================================\n');
 
   const siteUrl = seoConfig?.siteUrl || 'sc-domain:visionxbrain.com';
-  const keywordCount = seoConfig?.monitoredKeywordsCount || 20;
+  const keywordCount = seoConfig?.monitoredKeywordsCount || 50; // fetch more, filter to business
 
   if (!searchConsole.isConfigured()) {
     console.log('[SEO] Search Console not configured, skipping');
@@ -538,35 +847,67 @@ async function runWeeklyReport(seoConfig) {
     // 2. Fetch previous week for comparison
     const previousData = await fetchSCData(siteUrl, daysAgo(16), daysAgo(9), keywordCount);
 
-    // 3. Compare
+    // 3. Compare (uses all keywords for trend detection)
     const comparison = comparePeriodsData(currentData, previousData);
 
-    // 4. AI analysis
-    const analysis = await generateSEOAnalysis(currentData, comparison);
+    // 4. Auto-fix: sitemap ping + indexing check
+    const autoActions = [];
+    let sitemapUrls = [];
+    let notIndexed = [];
+    try {
+      sitemapUrls = await fetchSitemap(siteUrl);
+      if (sitemapUrls.length > 0) {
+        // Quick indexing check
+        const scPages = await searchConsole.searchAnalytics(siteUrl, {
+          dimensions: ['page'],
+          rowLimit: 1000,
+          startDate: daysAgo(30),
+          endDate: daysAgo(1),
+        });
+        const scUrlSet = new Set(scPages.map(p => p.keys[0]));
+        notIndexed = sitemapUrls.filter(u => !scUrlSet.has(u));
+
+        const { actions } = await autoFixIndexing(sitemapUrls, notIndexed);
+        autoActions.push(...actions);
+      }
+    } catch (e) {
+      console.error('[SEO] Auto-fix error:', e.message);
+    }
+
+    // 5. AI analysis (with auto-actions context)
+    const analysis = await generateSEOAnalysis(currentData, comparison, autoActions);
 
     const weekNum = getWeekNumber(now);
     const report = {
-      weekLabel: `สัปดาห์ที่ ${weekNum}/${now.getFullYear()}`,
+      weekLabel: `W${weekNum}/${now.getFullYear()}`,
       generatedAt: now.toISOString(),
       siteUrl,
       currentData,
       comparison,
       analysis,
+      autoActions,
+      indexing: {
+        sitemapTotal: sitemapUrls.length,
+        notIndexedCount: notIndexed.length,
+        coverageRate: sitemapUrls.length > 0
+          ? Math.round((1 - notIndexed.length / sitemapUrls.length) * 10000) / 100
+          : 0,
+      },
     };
 
-    // 5. Save everywhere
+    // 6. Save everywhere
     await saveToSupabase(report);
     saveToLocal(report);
     await sendReportNotification(report);
 
-    // 6. Store report
+    // 7. Store report
     data.reports.unshift(report);
     data.reports = data.reports.slice(0, 20);
     data.lastReport = now.toISOString();
     data.totalRuns = (data.totalRuns || 0) + 1;
     saveDataFile(data);
 
-    console.log('[SEO] Weekly report complete!');
+    console.log(`[SEO] Weekly report v2.0 complete! Business keywords: ${currentData.businessQueries.length}, Service pages: ${currentData.corePages.length}`);
     return { success: true, report };
   } catch (error) {
     console.error('[SEO] Error:', error);
@@ -722,26 +1063,59 @@ async function runSitemapAudit(seoConfig) {
     data.lastAudit = audit;
     saveDataFile(data);
 
-    // 7. Send notification if significant issues
-    if (notIndexed.length > 50 || highPotential.length > 3) {
-      let msg = `🗺️ Sitemap Audit — visionxbrain.com\n\n`;
-      msg += `📊 Sitemap: ${audit.sitemapTotal} URLs | SC: ${audit.scTotal} pages\n`;
-      msg += `📈 Coverage: ${audit.coverageRate}%\n`;
-      msg += `❌ Not indexed: ${notIndexed.length} pages\n\n`;
+    // 7. Auto-fix: ping sitemap + categorize
+    const { actions: autoActions, notIndexedByType } = await autoFixIndexing(sitemapUrls, notIndexed);
+    audit.autoActions = autoActions;
+    audit.notIndexedByType = {
+      coreServices: notIndexedByType.coreServices.length,
+      locationServices: notIndexedByType.locationServices.length,
+      location: notIndexedByType.location.length,
+      blog: notIndexedByType.blog.length,
+      other: notIndexedByType.other.length,
+    };
 
-      if (highPotential.length > 0) {
-        msg += `⚠️ High potential (imp สูง, 0 clicks):\n`;
-        for (const p of highPotential.slice(0, 5)) {
-          const path = p.url.replace('https://www.visionxbrain.com', '');
-          msg += `• ${path} — ${p.impressions} imp, pos ${p.position}\n`;
+    // 8. Send notification — actionable format
+    let msg = `🗺️ Sitemap Audit — VXB\n\n`;
+    msg += `Coverage: ${audit.coverageRate}% (${audit.sitemapTotal - notIndexed.length}/${audit.sitemapTotal})\n\n`;
+
+    // Show NOT indexed breakdown by type
+    if (notIndexed.length > 0) {
+      msg += `❌ Not Indexed:\n`;
+      if (notIndexedByType.coreServices.length > 0) {
+        msg += `🔴 Core Services: ${notIndexedByType.coreServices.length} (CRITICAL!)\n`;
+        for (const u of notIndexedByType.coreServices.slice(0, 3)) {
+          msg += `   → ${u.replace('https://www.visionxbrain.com', '')}\n`;
         }
       }
+      if (notIndexedByType.locationServices.length > 0) msg += `🏙️ Location-Services: ${notIndexedByType.locationServices.length} (programmatic)\n`;
+      if (notIndexedByType.blog.length > 0) msg += `📝 Blog: ${notIndexedByType.blog.length}\n`;
+      if (notIndexedByType.location.length > 0) msg += `📍 Location: ${notIndexedByType.location.length} (ปกติ)\n`;
+      if (notIndexedByType.other.length > 0) msg += `📄 Other: ${notIndexedByType.other.length}\n`;
+      msg += '\n';
+    }
 
-      try {
-        await gateway.notifyOwner(msg);
-      } catch (e) {
-        console.error('[SEO] Audit notify error:', e.message);
+    // High potential pages — Oracle will auto-fix these
+    if (highPotential.length > 0) {
+      msg += `⚡ High Potential (imp สูง, 0 clicks):\n`;
+      for (const p of highPotential.slice(0, 5)) {
+        const pagePath = p.url.replace('https://www.visionxbrain.com', '');
+        msg += `→ ${pagePath} (${p.impressions} imp, pos ${formatPosition(p.position)})\n`;
       }
+      msg += '\n';
+    }
+
+    // Auto-actions
+    if (autoActions.length > 0) {
+      msg += `🔧 Oracle ทำแล้ว:\n`;
+      for (const a of autoActions) {
+        msg += `✅ ${a}\n`;
+      }
+    }
+
+    try {
+      await gateway.notifyOwner(msg);
+    } catch (e) {
+      console.error('[SEO] Audit notify error:', e.message);
     }
 
     console.log(`[SEO] Sitemap audit complete: ${audit.sitemapTotal} URLs, ${audit.coverageRate}% coverage`);
@@ -762,14 +1136,18 @@ function getKeywordSummary() {
   if (!lastReport) return 'ยังไม่มีข้อมูล SEO — ลอง "seo report" ก่อน';
 
   const t = lastReport.currentData.totals;
-  const queries = lastReport.currentData.topQueries;
+  const bizQueries = lastReport.currentData.businessQueries || filterBusinessKeywords(lastReport.currentData.topQueries);
 
-  let msg = `🔑 SEO Keywords — visionxbrain.com\n`;
+  let msg = `🔑 VXB Business Keywords\n`;
   msg += `📊 Clicks: ${t.clicks} | Imp: ${t.impressions.toLocaleString()} | CTR: ${t.ctr}%\n\n`;
 
-  for (let i = 0; i < Math.min(queries.length, 15); i++) {
-    const q = queries[i];
-    msg += `${i + 1}. "${q.keys[0]}" — pos ${q.position}, ${q.clicks} clicks\n`;
+  for (let i = 0; i < Math.min(bizQueries.length, 15); i++) {
+    const q = bizQueries[i];
+    msg += `${i + 1}. "${q.keys[0]}" — pos ${formatPosition(q.position)}, ${q.clicks} clicks\n`;
+  }
+
+  if (bizQueries.length === 0) {
+    msg += '(ยังไม่มี business keywords ที่ rank)\n';
   }
 
   msg += `\n📅 อัพเดท: ${new Date(lastReport.generatedAt).toLocaleDateString('th-TH')}`;
