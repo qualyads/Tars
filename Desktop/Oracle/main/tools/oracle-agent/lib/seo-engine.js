@@ -211,14 +211,22 @@ Keywords ตก: ${comparison.keywordsDown.slice(0, 5).map(k => `"${k.keyword}" 
 
   try {
     const response = await claude.chat([{ role: 'user', content: prompt }], {
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 2000,
+      skipAutoRecall: true,
     });
-    const text = response.content?.[0]?.text || response;
+    // claude.chat() returns string directly, not API response object
+    const text = typeof response === 'string' ? response : (response.content?.[0]?.text || JSON.stringify(response));
+    console.log('[SEO] AI response length:', text.length);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      console.log('[SEO] AI analysis grade:', parsed.grade);
+      return parsed;
+    }
+    console.error('[SEO] AI response not JSON:', text.substring(0, 200));
   } catch (e) {
-    console.error('[SEO] AI analysis error:', e.message);
+    console.error('[SEO] AI analysis error:', e.message, e.stack?.split('\n')[1]);
   }
   return { assessment: 'ไม่สามารถวิเคราะห์ได้', grade: '?' };
 }
