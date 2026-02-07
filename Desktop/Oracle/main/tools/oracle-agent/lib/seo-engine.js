@@ -575,6 +575,184 @@ async function runWeeklyReport(seoConfig) {
 }
 
 // =============================================================================
+// SITEMAP AUDIT
+// =============================================================================
+
+async function fetchSitemap(siteUrl) {
+  const baseUrl = siteUrl.replace('sc-domain:', 'https://www.');
+  const sitemapUrl = `${baseUrl}/sitemap.xml`;
+  console.log(`[SEO] Fetching sitemap: ${sitemapUrl}`);
+
+  try {
+    const response = await fetch(sitemapUrl);
+    if (!response.ok) throw new Error(`Sitemap fetch failed: ${response.status}`);
+    const xml = await response.text();
+
+    // Parse URLs from XML (simple regex — works for standard sitemaps)
+    const urls = [];
+    const locRegex = /<loc>(.*?)<\/loc>/g;
+    let match;
+    while ((match = locRegex.exec(xml)) !== null) {
+      const url = match[1].trim();
+      // Skip nested sitemap references (they end with .xml)
+      if (!url.endsWith('.xml')) {
+        urls.push(url);
+      }
+    }
+
+    console.log(`[SEO] Sitemap: ${urls.length} URLs found`);
+    return urls;
+  } catch (error) {
+    console.error('[SEO] Sitemap fetch error:', error.message);
+    return [];
+  }
+}
+
+function categorizeSitemapUrls(urls) {
+  const categories = {
+    main: [],
+    services: [],
+    location: [],
+    blog: [],
+    blogCategory: [],
+    showcase: [],
+    integration: [],
+    other: [],
+  };
+
+  for (const url of urls) {
+    const path = url.replace(/https?:\/\/[^/]+/, '');
+    if (path.startsWith('/services/')) categories.services.push(url);
+    else if (path.startsWith('/location/')) categories.location.push(url);
+    else if (path.startsWith('/blog/category/')) categories.blogCategory.push(url);
+    else if (path.startsWith('/blog/')) categories.blog.push(url);
+    else if (path.startsWith('/showcase/') || path.startsWith('/portfolio/')) categories.showcase.push(url);
+    else if (path.startsWith('/integration')) categories.integration.push(url);
+    else if (path === '/' || path.split('/').filter(Boolean).length <= 1) categories.main.push(url);
+    else categories.other.push(url);
+  }
+
+  return categories;
+}
+
+async function runSitemapAudit(seoConfig) {
+  console.log('\n========================================');
+  console.log('[SEO] 🗺️ Running Sitemap Audit');
+  console.log('========================================\n');
+
+  const siteUrl = seoConfig?.siteUrl || 'sc-domain:visionxbrain.com';
+
+  if (!searchConsole.isConfigured()) {
+    return { success: false, error: 'Search Console not configured' };
+  }
+
+  try {
+    // 1. Fetch sitemap URLs
+    const sitemapUrls = await fetchSitemap(siteUrl);
+    if (sitemapUrls.length === 0) {
+      return { success: false, error: 'No URLs found in sitemap' };
+    }
+
+    // 2. Fetch all pages from Search Console (high limit)
+    const scPages = await searchConsole.searchAnalytics(siteUrl, {
+      dimensions: ['page'],
+      rowLimit: 1000,
+      startDate: daysAgo(30),
+      endDate: daysAgo(1),
+    });
+
+    const scUrlSet = new Set(scPages.map(p => p.keys[0]));
+    const scUrlMap = {};
+    for (const p of scPages) {
+      scUrlMap[p.keys[0]] = p;
+    }
+
+    // 3. Compare: sitemap URLs vs Search Console URLs
+    const notIndexed = []; // in sitemap but 0 data in SC
+    const lowPerformers = []; // in SC but very low metrics
+    const highPotential = []; // high impressions but 0 or very low clicks
+
+    for (const url of sitemapUrls) {
+      const scData = scUrlMap[url];
+      if (!scData) {
+        notIndexed.push(url);
+      } else if (scData.impressions > 20 && scData.clicks === 0) {
+        highPotential.push({ url, ...scData });
+      } else if (scData.impressions > 0 && scData.ctr < 1 && scData.position > 20) {
+        lowPerformers.push({ url, ...scData });
+      }
+    }
+
+    // 4. Pages in SC but not in sitemap
+    const notInSitemap = [];
+    const sitemapSet = new Set(sitemapUrls);
+    for (const p of scPages) {
+      if (!sitemapSet.has(p.keys[0]) && p.clicks > 0) {
+        notInSitemap.push({ url: p.keys[0], ...p });
+      }
+    }
+
+    // 5. Categorize
+    const categories = categorizeSitemapUrls(sitemapUrls);
+
+    const audit = {
+      date: new Date().toISOString(),
+      sitemapTotal: sitemapUrls.length,
+      scTotal: scPages.length,
+      categories: {
+        main: categories.main.length,
+        services: categories.services.length,
+        location: categories.location.length,
+        blog: categories.blog.length,
+        blogCategory: categories.blogCategory.length,
+        showcase: categories.showcase.length,
+        integration: categories.integration.length,
+        other: categories.other.length,
+      },
+      notIndexedCount: notIndexed.length,
+      notIndexedSample: notIndexed.slice(0, 20),
+      highPotential: highPotential.sort((a, b) => b.impressions - a.impressions).slice(0, 10),
+      lowPerformers: lowPerformers.sort((a, b) => b.impressions - a.impressions).slice(0, 10),
+      notInSitemap: notInSitemap.slice(0, 10),
+      coverageRate: Math.round((1 - notIndexed.length / sitemapUrls.length) * 10000) / 100,
+    };
+
+    // 6. Save audit data
+    const data = loadData();
+    data.lastAudit = audit;
+    saveDataFile(data);
+
+    // 7. Send notification if significant issues
+    if (notIndexed.length > 50 || highPotential.length > 3) {
+      let msg = `🗺️ Sitemap Audit — visionxbrain.com\n\n`;
+      msg += `📊 Sitemap: ${audit.sitemapTotal} URLs | SC: ${audit.scTotal} pages\n`;
+      msg += `📈 Coverage: ${audit.coverageRate}%\n`;
+      msg += `❌ Not indexed: ${notIndexed.length} pages\n\n`;
+
+      if (highPotential.length > 0) {
+        msg += `⚠️ High potential (imp สูง, 0 clicks):\n`;
+        for (const p of highPotential.slice(0, 5)) {
+          const path = p.url.replace('https://www.visionxbrain.com', '');
+          msg += `• ${path} — ${p.impressions} imp, pos ${p.position}\n`;
+        }
+      }
+
+      try {
+        await gateway.notifyOwner(msg);
+      } catch (e) {
+        console.error('[SEO] Audit notify error:', e.message);
+      }
+    }
+
+    console.log(`[SEO] Sitemap audit complete: ${audit.sitemapTotal} URLs, ${audit.coverageRate}% coverage`);
+    return { success: true, audit };
+  } catch (error) {
+    console.error('[SEO] Sitemap audit error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// =============================================================================
 // QUERY HELPERS
 // =============================================================================
 
@@ -658,6 +836,7 @@ function getLatestReport() {
 export default {
   runWeeklyReport,
   runKeywordAlert,
+  runSitemapAudit,
   getKeywordSummary,
   getLatestAlerts,
   runNow,

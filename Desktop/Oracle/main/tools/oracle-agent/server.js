@@ -2873,6 +2873,16 @@ app.post('/api/seo/alert-check', async (req, res) => {
   }
 });
 
+app.post('/api/seo/sitemap-audit', async (req, res) => {
+  console.log('[SEO] Sitemap audit triggered via API');
+  try {
+    const result = await seoEngine.runSitemapAudit(config.seo);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // =============================================================================
 // API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส
 // =============================================================================
@@ -4954,6 +4964,10 @@ cron.schedule(config.schedule.seo_weekly_report || '30 10 * * 1', async () => {
       clicks: result.report?.currentData?.totals?.clicks,
       grade: result.report?.analysis?.grade
     });
+
+    // Run sitemap audit after weekly report
+    const auditResult = await seoEngine.runSitemapAudit(config.seo);
+    console.log('[SEO] Sitemap audit:', auditResult.success ? `${auditResult.audit?.coverageRate}% coverage` : 'failed');
   } catch (error) {
     console.error('[SEO] Error:', error);
     logError('system', error, { source: 'seo-engine' });
