@@ -20,9 +20,9 @@
   },
 
   "telegram": {
-    "enabled": false,
-    "bot_token": "",
-    "owner_id": "",
+    "enabled": true,
+    "bot_token": "8507346052:AAHbfDqGO7H-VGoIJqc7pcZ2e4gx1MxJLLM",
+    "owner_id": "5305207553",
     "webhook_path": "/webhook/telegram"
   },
 
@@ -109,7 +109,9 @@
     "terminal_summarize": "30 23 * * *",
     "forbes_summary": "0 9 * * 1",
     "hospitality_trends": "30 9 * * 1",
-    "weekly_revenue": "0 10 * * 1"
+    "weekly_revenue": "0 10 * * 1",
+    "seo_weekly_report": "30 10 * * 1",
+    "seo_keyword_alert": "0 8 * * *"
   },
 
   "heartbeat": {
@@ -182,6 +184,14 @@
     "autoDetect": true,
     "showReasoning": false,
     "costTracking": true
+  },
+
+  "seo": {
+    "enabled": true,
+    "siteUrl": "sc-domain:visionxbrain.com",
+    "keywordDropThreshold": 3,
+    "topRankThreshold": 10,
+    "monitoredKeywordsCount": 20
   },
 
   "apis": {

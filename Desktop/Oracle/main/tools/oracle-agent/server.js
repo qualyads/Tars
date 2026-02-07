@@ -127,6 +127,9 @@ import forbesWeekly from './lib/forbes-weekly.js';
 import hospitalityTrends from './lib/hospitality-trends.js';
 import weeklyRevenue from './lib/weekly-revenue.js';
 
+// Phase 12: SEO Auto-Optimize Engine
+import seoEngine from './lib/seo-engine.js';
+
 // Phase 9: Unified Memory & Practical AGI
 import memoryApiRouter from './lib/memory-api.js';
 import { initUnifiedMemory } from './lib/unified-memory.js';
@@ -758,6 +761,31 @@ app.post('/webhook/line', async (req, res) => {
               `เมื่อ ${registerCmd.name} ส่งข้อความมาครั้งแรก ผมจะจำได้และตั้งค่าให้อัตโนมัติครับ 👍`
             );
             logSystemEvent('user-profiles', 'partner_pending', { name: registerCmd.name, role: registerCmd.role });
+            return;
+          }
+
+          // SEO Engine commands
+          if (userMessage.match(/^seo\s*report$/i)) {
+            await line.reply(replyToken, '🔍 กำลังสร้าง SEO Report... รอสักครู่');
+            const result = await seoEngine.runNow(config.seo);
+            if (result.success) {
+              // Notification already sent by seoEngine
+              console.log('[SEO] Manual report via LINE complete');
+            } else {
+              await gateway.notifyOwner(`❌ SEO Report error: ${result.error}`);
+            }
+            return;
+          }
+
+          if (userMessage.match(/^seo\s*keywords?$/i)) {
+            const summary = seoEngine.getKeywordSummary();
+            await line.reply(replyToken, summary);
+            return;
+          }
+
+          if (userMessage.match(/^seo\s*alerts?$/i)) {
+            const alerts = seoEngine.getLatestAlerts();
+            await line.reply(replyToken, alerts);
             return;
           }
 
@@ -2326,11 +2354,9 @@ app.post('/webhook/trackingmore', async (req, res) => {
         }, 5000);
       }
 
-      // Send LINE notification to owner
-      if (config.line?.owner_id) {
-        await line.push(config.line.owner_id, message);
-        console.log('[TRACKINGMORE] Sent LINE notification for', trackingNumber);
-      }
+      // Send notification to all channels
+      await gateway.notifyOwner(message);
+      console.log('[TRACKINGMORE] Sent notification for', trackingNumber);
     }
 
     res.json({ success: true, processed: updates.length });
@@ -2623,10 +2649,10 @@ app.post('/api/workflow/complete', async (req, res) => {
       if (url) message += `🔗 URL: ${url}\n`;
       message += `\n🕐 ${new Date().toLocaleString('th-TH')}`;
 
-      await line.push(config.line.owner_id, message);
-      console.log('[WORKFLOW] LINE notification sent');
+      await gateway.notifyOwner(message);
+      console.log('[WORKFLOW] Notification sent');
     } catch (err) {
-      console.error('[WORKFLOW] Failed to send LINE notification:', err.message);
+      console.error('[WORKFLOW] Failed to send notification:', err.message);
     }
   }
 
@@ -2812,6 +2838,42 @@ app.get('/api/weekly-revenue/latest', (req, res) => {
 });
 
 // =============================================================================
+// SEO ENGINE - SEO Auto-Optimize (VisionXBrain)
+// =============================================================================
+
+app.get('/api/seo/status', (req, res) => {
+  res.json(seoEngine.getStatus());
+});
+
+app.post('/api/seo/report', async (req, res) => {
+  console.log('[SEO] Manual report triggered via API');
+  try {
+    const result = await seoEngine.runNow(config.seo);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/seo/latest', (req, res) => {
+  const report = seoEngine.getLatestReport();
+  if (!report) {
+    return res.json({ message: 'No SEO reports yet. Trigger with POST /api/seo/report' });
+  }
+  res.json(report);
+});
+
+app.post('/api/seo/alert-check', async (req, res) => {
+  console.log('[SEO] Manual alert check triggered via API');
+  try {
+    const result = await seoEngine.runKeywordAlert(config.seo);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =============================================================================
 // API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส
 // =============================================================================
 
@@ -2928,9 +2990,7 @@ app.post('/api/revenue/send', async (req, res) => {
       return res.status(500).json(report);
     }
 
-    if (config.line?.owner_id) {
-      await line.push(config.line.owner_id, report.message);
-    }
+    await gateway.notifyOwner(report.message);
 
     res.json({ ...report, sent: true });
   } catch (error) {
@@ -4879,6 +4939,49 @@ cron.schedule(config.schedule.weekly_revenue || '0 10 * * 1', async () => {
 }, { timezone: config.agent.timezone });
 
 // =============================================================================
+// SEO ENGINE - Weekly SEO Report (ทุกวันจันทร์ 10:30)
+// =============================================================================
+
+cron.schedule(config.schedule.seo_weekly_report || '30 10 * * 1', async () => {
+  console.log('[SEO] 🔍 Weekly SEO Report triggered');
+  logSystemEvent('system', 'seo_weekly_report_start', {});
+
+  try {
+    const result = await seoEngine.runWeeklyReport(config.seo);
+    console.log('[SEO] Result:', result.success ? 'success' : 'failed');
+    logSystemEvent('system', 'seo_weekly_report_complete', {
+      success: result.success,
+      clicks: result.report?.currentData?.totals?.clicks,
+      grade: result.report?.analysis?.grade
+    });
+  } catch (error) {
+    console.error('[SEO] Error:', error);
+    logError('system', error, { source: 'seo-engine' });
+  }
+}, { timezone: config.agent.timezone });
+
+// =============================================================================
+// SEO ENGINE - Daily Keyword Alert (ทุกวัน 08:00)
+// =============================================================================
+
+cron.schedule(config.schedule.seo_keyword_alert || '0 8 * * *', async () => {
+  console.log('[SEO] 🔔 Daily Keyword Alert Check triggered');
+  logSystemEvent('system', 'seo_keyword_alert_start', {});
+
+  try {
+    const result = await seoEngine.runKeywordAlert(config.seo);
+    console.log('[SEO] Alert result:', result.success ? 'success' : 'failed', `(${result.alertCount || 0} alerts)`);
+    logSystemEvent('system', 'seo_keyword_alert_complete', {
+      success: result.success,
+      alertCount: result.alertCount
+    });
+  } catch (error) {
+    console.error('[SEO] Alert error:', error);
+    logError('system', error, { source: 'seo-engine-alert' });
+  }
+}, { timezone: config.agent.timezone });
+
+// =============================================================================
 // API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส (ทุก 2 ชม.)
 // =============================================================================
 
@@ -4909,9 +5012,7 @@ cron.schedule('0 9,11,13,15,17,19,21 * * *', async () => {
       }
       message += `\nต้องการให้ทำไหมครับ?`;
 
-      if (config.line?.owner_id) {
-        await line.push(config.line.owner_id, message);
-      }
+      await gateway.notifyOwner(message);
     }
   } catch (error) {
     console.error('[API-HUNTER] Hunt cycle error:', error);
@@ -4941,17 +5042,15 @@ cron.schedule('0 8-21 * * *', async () => {
     const shouldSend = revenueReport.shouldSendReport(report.data);
 
     if (shouldSend) {
-      console.log('[REVENUE] Sending report to LINE...');
+      console.log('[REVENUE] Sending report...');
 
-      if (config.line?.owner_id) {
-        await line.push(config.line.owner_id, report.message);
-        console.log('[REVENUE] Report sent successfully');
-        logSystemEvent('system', 'revenue_report_sent', {
-          hour,
-          revenue: report.data.revenue,
-          occupancy: report.data.occupancy
-        });
-      }
+      await gateway.notifyOwner(report.message);
+      console.log('[REVENUE] Report sent successfully');
+      logSystemEvent('system', 'revenue_report_sent', {
+        hour,
+        revenue: report.data.revenue,
+        occupancy: report.data.occupancy
+      });
     } else {
       console.log('[REVENUE] Skipping report (no significant changes)');
     }
@@ -5014,15 +5113,15 @@ const server = app.listen(PORT, async () => {
   // Initialize Local Agent WebSocket Server (Phase 6: Remote Execution)
   localAgentServer.initialize(server);
   localAgentServer.setNotifyCallback(async (message) => {
-    await line.notifyOwner(message);
+    await gateway.notifyOwner(message);
   });
   registerCleanup('local-agent', () => localAgentServer.shutdown(), { phase: 'cleanup', priority: 5 });
   console.log('[LOCAL-AGENT-SERVER] WebSocket server initialized');
 
   // Setup Claude failover notification callback
   claude.setNotifyCallback(async (message) => {
-    console.log('[CLAUDE-FAILOVER] Sending notification to LINE...');
-    await line.notifyOwner(message);
+    console.log('[CLAUDE-FAILOVER] Sending notification...');
+    await gateway.notifyOwner(message);
   });
   console.log('[CLAUDE] Failover notification callback configured');
 
@@ -5030,10 +5129,10 @@ const server = app.listen(PORT, async () => {
   if (config.heartbeat?.enabled) {
     heartbeatManager = new HeartbeatManager(config.heartbeat);
 
-    // Set notification callback to LINE
+    // Set notification callback to all channels
     heartbeatManager.setNotifyCallback(async (message) => {
-      console.log('[HEARTBEAT] Sending alert to LINE...');
-      await line.notifyOwner(message);
+      console.log('[HEARTBEAT] Sending alert to all channels...');
+      await gateway.notifyOwner(message);
       logSystemEvent('heartbeat', 'alert_sent', { length: message.length });
     });
 
@@ -5048,10 +5147,10 @@ const server = app.listen(PORT, async () => {
   if (config.subagent?.enabled) {
     subAgentManager = new SubAgentManager(config.subagent);
 
-    // Set announce callback to LINE
+    // Set announce callback to all channels
     subAgentManager.setAnnounceCallback(async (message) => {
-      console.log('[SUBAGENT] Announcing result to LINE...');
-      await line.notifyOwner(message);
+      console.log('[SUBAGENT] Announcing result...');
+      await gateway.notifyOwner(message);
       logSystemEvent('subagent', 'announce_sent', { length: message.length });
     });
 
@@ -5103,15 +5202,8 @@ const server = app.listen(PORT, async () => {
 
     const message = `🔔 Reminder\n\n${reminder.message}\n\n⏰ ${reminder.timeFormatted}`;
 
-    // Send via appropriate channel
-    if (reminder.channel === 'telegram' && config.telegram?.enabled) {
-      // await telegram.sendMessage(reminder.userId, message);
-      console.log('[REMINDER] Telegram not fully configured, sending via LINE');
-      await line.notifyOwner(message);
-    } else {
-      // Default to LINE
-      await line.notifyOwner(message);
-    }
+    // Send via all configured channels
+    await gateway.notifyOwner(message);
 
     logSystemEvent('reminder', 'sent', {
       id: reminder.id,
@@ -5132,7 +5224,7 @@ const server = app.listen(PORT, async () => {
     try {
       const digest = await dailyDigest.generateMorning();
       if (digest.output && digest.output !== '✅ ไม่มีอะไรต้องรายงาน') {
-        await line.notifyOwner(`📬 Morning Briefing\n\n${digest.output}`);
+        await gateway.notifyOwner(`📬 Morning Briefing\n\n${digest.output}`);
         logSystemEvent('digest', 'morning_sent', { id: digest.id });
       }
     } catch (err) {
@@ -5146,7 +5238,7 @@ const server = app.listen(PORT, async () => {
     try {
       const digest = await dailyDigest.generateEvening();
       if (digest.output && digest.output !== '✅ ไม่มีอะไรต้องรายงาน') {
-        await line.notifyOwner(`📊 Evening Summary\n\n${digest.output}`);
+        await gateway.notifyOwner(`📊 Evening Summary\n\n${digest.output}`);
         logSystemEvent('digest', 'evening_sent', { id: digest.id });
       }
     } catch (err) {
