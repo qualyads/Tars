@@ -81,6 +81,7 @@ import parcelTracking from './lib/parcel-tracking.js';
 import parcelWatchlist from './lib/parcel-watchlist.js';
 import realtimeContext from './lib/realtime-context.js';
 import autonomousLoop from './lib/autonomous-loop.js';
+import leadFinder from './lib/lead-finder.js';
 import imageGen from './lib/image-gen.js';
 import autonomy from './lib/autonomy.js';
 import hotelNotify from './lib/hotel-notifications.js';
@@ -5280,6 +5281,70 @@ cron.schedule('0 8-21 * * *', async () => {
     logError('system', error, { source: 'revenue-report' });
   }
 }, { timezone: config.agent.timezone });
+
+// =============================================================================
+// LEAD FINDER — Auto Lead Generation for VXB (ทุกวัน 10:00)
+// =============================================================================
+
+cron.schedule('0 10 * * *', async () => {
+  console.log('[LEAD-FINDER] Daily lead search triggered');
+  try {
+    const result = await leadFinder.runDaily();
+    console.log('[LEAD-FINDER] Daily result:', result);
+  } catch (error) {
+    console.error('[LEAD-FINDER] Daily run error:', error.message);
+  }
+}, { timezone: config.agent.timezone });
+
+// Lead Finder: Check replies (ทุก 3 ชม. ระหว่าง 9:00-18:00)
+cron.schedule('0 9,12,15,18 * * *', async () => {
+  console.log('[LEAD-FINDER] Checking for replies...');
+  try {
+    await leadFinder.checkReplies();
+  } catch (error) {
+    console.error('[LEAD-FINDER] Reply check error:', error.message);
+  }
+}, { timezone: config.agent.timezone });
+
+// =============================================================================
+// LEAD FINDER API — Manual control + stats
+// =============================================================================
+
+app.get('/api/leads/stats', (req, res) => {
+  res.json(leadFinder.getStats());
+});
+
+app.get('/api/leads', (req, res) => {
+  const { status, industry } = req.query;
+  const filter = {};
+  if (status) filter.status = status;
+  if (industry) filter.industry = industry;
+  res.json(leadFinder.getLeads(filter));
+});
+
+app.post('/api/leads/run', async (req, res) => {
+  res.json({ message: 'Lead finder started' });
+  // Run async (don't block response)
+  leadFinder.runDaily().catch(e => console.error('[LEAD-FINDER] Manual run error:', e.message, e.stack));
+});
+
+// Debug: test search only (sync, returns results)
+app.get('/api/leads/test-search', async (req, res) => {
+  try {
+    const query = req.query.q || 'คลินิกความงาม กรุงเทพ';
+    const results = await leadFinder.searchGoogle(query);
+    res.json({ version: 'v2-local-rank-tracker', query, count: results.length, results: results.slice(0, 3) });
+  } catch (e) {
+    res.status(500).json({ error: e.message, stack: e.stack });
+  }
+});
+
+app.post('/api/leads/add-domain', (req, res) => {
+  const { domain, industry } = req.body;
+  if (!domain) return res.status(400).json({ error: 'domain is required' });
+  leadFinder.addManualDomain(domain, industry);
+  res.json({ success: true, domain, industry });
+});
 
 // =============================================================================
 // START SERVER
