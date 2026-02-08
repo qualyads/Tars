@@ -5,12 +5,13 @@
       "description": "Nintendo Switch",
       "addedAt": "2026-02-05T13:20:00.000Z",
       "addedBy": "tars",
-      "lastStatus": "transit",
-      "lastLocation": "สารภี, เชียงใหม่",
-      "lastUpdate": "2026-02-05T09:07:36",
+      "lastStatus": "delivered",
+      "lastLocation": "ปลายทาง",
+      "lastUpdate": "2026-02-06T09:00:00",
       "carrier": "kerryexpress-th",
-      "notifyOnUpdate": true,
-      "delivered": false
+      "notifyOnUpdate": false,
+      "delivered": true,
+      "deliveredAt": "2026-02-06"
     }
   ]
 }

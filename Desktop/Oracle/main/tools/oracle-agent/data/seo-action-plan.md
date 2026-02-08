@@ -62,6 +62,62 @@ Generated: 2026-02-07
 
 ---
 
+## 1B. FIX: 4 หน้า "Crawled — Currently Not Indexed"
+
+สาเหตุ: Google crawl แล้วแต่เลือกไม่ index เพราะ (1) ไม่มี meta description (2) โครงสร้างเทมเพลตคล้ายกัน Google มองเป็น near-duplicate
+
+### /services/webflow-cms-development-agency
+**สถานะ:** Crawled — currently not indexed | Last crawl: 27 Dec 2025
+**สาเหตุจริง:** ~50% content ซ้ำกับหน้า service อื่น (shared template)
+**Target Keywords:** `webflow cms` 5.4K, `cms website` 14.8K, `รับทำเว็บไซต์` 3.6K
+
+**✅ อัพเดทแล้วผ่าน Webflow API (2026-02-07):**
+- Title: `Webflow CMS Development | รับทำเว็บไซต์ CMS จัดการคอนเทนต์ง่าย — VisionXBrain`
+- Meta desc: `บริการ Webflow CMS Development ครบวงจร สร้าง CMS Website ที่ทีมจัดการเนื้อหาเองได้ Collection, Dynamic Pages, Filter & Sort รับทำเว็บไซต์ CMS ไม่ต้องเขียนโค้ด เสร็จใน 2-4 สัปดาห์ ปรึกษาฟรี`
+- OG Title: `Webflow CMS Development | รับทำเว็บ CMS ครบวงจร`
+- **ยังต้องทำ:** ลด content ซ้ำในตัวหน้า (Webflow Designer)
+
+### /services/webflow-ecommerce-store-development
+**สถานะ:** Crawled — currently not indexed | Last crawl: 30 Jan 2026
+**สาเหตุจริง:** ~50% content ซ้ำ + อาจซ้ำกับหน้า Shopify
+**Target Keywords:** `webflow ecommerce` 3.6K, `รับทำเว็บ e commerce` 720, `สร้างเว็บ` 4.4K
+
+**✅ อัพเดทแล้วผ่าน Webflow API (2026-02-07):**
+- Title: `Webflow E-Commerce | รับทำเว็บ E-Commerce ร้านค้าออนไลน์ No-Code — VisionXBrain`
+- Meta desc: `รับทำเว็บ E-Commerce ด้วย Webflow สร้างร้านค้าออนไลน์ดีไซน์สวย Checkout ลื่น รองรับ Stripe โหลดไว SEO แรง ไม่มี Transaction Fee ต่างจาก Shopify เริ่มขายใน 3 สัปดาห์ ปรึกษาฟรี`
+- OG Title: `Webflow E-Commerce | สร้างร้านค้าออนไลน์ที่ขายดี`
+- **ยังต้องทำ:** ลด content ซ้ำ + เพิ่ม unique section เทียบ Shopify
+
+### /services/webflow-membership-paywall-solutions
+**สถานะ:** Crawled — currently not indexed | Last crawl: 20 Dec 2025
+**สาเหตุจริง:** ~50% content ซ้ำ (niche keyword แต่ high bid $11.76)
+**Target Keywords:** `webflow membership` 480, `สร้างเว็บสมาชิก`, `ขายคอร์สออนไลน์`
+
+**✅ อัพเดทแล้วผ่าน Webflow API (2026-02-07):**
+- Title: `Webflow Membership & Paywall | สร้างเว็บสมาชิก Gated Content ขายคอร์สออนไลน์ — VisionXBrain`
+- Meta desc: `สร้างเว็บสมาชิก Webflow Membership พร้อมระบบ Paywall ล็อกคอนเทนต์ Premium ขายคอร์สออนไลน์ สมัครสมาชิกรายเดือน เชื่อม Stripe/Memberstack สร้างรายได้ Passive Income 24/7 ปรึกษาฟรี`
+- OG Title: `Webflow Membership & Paywall | สร้างเว็บสมาชิกขายคอร์ส`
+- **ยังต้องทำ:** ลด content ซ้ำ + เน้น Memberstack integration
+
+### /services/webflow-support-thailand
+**สถานะ:** Crawled — currently not indexed | Last crawl: 22 Aug 2025 (**5 เดือน!**)
+**สาเหตุจริง:** ~50% content ซ้ำ + ไม่ได้ crawl นาน
+**Target Keywords:** `ดูแลเว็บไซต์` 170, `รับดูแลเว็บไซต์` 170, `ค่าดูแลเว็บไซต์` 40
+
+**✅ อัพเดทแล้วผ่าน Webflow API (2026-02-07):**
+- Title: `รับดูแลเว็บไซต์ Webflow รายเดือน | แก้บัก อัพเดท ดูแลเว็บ — VisionXBrain`
+- Meta desc: `บริการรับดูแลเว็บไซต์ Webflow รายเดือน แก้ไขบัก อัพเดทคอนเทนต์ ปรับ SEO ดูแลเว็บไซต์ครบวงจร ตอบไว 24 ชม. ค่าดูแลเว็บไซต์เริ่มต้น 5,000 บาท/เดือน ทีมคนไทยพร้อมช่วย`
+- OG Title: `รับดูแลเว็บไซต์ Webflow รายเดือน | VisionXBrain Thailand`
+- **ยังต้องทำ:** ลด content ซ้ำ + เน้น SLA/maintenance checklist
+
+### แผนดำเนินการ (Tar ทำใน Webflow):
+1. **ใส่ meta desc ทั้ง 4 หน้า** ← ก๊อปจากด้านบนไปวาง
+2. **เพิ่ม unique section** ในแต่ละหน้า ให้ต่างจากกัน (ลดปัญหา near-duplicate)
+3. **เพิ่ม internal links** ระหว่าง 4 หน้านี้ + ลิงก์จาก /services/ หลัก
+4. **Submit URL ให้ Google recrawl** ← Oracle ทำเองผ่าน API หลัง Tar อัพเดท
+
+---
+
 ## 2. CRITICAL: Blog Post 404
 
 **URL ที่ 404:** `/blog/blog-post-website-launch-checklist`

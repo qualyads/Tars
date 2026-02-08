@@ -13,6 +13,7 @@
 import claude from './claude.js';
 import localAgentServer from './local-agent-server.js';
 import line from './line.js';
+import gateway from './gateway.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -535,12 +536,11 @@ async function saveIdeasToSupabase(ideas) {
 const LINE_OWNER_ID = 'Uba2ae89ff15d0ca1ea673058844f287c';
 
 async function notifyTars(message, config) {
-  const ownerId = config?.line?.owner_id || LINE_OWNER_ID;
   try {
-    await line.push(ownerId, message);
-    console.log('[IDEAS] LINE notification sent');
+    await gateway.notifyOwner(message);
+    console.log('[IDEAS] Notification sent');
   } catch (e) {
-    console.error('[IDEAS] LINE notification error:', e.message);
+    console.error('[IDEAS] Notification error:', e.message);
   }
 }
 

@@ -17,12 +17,19 @@ const TELEGRAM_API = 'api.telegram.org';
  * @param {object} options - Additional options
  */
 async function send(chatId, message, options = {}) {
-  return sendRequest('sendMessage', {
+  const body = {
     chat_id: chatId,
     text: truncate(message, 4096),
-    parse_mode: options.parseMode || 'Markdown',
     ...options
-  });
+  };
+
+  // Only set parse_mode if explicitly provided
+  // Default: no parse_mode (plain text) to avoid Markdown rejection
+  if (options.parseMode) {
+    body.parse_mode = options.parseMode;
+  }
+
+  return sendRequest('sendMessage', body);
 }
 
 /**
@@ -47,7 +54,8 @@ async function notifyOwner(message) {
     console.warn('[TELEGRAM] Owner ID not configured');
     return null;
   }
-  return send(ownerId, message);
+  // Use sendLong to handle messages > 4096 chars (same behavior as LINE)
+  return sendLong(ownerId, message);
 }
 
 /**

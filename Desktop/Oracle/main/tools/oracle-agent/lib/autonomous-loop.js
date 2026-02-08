@@ -23,6 +23,7 @@ const config = require('../config.json');
 // Import modules
 import claude from './claude.js';
 import line from './line.js';
+import gateway from './gateway.js';
 
 // =============================================================================
 // MEMORY PATHS
@@ -329,12 +330,10 @@ ${thought.detail}
 💪 **Action:** ${thought.action}`;
 
   try {
-    if (config.line?.owner_id) {
-      await line.push(config.line.owner_id, message);
-      console.log('[AUTONOMOUS] Thought sent to LINE');
-    }
+    await gateway.notifyOwner(message);
+    console.log('[AUTONOMOUS] Thought sent');
   } catch (err) {
-    console.error('[AUTONOMOUS] LINE notify error:', err.message);
+    console.error('[AUTONOMOUS] Notify error:', err.message);
   }
 }
 

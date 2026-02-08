@@ -169,8 +169,16 @@ import {
   registerHttpServer
 } from './lib/graceful-shutdown.js';
 
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 const app = express();
 app.use(express.json());
+
+// Dashboard — static React app
+app.use('/dashboard', express.static(join(__dirname, 'public/dashboard')));
 
 // Heartbeat Manager instance
 let heartbeatManager = null;
@@ -5333,9 +5341,403 @@ app.get('/api/leads/test-search', async (req, res) => {
   try {
     const query = req.query.q || 'คลินิกความงาม กรุงเทพ';
     const results = await leadFinder.searchGoogle(query);
-    res.json({ version: 'v2-local-rank-tracker', query, count: results.length, results: results.slice(0, 3) });
+    res.json({ version: 'v3-with-details', query, count: results.length, results: results.slice(0, 3) });
   } catch (e) {
     res.status(500).json({ error: e.message, stack: e.stack });
+  }
+});
+
+// Debug: test place details (sync, returns details for one place)
+app.get('/api/leads/test-details', async (req, res) => {
+  try {
+    const placeId = req.query.place_id;
+    if (!placeId) return res.status(400).json({ error: 'place_id required' });
+    const details = await leadFinder.getPlaceDetails(placeId);
+    res.json({ version: 'v3', place_id: placeId, details });
+  } catch (e) {
+    res.status(500).json({ error: e.message, stack: e.stack });
+  }
+});
+
+// Map business type to relevant VXB service page
+function findRelevantServicePage(bizType) {
+  const t = (bizType || '').toLowerCase();
+  const map = [
+    { kw: ['clinic', 'surgery', 'botox', 'hifu', 'filler', 'derma', 'skin'], url: 'https://www.visionxbrain.com/services/premium-clinic-website-hifu-botox-filler' },
+    { kw: ['spa', 'massage', 'wellness'], url: 'https://www.visionxbrain.com/services/premium-spa-wellness-website-design' },
+    { kw: ['restaurant', 'cafe', 'bakery', 'food'], url: 'https://www.visionxbrain.com/services/restaurant-website-design' },
+    { kw: ['hotel', 'resort', 'hostel', 'guesthouse'], url: 'https://www.visionxbrain.com/services/hotel-website-design' },
+    { kw: ['car rental', 'rent a car'], url: 'https://www.visionxbrain.com/services/car-rental-website-design' },
+    { kw: ['fitness', 'gym', 'yoga'], url: 'https://www.visionxbrain.com/services/fitness-gym-website-design' },
+    { kw: ['dental', 'dentist'], url: 'https://www.visionxbrain.com/services/dental-clinic-website-design' },
+    { kw: ['real estate', 'property'], url: 'https://www.visionxbrain.com/services/real-estate-property-website-design' },
+    { kw: ['shop', 'store', 'retail', 'ecommerce', 'e-commerce'], url: 'https://www.visionxbrain.com/services/e-commerce-online-store-website-design' },
+    { kw: ['education', 'school', 'tutor', 'academy'], url: 'https://www.visionxbrain.com/services/education-website-design' },
+    { kw: ['law', 'legal'], url: 'https://www.visionxbrain.com/services/law-firm-website-design' },
+    { kw: ['construction', 'architect', 'interior'], url: 'https://www.visionxbrain.com/services/construction-company-website-design' },
+    { kw: ['pet', 'vet', 'animal'], url: 'https://www.visionxbrain.com/services/pet-shop-veterinary-website-design' },
+    { kw: ['travel', 'tour'], url: 'https://www.visionxbrain.com/services/travel-agency-tour-website-design' },
+  ];
+  for (const entry of map) {
+    if (entry.kw.some(k => t.includes(k))) return entry.url;
+  }
+  return 'https://www.visionxbrain.com/services/website';
+}
+
+// Test: send genuine value-first outreach email — Tar's 13 Requirements
+app.post('/api/leads/test-email', async (req, res) => {
+  try {
+    const { to, lead_index } = req.body;
+    if (!to) return res.status(400).json({ error: 'to (email) required' });
+
+    const leads = leadFinder.getLeads();
+    const idx = lead_index || 0;
+    const lead = leads.filter(l => l.isGoodTarget && l.domain)?.[idx] || leads[idx];
+    if (!lead) return res.status(404).json({ error: 'No leads found' });
+
+    const domain = lead.domain || '-';
+    // Fallback: ถ้า businessName เป็น placeholder หรือว่าง → ใช้ businessNameEn → domain
+    const rawName = lead.businessName || '';
+    const isPlaceholder = !rawName || /ชื่อธุรกิจ|ใส่ชื่อ|ภาษาไทย ถ้า|English name/i.test(rawName);
+    const bizName = isPlaceholder ? (lead.businessNameEn || lead.name || domain) : rawName;
+    const bizType = lead.type || lead.industry || '';
+    const issues = lead.websiteIssues || [];
+    const servicePage = findRelevantServicePage(bizType);
+    const isHotel = /hotel|resort|hostel|guesthouse|โรงแรม|ที่พัก/i.test(bizType);
+    const websiteUrl = domain !== '-' ? 'https://' + domain : '';
+
+    // AI generates genuine value-first email
+    const prompt = `คุณคือ ต้าร์ — Founder ของ VisionXBrain เขียน email ถึงเจ้าของ "${bizName}"
+
+=== ตัวตนของต้าร์ ===
+- ทำเว็บ Webflow + Digital Marketing มา 80+ ราย 6 ประเทศ Clutch 5.0
+- ผลงาน: traffic เพิ่ม x28, orders x24, booking x30
+- พูดตรง มั่นใจ ไม่อ้อมค้อม ไม่เป็นทางการ ไม่ขาย
+- เป็น "ครีเอทีฟบัดดี้เพื่อนคู่คิด" — ผู้ให้ก่อนเสมอ
+- ตัวอย่างวิธีเขียน:
+  "เว็บที่ดีต้องทำงานแทนคุณ ไม่ใช่แค่สวย"
+  "เว็บโหลดเกิน 3 วินาที คนกดออก 53% — ลูกค้าหายไปก่อนเห็นสินค้าด้วยซ้ำ"
+  "ไม่ใช่สัญญา แต่ผลจริง"
+- โดยส่วนตัวเชี่ยวชาญด้าน Digital Marketing, SEO, AI Search, Automation — ทำระบบ SEO + AI Search แบบ Auto ให้ลูกค้า
+- ห้ามพูดถึงโรงแรม/ปาย/ประสบการณ์ส่วนตัว
+
+=== ข้อมูลธุรกิจ ===
+- ชื่อ: ${bizName}
+- ประเภท: ${bizType}
+- เว็บ: ${domain}
+- ปัญหาที่เจอ: ${issues.length > 0 ? issues.join(', ') : 'ยังไม่วิเคราะห์ลึก'}
+
+=== โครงสร้าง email (ทำตามนี้เท่านั้น) ===
+
+**1. เปิดเรื่อง (2-3 บรรทัด):**
+- "สวัสดีครับ ผมต้าร์ จาก บริษัท วิสัยทัศน์ เอ็กซ์ เบรน จำกัด ครับ"
+- หลังแนะนำตัว ใส่ screenshot เว็บลูกค้าด้วย HTML:
+<div style="text-align:center;margin:16px 0;">
+  <p style="font-size:13px;color:#888;margin:0 0 8px;">เว็บไซต์ปัจจุบันของ ${bizName}:</p>
+  <img src="https://image.thum.io/get/width/600/${websiteUrl}" alt="เว็บไซต์ ${bizName}" style="width:100%;max-width:580px;border-radius:12px;border:1px solid #eee;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+</div>
+แสดงให้เห็นว่าเราดูเว็บจริงๆ ไม่ได้ส่ง template
+- บอกตรงๆ ว่าเจอเว็บเขาตอน research ธุรกิจ${bizType}ออนไลน์
+- ลองดูเว็บแล้วเห็นจุดที่ถ้าปรับนิดหน่อย น่าจะได้ลูกค้าเพิ่มเยอะเลย เลยตั้งใจเขียนคำแนะนำเฉพาะสำหรับธุรกิจของคุณมาครับ
+- ต้องให้รู้สึกว่า report นี้ผมเขียนให้เคสธุรกิจลูกค้าโดยตรง ไม่ใช่ template
+- ใส่ลิงก์เว็บลูกค้าด้วย เช่น "ผมเจอเว็บของคุณ (${websiteUrl}) ตอน research..." — แสดงว่าเราใส่ใจดูจริง
+- ห้ามพูดถึง Google reviews / rating (อาจไม่ตรง)
+
+**2. Action Plan — 5-6 ข้อที่ทำแล้วเปลี่ยนธุรกิจ:**
+แต่ละข้อต้องมีโครงสร้าง HTML แบบนี้:
+
+<div style="background:#fafafa;border-left:4px solid #eb3f43;padding:16px 20px;margin:16px 0;border-radius:0 8px 8px 0;">
+  <strong style="color:#1b1c1b;font-size:15px;">Step X: ชื่อสิ่งที่ควรทำ</strong>
+  <p style="margin:8px 0 4px;color:#eb3f43;font-weight:bold;font-size:14px;">Impact: อธิบายว่าทำแล้วเปลี่ยนอะไร (ภาษาธุรกิจ)</p>
+  <p style="margin:4px 0;font-size:14px;color:#444;line-height:1.7;">อธิบายรายละเอียด + วิธีทำเอง step-by-step ที่ actionable จริงๆ</p>
+  <p style="margin:4px 0;font-size:13px;color:#888;font-style:italic;">** บรรทัดนี้ใส่เฉพาะข้อที่เกี่ยวกับการ Post/Social เท่านั้น: "ปกติทางผมจะใช้ระบบ automation ช่วยจัดการโพสให้ลูกค้าครับ" — ข้ออื่นที่ไม่เกี่ยวกับ Post ห้ามใส่ประโยคนี้! **</p>
+</div>
+
+ข้อที่ต้องมี (ปรับ wording ให้เหมาะธุรกิจ):
+
+A) **Google Business Profile Post** — ใช้แนวคิดนี้เป็นหลัก:
+"จริงๆแล้วถ้าอยากให้ธุรกิจ Rank ดีขึ้น การมองเห็นดีขึ้น สิ่งที่ทำได้ง่ายเลยคือการโพส Google Business ครับ ตอนนี้คู่แข่งส่วนใหญ่มองข้ามเรื่องนี้ ลองทำดูก็ได้ครับ วิธีนี้จะช่วยให้อันดับถูกจัดได้ดีขึ้น ถึงแม้กรณีรีวิวน้อย ก็ยังชนะคู่แข่งที่ทุกอย่างใหญ่กว่าได้ด้วยครับ"
+บอก action ชัด: โพสอะไร กี่ครั้ง/สัปดาห์ ใส่อะไรบ้าง
+
+B) **NAP + Map Consistency** — ใช้แนวคิดนี้:
+"ถ้าทำให้เว็บไซต์มีแผนที่ Map ครบถูกต้อง ชื่อธุรกิจและหมุดตรงกับ Google Maps เบอร์โทร ที่อยู่ธุรกิจตรง เว็บไซต์ก็จะช่วยดันอันดับได้ไวมาก ในการเพิ่มลูกค้าเข้ามาฟรีๆ จริงๆก็มีเทคนิคที่ลึกกว่านี้ แต่แค่นี้ลูกค้าจะเข้ามาเยอะขึ้นแน่นอน"
+checklist: ชื่อตรงไหม เบอร์ตรงไหม ที่อยู่ตรงไหม map embed ยัง
+
+C) **AI Search Optimization** — เรื่องที่ลูกค้าตามหา:
+ตอนนี้คนเริ่มใช้ AI (ChatGPT, Gemini, Perplexity) ค้นหาแทน Google มากขึ้น
+ธุรกิจที่มี structured data + เนื้อหาตอบคำถามชัดจะถูก AI แนะนำก่อน
+แนะนำ action ชัด: ทำอะไรบ้างให้ AI หาเจอ
+
+D) **Website Issues** — จากข้อมูลที่วิเคราะห์ได้ (ถ้ามี issues):
+${issues.filter(i => !/ssl|https/i.test(i)).length > 0 ? issues.filter(i => !/ssl|https/i.test(i)).map(i => '- ' + i).join('\\n') : 'วิเคราะห์จาก domain + bizType แล้วแนะนำเรื่อง mobile-first, page speed, CTA ที่ชัด, เว็บหลายภาษา'}
+แนะนำวิธีแก้ที่เห็นผลทันที (ห้ามยก SSL/HTTPS เป็นประเด็น!)
+
+E) **อีก 1-2 ข้อ** — คุณเลือกเองจากประสบการณ์ที่ทำให้ลูกค้า WOW:
+เช่น เว็บหลายภาษา (ถ้าธุรกิจมีลูกค้าต่างชาติ), Content Strategy, Local SEO, Social Proof, Conversion Optimization, Structured Data/Schema Markup
+ต้อง WOW จริงๆ ไม่ใช่คำแนะนำทั่วไปที่ใครก็รู้
+
+⚠️ **ห้ามแนะนำเรื่อง SSL/HTTPS เด็ดขาด!** — เว็บทุกวันนี้มี SSL หมดแล้ว ถ้ายกเรื่องนี้ลูกค้าจะรู้ว่าเราไม่ได้ดูเว็บจริง เหมือนยกประเด็นสำเร็จรูปมา
+⚠️ **ห้ามแนะนำเรื่องพื้นฐานเกินไป** เช่น "ทำเว็บให้สวย" "ใส่รูปสินค้า" — ต้องเป็นคำแนะนำระดับมืออาชีพที่คนทั่วไปไม่รู้
+
+${isHotel ? `F) **Hotel-Specific: ระบบ Automation สำหรับโรงแรม** —
+ตอนนี้ VisionXBrain มี product เฉพาะสำหรับโรงแรม:
+- ระบบ Auto Reviews — รีวิวจัดการอัตโนมัติ ตอบรีวิวลูกค้าทุก platform
+- Kiosk Self Check-In — ลูกค้า check-in เองได้ ลดงาน front desk
+- Auto Social Post — โพสทุก social media อัตโนมัติทุก platform
+ถ้าเป็นโรงแรม ให้แนะนำ product เหล่านี้ด้วย บอกว่าผมทำระบบพวกนี้ให้ลูกค้าโรงแรมอยู่แล้ว` : ''}
+
+**3. ปิดท้าย:**
+- สรุปสั้น 2-3 บรรทัด ว่าถ้าทำตาม action plan นี้ ธุรกิจจะเปลี่ยนยังไง
+- "โดยส่วนตัวผมเชี่ยวชาญด้าน Digital Marketing, SEO, AI Search และระบบ Automation ครับ ทำระบบ SEO + AI Search แบบ Auto ให้ลูกค้าอยู่แล้ว"
+- "พอดีผมรับทำเซอร์วิสนี้ให้ลูกค้าอยู่แล้วครับ ลองดูบริการของผมได้ที่: ${servicePage}"
+- "หากต้องการรับคำปรึกษาเพิ่มเติม โทรตรงหาผมก็ได้ครับ ปรึกษาฟรี 097-153-6565"
+- "ไม่เป็นลูกค้าไม่เป็นไรครับ ผมเป็นครีเอทีฟบัดดี้เพื่อนคู่คิดอยู่แล้ว พอดีเห็นเว็บของคุณลูกค้าเลยลองส่งแนะนำครับ"
+- "ถ้าอยากได้ report แบบละเอียดกว่านี้ กดปุ่มด้านล่างได้เลยครับ ฟรีครับ"
+- ห้ามใส่ปุ่ม (จะใส่ให้ใน template)
+
+=== กฎเหล็ก ===
+- ห้ามพูดถึงโรงแรม/ปาย/ประสบการณ์เปิดโรงแรม
+- ห้ามพูดถึง Google reviews/rating (อาจผิด)
+- ห้ามให้คะแนน/score "3/10" "4/10"
+- ห้ามตะโกน ห้ามคำว่า "ด่วน" "ก่อนสาย" "รีบ"
+- ห้ามภาษาทางการ — ใช้ "ผม" "คุณ" "ครับ"
+- ห้ามเขียนเหมือน AI — ไม่ใช่ "ข้อเสนอแนะ" "ข้อควรพิจารณา"
+- ประโยคสั้นยาวสลับ อ่านแล้วเหมือนคนพิมพ์
+- Emoji ได้แค่ในกล่อง action (อย่างละไม่เกิน 1 ที่) — ห้ามใส่ emoji ใน subject เด็ดขาด!
+- HTML inline style ทั้งหมด (email client)
+- ตอบ JSON เท่านั้น
+
+ตอบ JSON:
+{
+  "subject": "หัวข้อ — ต้องมีชื่อธุรกิจลูกค้า (${bizName}) + สื่อว่ามีคำแนะนำดีๆ ให้อยากเปิดอ่าน — ห้ามหัวข้อทั่วไป! ใช้ CRO คิดเอง ภาษาไทย — ห้ามใส่ emoji เด็ดขาด!",
+  "body": "HTML body ทั้งหมด (ไม่ต้องใส่ signature/ปุ่ม จะใส่ให้ใน template)"
+}`;
+
+    const aiRes = await claude.chat(
+      [{ role: 'user', content: prompt }],
+      {
+        system: 'คุณคือ ต้าร์ เจ้าของ VisionXBrain เขียน email เหมือนคนจริงที่อยากช่วยจริงๆ ไม่ใช่ AI ไม่ขาย เป็นผู้ให้ ตอบ JSON เท่านั้น',
+        max_tokens: 4000,
+        skipAutoRecall: true
+      }
+    );
+
+    const jsonMatch = aiRes.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.status(500).json({ error: 'AI failed to generate email', raw: aiRes });
+
+    const emailContent = JSON.parse(jsonMatch[0]);
+
+    // Wrap AI body in premium branded template
+    // Strip emoji from subject (safety net — AI อาจใส่มาถึงสั่งห้าม)
+    const subject = emailContent.subject.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1FA00}-\u{1FA9F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/gu, '').trim();
+
+    // Generate tracking IDs
+    const trackingId = (lead.place_id || domain) + '_' + Date.now();
+    const clickBase = 'https://oracle-agent-production-546e.up.railway.app/api/email/click/' + trackingId;
+    const trackedServicePage = clickBase + '?url=' + encodeURIComponent(servicePage);
+    const trackedVxbHome = clickBase + '?url=' + encodeURIComponent('https://www.visionxbrain.com');
+    const body = `
+<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:640px;margin:0 auto;color:#1b1c1b;line-height:1.8;background:#fff;padding:0 20px;">
+
+  <div style="height:3px;background:linear-gradient(90deg,#eb3f43,#6e49f3);border-radius:2px;margin-bottom:28px;"></div>
+
+  ${emailContent.body}
+
+  <!-- Service Page Link -->
+  <div style="background:#f8f7f5;border-radius:12px;padding:18px 24px;margin:24px 0;text-align:center;">
+    <p style="margin:0 0 8px;font-size:14px;color:#666;">บริการที่เกี่ยวข้องกับธุรกิจของคุณครับ:</p>
+    <a href="${trackedServicePage}" style="color:#eb3f43;font-weight:bold;text-decoration:none;font-size:15px;">${servicePage.replace('https://', '')}</a>
+  </div>
+
+  <!-- CTA Button -->
+  <div style="text-align:center;margin:32px 0;">
+    <a href="mailto:info@visionxbrain.com?subject=ขอ Report เต็ม — ${bizName}" style="display:inline-block;background:linear-gradient(135deg,#eb3f43,#d63337);color:#fff;padding:16px 40px;border-radius:100px;text-decoration:none;font-size:16px;font-weight:bold;letter-spacing:0.3px;box-shadow:0 4px 12px rgba(235,63,67,0.3);">ขอ Report เต็มฟรี</a>
+    <span style="display:inline-block;width:12px;"></span>
+    <a href="tel:0971536565" style="display:inline-block;background:#fff;color:#eb3f43;padding:16px 40px;border-radius:100px;text-decoration:none;font-size:16px;font-weight:bold;letter-spacing:0.3px;border:2px solid #eb3f43;">โทรปรึกษาฟรี</a>
+    <p style="color:#999;font-size:13px;margin-top:10px;">หรือตอบกลับ email นี้ได้เลยครับ ไม่มีข้อผูกมัดใดๆ</p>
+  </div>
+
+  <!-- Signature -->
+  <table style="margin-top:36px;border-top:1px solid #eee;padding-top:20px;width:100%;">
+    <tr>
+      <td style="padding-right:16px;vertical-align:top;">
+        <div style="width:4px;height:52px;background:linear-gradient(180deg,#eb3f43,#6e49f3);border-radius:2px;"></div>
+      </td>
+      <td style="font-size:13px;color:#666;line-height:1.7;">
+        <strong style="color:#1b1c1b;font-size:15px;">Tanakit Chaithip (ต้าร์)</strong><br>
+        Founder & Creative Director — <span style="color:#eb3f43;font-weight:bold;">บริษัท วิสัยทัศน์ เอ็กซ์ เบรน จำกัด</span><br>
+        80+ ลูกค้า 6 ประเทศ | Clutch 5.0 | ทะเบียน: 0585564000175<br>
+        <span style="font-size:14px;"><a href="tel:0971536565" style="color:#1b1c1b;text-decoration:none;font-weight:bold;">097-153-6565</a> — โทรปรึกษาฟรีครับ</span><br>
+        <a href="${trackedVxbHome}" style="color:#eb3f43;text-decoration:none;">www.visionxbrain.com</a>
+      </td>
+    </tr>
+  </table>
+
+</div>`;
+
+    // Attach cached PDF from leadFinder (โหลดครั้งเดียวตอน startup — ทุก email ต้องมี!)
+    const attachments = [];
+    if (leadFinder.pdfBuffer) {
+      attachments.push({
+        filename: leadFinder.pdfFilename || 'VisionXBrain Portfolio.pdf',
+        content: leadFinder.pdfBuffer,
+        mimeType: 'application/pdf'
+      });
+    } else {
+      console.log('[TEST-EMAIL] ⚠️ PDF not cached — email sent without attachment');
+    }
+
+    // Tracking pixel (ยังเก็บไว้เป็น backup แม้ Gmail pre-fetch)
+    const trackingPixel = `<img src="https://oracle-agent-production-546e.up.railway.app/api/email/track/${trackingId}.png" width="1" height="1" style="display:block;width:1px;height:1px;border:0;opacity:0;" alt="">`;
+    const bodyWithTracking = body.replace(/<\/div>\s*$/, trackingPixel + '\n</div>');
+
+    const result = await gmailClient.send({ to, subject, body: bodyWithTracking, attachments: attachments.length ? attachments : undefined });
+
+    // Mark lead as emailed + persist to file
+    const sentAt = new Date().toISOString();
+    console.log(`[TEST-EMAIL] Persisting... place_id: ${lead.place_id}, bizName: ${bizName}`);
+    try {
+      const updated = leadFinder.updateLead(lead.place_id, {
+        emailSentAt: sentAt,
+        emailTrackingId: trackingId,
+        status: 'emailed',
+        emailSentTo: to
+      });
+      console.log(`[TEST-EMAIL] Persisted: ${bizName} → emailed (result: ${updated}), trackingId: ${trackingId}`);
+    } catch (persistErr) {
+      console.log(`[TEST-EMAIL] Persist ERROR: ${persistErr.message}`);
+    }
+
+    res.json({
+      success: true, to, subject,
+      lead: { name: bizName, domain, type: bizType, issues, servicePage, trackingId },
+      gmail: result,
+      attachment: attachments.length ? 'VisionXBrain Portfolio.pdf' : 'none (PDF not found on server)'
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message, stack: e.stack });
+  }
+});
+
+// Email Open Tracking Pixel
+app.get('/api/email/track/:trackingId.png', (req, res) => {
+  const { trackingId } = req.params;
+  console.log(`[EMAIL-TRACK] Open detected: ${trackingId} | ${new Date().toISOString()} | UA: ${req.headers['user-agent'] || '-'} | IP: ${req.ip}`);
+
+  // Update lead data via leadFinder.updateLead
+  try {
+    const leads = leadFinder.getLeads();
+    // Match by: exact trackingId, place_id prefix, or domain prefix
+    const lead = leads.find(l =>
+      (l.emailTrackingId && l.emailTrackingId === trackingId) ||
+      (l.place_id && trackingId.startsWith(l.place_id)) ||
+      (l.domain && trackingId.startsWith(l.domain))
+    );
+    if (lead) {
+      const openCount = (lead.emailOpenCount || 0) + 1;
+      const id = lead.place_id || lead.domain || lead.email;
+      leadFinder.updateLead(id, {
+        emailOpened: true,
+        emailOpenedAt: lead.emailOpenedAt || new Date().toISOString(),
+        emailOpenCount: openCount,
+        lastOpenAt: new Date().toISOString()
+      });
+      console.log(`[EMAIL-TRACK] Updated: ${lead.businessName || lead.domain} (opens: ${openCount})`);
+    } else {
+      console.log(`[EMAIL-TRACK] No lead found for trackingId: ${trackingId}`);
+    }
+  } catch (e) {
+    console.log('[EMAIL-TRACK] Error:', e.message);
+  }
+
+  // Return 1x1 transparent PNG
+  const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  res.set({
+    'Content-Type': 'image/png',
+    'Content-Length': pixel.length,
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  });
+  res.end(pixel);
+});
+
+// Link Click Tracking (แม่น 100% — ต้องคลิกจริง)
+app.get('/api/email/click/:trackingId', (req, res) => {
+  const { trackingId } = req.params;
+  const destination = req.query.url || 'https://www.visionxbrain.com';
+  console.log(`[EMAIL-CLICK] Click detected: ${trackingId} | dest: ${destination} | ${new Date().toISOString()}`);
+
+  try {
+    const leads = leadFinder.getLeads();
+    // Match by: exact trackingId, place_id prefix, or domain prefix
+    const lead = leads.find(l =>
+      (l.emailTrackingId && l.emailTrackingId === trackingId) ||
+      (l.place_id && trackingId.startsWith(l.place_id)) ||
+      (l.domain && trackingId.startsWith(l.domain))
+    );
+    if (lead) {
+      const clickCount = (lead.emailClickCount || 0) + 1;
+      const id = lead.place_id || lead.domain || lead.email;
+      leadFinder.updateLead(id, {
+        emailClicked: true,
+        emailClickedAt: lead.emailClickedAt || new Date().toISOString(),
+        emailClickCount: clickCount,
+        lastClickAt: new Date().toISOString()
+      });
+      console.log(`[EMAIL-CLICK] Updated: ${lead.businessName || lead.domain} (clicks: ${clickCount})`);
+    } else {
+      console.log(`[EMAIL-CLICK] No lead found for trackingId: ${trackingId}`);
+    }
+  } catch (e) {
+    console.log('[EMAIL-CLICK] Error:', e.message);
+  }
+
+  res.redirect(302, destination);
+});
+
+// Email stats (pixel open + link click)
+app.get('/api/email/stats', async (req, res) => {
+  try {
+    const leads = leadFinder.getLeads();
+    const emailed = leads.filter(l => l.emailSentAt || l.status === 'emailed');
+    const pixelOpened = leads.filter(l => l.emailOpened);
+    const clicked = leads.filter(l => l.emailClicked);
+    res.json({
+      totalEmailed: emailed.length,
+      pixelOpens: pixelOpened.length,
+      pixelOpenNote: 'Gmail pre-fetch ทำให้ไม่แม่น — ดู clicks แทน',
+      totalClicked: clicked.length,
+      clickRate: emailed.length ? Math.round((clicked.length / emailed.length) * 100) + '%' : '0%',
+      leads: emailed.map(l => ({
+        name: l.businessName || l.businessNameEn || l.domain,
+        domain: l.domain,
+        status: l.status,
+        sentAt: l.emailSentAt,
+        pixelOpen: l.emailOpened || false,
+        clicked: l.emailClicked || false,
+        clickCount: l.emailClickCount || 0,
+        firstClick: l.emailClickedAt || null,
+        lastClick: l.lastClickAt || null
+      }))
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Reset leads data (for development)
+app.post('/api/leads/reset', async (req, res) => {
+  try {
+    const { writeFileSync } = await import('fs');
+    const { join, dirname } = await import('path');
+    const { fileURLToPath } = await import('url');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const leadsFile = join(dir, 'data', 'leads.json');
+    writeFileSync(leadsFile, JSON.stringify({ leads: [], processedDomains: [], lastRun: null }, null, 2));
+    res.json({ success: true, message: 'Leads data reset' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -5344,6 +5746,187 @@ app.post('/api/leads/add-domain', (req, res) => {
   if (!domain) return res.status(400).json({ error: 'domain is required' });
   leadFinder.addManualDomain(domain, industry);
   res.json({ success: true, domain, industry });
+});
+
+// Sync historical outreach emails from Gmail SENT folder → leads.json
+app.post('/api/email/sync-history', async (req, res) => {
+  try {
+    if (!gmailClient.isConfigured()) {
+      return res.status(500).json({ error: 'Gmail not configured' });
+    }
+
+    // Search Gmail SENT — outreach-specific query (exclude invoices/internal)
+    const maxResults = req.body?.maxResults || 50;
+    const sentEmails = await gmailClient.search('from:me in:sent (subject:คำแนะนำ OR subject:ผลตรวจเว็บ OR subject:เพิ่มลูกค้า OR subject:ดึงดูดลูกค้า) -subject:วางบิล -subject:ใบเสนอราคา -subject:ชำระ -subject:invoice -subject:งวด', maxResults);
+
+    if (!sentEmails.length) {
+      return res.json({ synced: 0, message: 'No outreach emails found in Gmail SENT' });
+    }
+
+    // Load current leads
+    const { readFileSync, writeFileSync } = await import('fs');
+    const leadsFile = join(__dirname, 'data', 'leads.json');
+    let leadsData;
+    try {
+      leadsData = JSON.parse(readFileSync(leadsFile, 'utf-8'));
+    } catch {
+      leadsData = { leads: [], processedDomains: [], lastRun: null };
+    }
+
+    // Use email address as unique key (not domain — multiple leads can share gmail.com)
+    const existingEmails = new Set(leadsData.leads.map(l => l.email || l.emailSentTo).filter(Boolean));
+    let synced = 0;
+    const syncedLeads = [];
+    const skipped = [];
+
+    for (const email of sentEmails) {
+      const to = email.to || '';
+      const subject = email.subject || '';
+      const date = email.date || '';
+
+      // Extract email address from "To" field
+      const emailMatch = to.match(/[\w.+-]+@[\w.-]+\.\w+/);
+      if (!emailMatch) {
+        skipped.push({ to, subject, reason: 'no email found in To' });
+        continue;
+      }
+      const toEmail = emailMatch[0];
+
+      // Skip own email / oracle / internal team / test emails
+      const internalEmails = ['visionxbrain', 'casperstack', 'oracle', 'natiya.nami', 'sukanya18.piya', 'miw.angvara', '15623.smnr'];
+      if (internalEmails.some(e => toEmail.includes(e))) {
+        skipped.push({ to: toEmail, subject, reason: 'internal/test email' });
+        continue;
+      }
+
+      // Skip invoices, payments, quotes that slipped through
+      const invoiceKeywords = ['วางบิล', 'ใบเสนอราคา', 'ชำระ', 'invoice', 'งวดที่', 'payment', 'receipt'];
+      if (invoiceKeywords.some(kw => subject.includes(kw))) {
+        skipped.push({ to: toEmail, subject, reason: 'invoice/payment email' });
+        continue;
+      }
+
+      // Skip if this exact email already exists
+      if (existingEmails.has(toEmail)) {
+        // But still update existing lead if it has no sentAt
+        const existing = leadsData.leads.find(l => (l.email === toEmail || l.emailSentTo === toEmail));
+        if (existing && !existing.emailSentAt) {
+          existing.status = 'emailed';
+          existing.emailSentAt = new Date(date).toISOString();
+          existing.emailSentTo = toEmail;
+          synced++;
+          syncedLeads.push({ email: toEmail, action: 'updated' });
+        } else {
+          skipped.push({ to: toEmail, subject, reason: 'already exists' });
+        }
+        continue;
+      }
+
+      const toDomain = toEmail.split('@').pop();
+
+      // Extract business name from subject
+      let bizName = '';
+      // Try various patterns
+      const patterns = [
+        /(?:คำแนะนำ(?:สำหรับ)?)\s*(.+?)(?:\s*[—–\-:|]|$)/,
+        /(?:เว็บไซต์)\s*(.+?)(?:\s*[—–\-:|]|$)/,
+        /(.+?)\s*(?:—|–|\-)\s*(?:VisionXBrain|วิเคราะห์|report|เว็บไซต์)/i,
+      ];
+      for (const pat of patterns) {
+        const m = subject.match(pat);
+        if (m) { bizName = m[1].trim(); break; }
+      }
+      if (!bizName) bizName = subject.split(/[—–\-:|]/)[0].trim() || toDomain;
+
+      // Create new lead entry from Gmail history
+      const newLead = {
+        domain: toDomain === 'gmail.com' || toDomain === 'hotmail.com' || toDomain === 'yahoo.com'
+          ? bizName.replace(/\s+/g, '-').toLowerCase() + '.' + toDomain
+          : toDomain,
+        url: toDomain === 'gmail.com' || toDomain === 'hotmail.com' || toDomain === 'yahoo.com'
+          ? ''
+          : `https://${toDomain}`,
+        industry: '',
+        businessName: bizName,
+        businessNameEn: '',
+        emails: [toEmail],
+        email: toEmail,
+        phones: [],
+        lineId: null,
+        facebook: null,
+        address: '',
+        googleMapsLink: null,
+        websiteScore: 0,
+        websiteIssues: [],
+        isGoodTarget: true,
+        reason: 'synced from Gmail SENT',
+        status: 'emailed',
+        foundAt: new Date(date).toISOString(),
+        emailSentAt: new Date(date).toISOString(),
+        emailSentTo: toEmail,
+        threadId: email.threadId || null,
+        followUps: 0,
+        gmailMessageId: email.id
+      };
+
+      leadsData.leads.push(newLead);
+      existingEmails.add(toEmail);
+      synced++;
+      syncedLeads.push({ domain: newLead.domain, bizName, email: toEmail, action: 'created' });
+    }
+
+    // Save
+    writeFileSync(leadsFile, JSON.stringify(leadsData, null, 2));
+
+    res.json({
+      synced,
+      total: leadsData.leads.length,
+      gmailFound: sentEmails.length,
+      details: syncedLeads,
+      skipped
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message, stack: e.stack });
+  }
+});
+
+// Clean junk leads (internal/test/invoice emails)
+app.post('/api/leads/clean', async (req, res) => {
+  try {
+    const { readFileSync, writeFileSync } = await import('fs');
+    const leadsFile = join(__dirname, 'data', 'leads.json');
+    const ld = JSON.parse(readFileSync(leadsFile, 'utf-8'));
+    const before = ld.leads.length;
+
+    const internalList = ['visionxbrain','casperstack','oracle','natiya.nami','sukanya18.piya','miw.angvara','15623.smnr'];
+    const invoiceKw = ['วางบิล','ใบเสนอราคา','ชำระ','invoice','งวดที่','payment','receipt'];
+
+    const removed = [];
+    ld.leads = ld.leads.filter(l => {
+      const em = l.email || l.emailSentTo || '';
+      const biz = l.businessName || '';
+      // Remove internal/test
+      if (internalList.some(e => em.includes(e))) { removed.push({ email: em, reason: 'internal/test' }); return false; }
+      // Remove invoices (by businessName)
+      if (invoiceKw.some(kw => biz.includes(kw))) { removed.push({ email: em, biz, reason: 'invoice/payment' }); return false; }
+      // Remove duplicates with no email
+      if (!em && l.status === 'new') {
+        const hasDupe = ld.leads.some(o => o !== l && o.domain === l.domain && (o.email || o.emailSentTo));
+        if (hasDupe) { removed.push({ domain: l.domain, reason: 'duplicate without email' }); return false; }
+      }
+      return true;
+    });
+
+    writeFileSync(leadsFile, JSON.stringify(ld, null, 2));
+    res.json({ before, after: ld.leads.length, removed });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Dashboard SPA fallback — serve index.html for all /dashboard/* routes
+app.get('/dashboard/*', (req, res) => {
+  res.sendFile(join(__dirname, 'public/dashboard/index.html'));
 });
 
 // =============================================================================
@@ -5533,6 +6116,68 @@ const server = app.listen(PORT, async () => {
   }, { timezone: config.agent?.timezone || 'Asia/Bangkok' });
 
   console.log('[DIGEST] Daily Digest scheduled (7:00 morning, 18:00 evening)');
+
+  // =========================================================================
+  // AUTO-SYNC: Recover leads from Gmail SENT on startup (survives deploys)
+  // =========================================================================
+  setTimeout(async () => {
+    try {
+      const leadsData = leadFinder.getLeads();
+      const emailedCount = leadsData.filter(l => l.status === 'emailed').length;
+      if (emailedCount < 5 && gmailClient.isConfigured()) {
+        console.log(`[AUTO-SYNC] Only ${emailedCount} emailed leads found — syncing from Gmail SENT...`);
+        const sentEmails = await gmailClient.search('from:me in:sent (subject:คำแนะนำ OR subject:ผลตรวจเว็บ OR subject:เพิ่มลูกค้า OR subject:ดึงดูดลูกค้า) -subject:วางบิล -subject:ใบเสนอราคา -subject:ชำระ -subject:invoice -subject:งวด', 50);
+        if (sentEmails.length) {
+          const { readFileSync, writeFileSync } = await import('fs');
+          const leadsFile = join(__dirname, 'data', 'leads.json');
+          let ld;
+          try { ld = JSON.parse(readFileSync(leadsFile, 'utf-8')); } catch { ld = { leads: [], processedDomains: [], lastRun: null }; }
+          const existingEmails = new Set(ld.leads.map(l => l.email || l.emailSentTo).filter(Boolean));
+          let synced = 0;
+          for (const email of sentEmails) {
+            const to = email.to || '';
+            const subject = email.subject || '';
+            const date = email.date || '';
+            const emailMatch = to.match(/[\w.+-]+@[\w.-]+\.\w+/);
+            if (!emailMatch) continue;
+            const toEmail = emailMatch[0];
+            const internalList = ['visionxbrain','casperstack','oracle','natiya.nami','sukanya18.piya','miw.angvara','15623.smnr'];
+            if (internalList.some(e => toEmail.includes(e))) continue;
+            const invoiceKw = ['วางบิล','ใบเสนอราคา','ชำระ','invoice','งวดที่','payment','receipt'];
+            if (invoiceKw.some(kw => subject.includes(kw))) continue;
+            if (existingEmails.has(toEmail)) continue;
+            const toDomain = toEmail.split('@').pop();
+            let bizName = '';
+            const patterns = [/(?:คำแนะนำ(?:สำหรับ)?)\s*(.+?)(?:\s*[—–\-:|]|$)/, /(?:เว็บไซต์)\s*(.+?)(?:\s*[—–\-:|]|$)/, /(.+?)\s*(?:—|–|\-)\s*(?:VisionXBrain|วิเคราะห์|report)/i];
+            for (const pat of patterns) { const m = subject.match(pat); if (m) { bizName = m[1].trim(); break; } }
+            if (!bizName) bizName = subject.split(/[—–\-:|]/)[0].trim() || toDomain;
+            const isFreeMail = ['gmail.com','hotmail.com','yahoo.com','icloud.com'].includes(toDomain);
+            ld.leads.push({
+              domain: isFreeMail ? bizName.replace(/\s+/g, '-').toLowerCase() + '.' + toDomain : toDomain,
+              url: isFreeMail ? '' : `https://${toDomain}`,
+              industry: '', businessName: bizName, businessNameEn: '', emails: [toEmail], email: toEmail,
+              phones: [], lineId: null, facebook: null, address: '', googleMapsLink: null,
+              websiteScore: 0, websiteIssues: [], isGoodTarget: true, reason: 'synced from Gmail SENT',
+              status: 'emailed', foundAt: new Date(date).toISOString(), emailSentAt: new Date(date).toISOString(),
+              emailSentTo: toEmail, threadId: email.threadId || null, followUps: 0, gmailMessageId: email.id
+            });
+            existingEmails.add(toEmail);
+            synced++;
+          }
+          if (synced > 0) {
+            writeFileSync(leadsFile, JSON.stringify(ld, null, 2));
+            console.log(`[AUTO-SYNC] Recovered ${synced} leads from Gmail SENT (total: ${ld.leads.length})`);
+          } else {
+            console.log('[AUTO-SYNC] No new leads to sync');
+          }
+        }
+      } else {
+        console.log(`[AUTO-SYNC] ${emailedCount} emailed leads OK — skip sync`);
+      }
+    } catch (e) {
+      console.error('[AUTO-SYNC] Failed:', e.message);
+    }
+  }, 10000); // Wait 10s after startup to avoid rate limits
 
   // =========================================================================
   // PHASE 5.5: MEMORY CONSOLIDATION - Schedule daily consolidation

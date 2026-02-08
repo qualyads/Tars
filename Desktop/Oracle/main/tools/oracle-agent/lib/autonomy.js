@@ -29,6 +29,7 @@ import memorySync from './memory-sync.js';
 // LINE module - static import
 import * as lineModule from './line.js';
 const line = lineModule.default || lineModule;
+import gateway from './gateway.js';
 
 // Beds24 module - static import with error handling at runtime
 import * as beds24Module from './beds24.js';
@@ -504,72 +505,11 @@ async function fetchHotelStatus() {
 
 async function sendLineAlert(message) {
   try {
-    // Get owner ID from multiple sources
-    const ownerId = lineConfig.line?.owner_id ||
-                    sharedConfig.line?.owner_id ||
-                    memorySync.config?.line?.owner_id ||
-                    process.env.LINE_OWNER_ID;
-
-    const token = lineConfig.line?.channel_token ||
-                  sharedConfig.line?.channel_token ||
-                  process.env.LINE_CHANNEL_TOKEN;
-
-    if (!ownerId) {
-      console.log('[AUTONOMY] No owner ID for LINE alert');
-      return false;
-    }
-
-    // Use line module if available
-    if (line && line.push) {
-      await line.push(ownerId, message);
-      console.log(`[AUTONOMY] LINE alert sent: ${message.substring(0, 50)}...`);
-      return true;
-    }
-
-    // Fallback: Direct LINE API call
-    if (!token) {
-      console.log('[AUTONOMY] No LINE token for direct API');
-      return false;
-    }
-
-    return new Promise((resolve) => {
-      const data = JSON.stringify({
-        to: ownerId,
-        messages: [{ type: 'text', text: message.substring(0, 4500) }]
-      });
-
-      const options = {
-        hostname: 'api.line.me',
-        path: '/v2/bot/message/push',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'Content-Length': Buffer.byteLength(data)
-        }
-      };
-
-      const req = https.request(options, (res) => {
-        if (res.statusCode === 200) {
-          console.log(`[AUTONOMY] LINE alert sent: ${message.substring(0, 50)}...`);
-          resolve(true);
-        } else {
-          console.log(`[AUTONOMY] LINE API error: ${res.statusCode}`);
-          resolve(false);
-        }
-      });
-
-      req.on('error', (e) => {
-        console.error('[AUTONOMY] LINE alert error:', e.message);
-        resolve(false);
-      });
-
-      req.write(data);
-      req.end();
-    });
-
+    await gateway.notifyOwner(message);
+    console.log(`[AUTONOMY] Alert sent: ${message.substring(0, 50)}...`);
+    return true;
   } catch (e) {
-    console.error('[AUTONOMY] LINE alert error:', e.message);
+    console.error('[AUTONOMY] Alert error:', e.message);
     return false;
   }
 }

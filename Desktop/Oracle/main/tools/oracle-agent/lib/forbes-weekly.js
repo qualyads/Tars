@@ -8,6 +8,7 @@
 
 import claude from './claude.js';
 import line from './line.js';
+import gateway from './gateway.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -411,10 +412,10 @@ async function sendLineNotification(summary, config) {
   }
 
   try {
-    await line.pushLong(ownerId, msg);
-    console.log('[FORBES] LINE notification sent');
+    await gateway.notifyOwner(msg);
+    console.log('[FORBES] Notification sent');
   } catch (e) {
-    console.error('[FORBES] LINE notification error:', e.message);
+    console.error('[FORBES] Notification error:', e.message);
   }
 }
 

@@ -11,6 +11,7 @@
 import beds24 from './beds24.js';
 import claude from './claude.js';
 import line from './line.js';
+import gateway from './gateway.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -441,10 +442,10 @@ async function sendLineNotification(report, config) {
   }
 
   try {
-    await line.pushLong(ownerId, msg);
-    console.log('[REVENUE] LINE notification sent');
+    await gateway.notifyOwner(msg);
+    console.log('[REVENUE] Notification sent');
   } catch (e) {
-    console.error('[REVENUE] LINE notification error:', e.message);
+    console.error('[REVENUE] Notification error:', e.message);
   }
 }
 

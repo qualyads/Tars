@@ -328,6 +328,40 @@ async function generateCheckinContextString() {
 }
 
 // =============================================================================
+// 3.5. OCCUPANCY - ห้องว่าง/เต็มวันนี้
+// =============================================================================
+
+let occupancyCache = { data: null, lastFetch: null };
+const OCCUPANCY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function generateOccupancyContextString() {
+  try {
+    const now = Date.now();
+    if (occupancyCache.data && occupancyCache.lastFetch && (now - occupancyCache.lastFetch) < OCCUPANCY_CACHE_TTL) {
+      return occupancyCache.data;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const occupancy = await beds24.getOccupancyForDate(today);
+
+    if (!occupancy || occupancy.error) {
+      return '';
+    }
+
+    const context = `\n\n🏨 **Occupancy วันนี้ (The Arch Casa)**
+- ห้องเต็ม: ${occupancy.occupied}/${occupancy.totalRooms} ห้อง
+- ห้องว่าง: ${occupancy.available} ห้อง
+- อัตราเข้าพัก: ${occupancy.occupancyRate}%`;
+
+    occupancyCache = { data: context, lastFetch: now };
+    return context;
+  } catch (e) {
+    console.error('[REALTIME] Occupancy error:', e.message);
+    return '';
+  }
+}
+
+// =============================================================================
 // 4. WEATHER @ PAI - สภาพอากาศที่ปาย
 // =============================================================================
 
@@ -558,6 +592,14 @@ async function generateRealtimeContext(options = {}) {
     }
   }
 
+  // 3.5. Occupancy data (always for owner)
+  if (options.includeHotel !== false) {
+    const occupancyContext = await generateOccupancyContextString();
+    if (occupancyContext) {
+      contexts.push(occupancyContext);
+    }
+  }
+
   // 4. Weather @ Pai
   if (options.includeWeather !== false) {
     const weatherContext = await generateWeatherContextString();
@@ -616,6 +658,9 @@ export default {
   // Check-in
   checkUpcomingCheckins,
   generateCheckinContextString,
+
+  // Occupancy
+  generateOccupancyContextString,
 
   // Weather
   fetchPaiWeather,

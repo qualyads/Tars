@@ -10,6 +10,7 @@
 
 import claude from './claude.js';
 import line from './line.js';
+import gateway from './gateway.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -477,10 +478,10 @@ async function sendLineNotification(summary, config) {
   }
 
   try {
-    await line.pushLong(ownerId, msg);
-    console.log('[HOSP] LINE notification sent');
+    await gateway.notifyOwner(msg);
+    console.log('[HOSP] Notification sent');
   } catch (e) {
-    console.error('[HOSP] LINE notification error:', e.message);
+    console.error('[HOSP] Notification error:', e.message);
   }
 }
 
