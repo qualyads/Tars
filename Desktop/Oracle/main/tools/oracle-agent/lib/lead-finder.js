@@ -386,33 +386,11 @@ function findRelevantServicePage(bizType) {
   return 'https://www.visionxbrain.com/services/website';
 }
 
-/**
- * Send full outreach email — 24 กฎ + VXB Template + Tracking + PDF
- * ใช้ได้ทั้ง auto-send ใน runDaily() และจากภายนอก
- */
-async function sendFullOutreachEmail(lead) {
-  const domain = lead.domain || '-';
-  const rawName = lead.businessName || '';
-  const isPlaceholder = !rawName || /ชื่อธุรกิจ|ใส่ชื่อ|ภาษาไทย ถ้า|English name/i.test(rawName);
-  const bizName = isPlaceholder ? (lead.businessNameEn || lead.name || domain) : rawName;
-  const bizType = lead.type || lead.industry || '';
-  const issues = (lead.websiteIssues || []).filter(i => !/ssl|https/i.test(i));
-  const servicePage = findRelevantServicePage(bizType);
-  const isHotel = /hotel|resort|hostel|guesthouse|โรงแรม|ที่พัก/i.test(bizType);
-  const websiteUrl = domain !== '-' ? 'https://' + domain : '';
-  const to = lead.email;
+// =============================================================================
+// EMAIL PROMPT GENERATORS — แยก 2 กรณี: มีเว็บ vs ไม่มีเว็บ
+// =============================================================================
 
-  if (!to) {
-    console.log(`[AUTO-EMAIL] Skip ${bizName} — no email`);
-    return { success: false, error: 'no email' };
-  }
-
-  console.log(`[AUTO-EMAIL] Generating email for ${bizName} (${to})...`);
-
-  // Step 1: AI generates content with full 24-rule prompt
-  const prompt = `คุณคือ ต้าร์ — Founder ของ VisionXBrain เขียน email ถึงเจ้าของ "${bizName}"
-
-=== ตัวตนของต้าร์ ===
+const SHARED_RULES = `=== ตัวตนของต้าร์ ===
 - ทำเว็บ Webflow + Digital Marketing มา 80+ ราย 6 ประเทศ Clutch 5.0
 - ผลงาน: traffic เพิ่ม x28, orders x24, booking x30
 - พูดตรง มั่นใจ ไม่อ้อมค้อม ไม่เป็นทางการ ไม่ขาย
@@ -423,6 +401,62 @@ async function sendFullOutreachEmail(lead) {
   "ไม่ใช่สัญญา แต่ผลจริง"
 - โดยส่วนตัวเชี่ยวชาญด้าน Digital Marketing, SEO, AI Search, Automation — ทำระบบ SEO + AI Search แบบ Auto ให้ลูกค้า
 - ห้ามพูดถึงโรงแรม/ปาย/ประสบการณ์ส่วนตัว
+
+=== กฎเหล็ก ===
+- ห้ามพูดถึงโรงแรม/ปาย/ประสบการณ์เปิดโรงแรม
+- ห้ามพูดถึง Google reviews/rating (อาจผิด)
+- ห้ามให้คะแนน/score "3/10" "4/10"
+- ห้ามตะโกน ห้ามคำว่า "ด่วน" "ก่อนสาย" "รีบ"
+- ห้ามภาษาทางการ — ใช้ "ผม" "คุณ" "ครับ"
+- ห้ามเขียนเหมือน AI — ไม่ใช่ "ข้อเสนอแนะ" "ข้อควรพิจารณา"
+- ประโยคสั้นยาวสลับ อ่านแล้วเหมือนคนพิมพ์
+- Emoji ได้แค่ในกล่อง action (อย่างละไม่เกิน 1 ที่) — ห้ามใส่ emoji ใน subject เด็ดขาด!
+- HTML inline style ทั้งหมด (email client)
+- ตอบ JSON เท่านั้น`;
+
+const ACTION_STEP_HTML = `<div style="background:#fafafa;border-left:4px solid #eb3f43;padding:16px 20px;margin:16px 0;border-radius:0 8px 8px 0;">
+  <strong style="color:#1b1c1b;font-size:15px;">Step X: ชื่อสิ่งที่ควรทำ</strong>
+  <p style="margin:8px 0 4px;color:#eb3f43;font-weight:bold;font-size:14px;">Impact: อธิบายว่าทำแล้วเปลี่ยนอะไร (ภาษาธุรกิจ)</p>
+  <p style="margin:4px 0;font-size:14px;color:#444;line-height:1.7;">อธิบายรายละเอียด + วิธีทำเอง step-by-step ที่ actionable จริงๆ</p>
+  <p style="margin:4px 0;font-size:13px;color:#888;font-style:italic;">** บรรทัดนี้ใส่เฉพาะข้อที่เกี่ยวกับการ Post/Social เท่านั้น: "ปกติทางผมจะใช้ระบบ automation ช่วยจัดการโพสให้ลูกค้าครับ" — ข้ออื่นที่ไม่เกี่ยวกับ Post ห้ามใส่ประโยคนี้! **</p>
+</div>`;
+
+function generateHotelSection(isHotel) {
+  if (!isHotel) return '';
+  return `F) **Hotel-Specific: ระบบ Automation สำหรับโรงแรม** —
+ตอนนี้ VisionXBrain มี product เฉพาะสำหรับโรงแรม:
+- ระบบ Auto Reviews — รีวิวจัดการอัตโนมัติ ตอบรีวิวลูกค้าทุก platform
+- Kiosk Self Check-In — ลูกค้า check-in เองได้ ลดงาน front desk
+- Auto Social Post — โพสทุก social media อัตโนมัติทุก platform
+ถ้าเป็นโรงแรม ให้แนะนำ product เหล่านี้ด้วย บอกว่าผมทำระบบพวกนี้ให้ลูกค้าโรงแรมอยู่แล้ว`;
+}
+
+function generateClosingSection(servicePage) {
+  return `**ปิดท้าย:**
+- สรุปสั้น 2-3 บรรทัด ว่าถ้าทำตาม action plan นี้ ธุรกิจจะเปลี่ยนยังไง
+- "โดยส่วนตัวผมเชี่ยวชาญด้าน Digital Marketing, SEO, AI Search และระบบ Automation ครับ ทำระบบ SEO + AI Search แบบ Auto ให้ลูกค้าอยู่แล้ว"
+- "พอดีผมรับทำเซอร์วิสนี้ให้ลูกค้าอยู่แล้วครับ ลองดูบริการของผมได้ที่: ${servicePage}"
+- "หากต้องการรับคำปรึกษาเพิ่มเติม โทรตรงหาผมก็ได้ครับ ปรึกษาฟรี 097-153-6565"
+- "ไม่เป็นลูกค้าไม่เป็นไรครับ ผมเป็นครีเอทีฟบัดดี้เพื่อนคู่คิดอยู่แล้ว"
+- "ถ้าอยากได้ report แบบละเอียดกว่านี้ กดปุ่มด้านล่างได้เลยครับ ฟรีครับ"
+- ห้ามใส่ปุ่ม (จะใส่ให้ใน template)`;
+}
+
+function generateJsonInstruction(bizName) {
+  return `ตอบ JSON:
+{
+  "subject": "หัวข้อ — ต้องมีชื่อธุรกิจลูกค้า (${bizName}) + สื่อว่ามีคำแนะนำดีๆ ให้อยากเปิดอ่าน — ห้ามหัวข้อทั่วไป! ใช้ CRO คิดเอง ภาษาไทย — ห้ามใส่ emoji เด็ดขาด!",
+  "body": "HTML body ทั้งหมด (ไม่ต้องใส่ signature/ปุ่ม จะใส่ให้ใน template)"
+}`;
+}
+
+/**
+ * Prompt สำหรับธุรกิจที่มีเว็บไซต์ — วิเคราะห์เว็บ + screenshot
+ */
+function generateWebsitePrompt(bizName, bizType, domain, websiteUrl, issues, servicePage, isHotel) {
+  return `คุณคือ ต้าร์ — Founder ของ VisionXBrain เขียน email ถึงเจ้าของ "${bizName}"
+
+${SHARED_RULES}
 
 === ข้อมูลธุรกิจ ===
 - ชื่อ: ${bizName}
@@ -442,79 +476,145 @@ async function sendFullOutreachEmail(lead) {
 แสดงให้เห็นว่าเราดูเว็บจริงๆ ไม่ได้ส่ง template
 - บอกตรงๆ ว่าเจอเว็บเขาตอน research ธุรกิจ${bizType}ออนไลน์
 - ลองดูเว็บแล้วเห็นจุดที่ถ้าปรับนิดหน่อย น่าจะได้ลูกค้าเพิ่มเยอะเลย เลยตั้งใจเขียนคำแนะนำเฉพาะสำหรับธุรกิจของคุณมาครับ
-- ต้องให้รู้สึกว่า report นี้ผมเขียนให้เคสธุรกิจลูกค้าโดยตรง ไม่ใช่ template
 - ใส่ลิงก์เว็บลูกค้าด้วย เช่น "ผมเจอเว็บของคุณ (${websiteUrl}) ตอน research..." — แสดงว่าเราใส่ใจดูจริง
 - ห้ามพูดถึง Google reviews / rating (อาจไม่ตรง)
 
 **2. Action Plan — 5-6 ข้อที่ทำแล้วเปลี่ยนธุรกิจ:**
 แต่ละข้อต้องมีโครงสร้าง HTML แบบนี้:
-
-<div style="background:#fafafa;border-left:4px solid #eb3f43;padding:16px 20px;margin:16px 0;border-radius:0 8px 8px 0;">
-  <strong style="color:#1b1c1b;font-size:15px;">Step X: ชื่อสิ่งที่ควรทำ</strong>
-  <p style="margin:8px 0 4px;color:#eb3f43;font-weight:bold;font-size:14px;">Impact: อธิบายว่าทำแล้วเปลี่ยนอะไร (ภาษาธุรกิจ)</p>
-  <p style="margin:4px 0;font-size:14px;color:#444;line-height:1.7;">อธิบายรายละเอียด + วิธีทำเอง step-by-step ที่ actionable จริงๆ</p>
-  <p style="margin:4px 0;font-size:13px;color:#888;font-style:italic;">** บรรทัดนี้ใส่เฉพาะข้อที่เกี่ยวกับการ Post/Social เท่านั้น: "ปกติทางผมจะใช้ระบบ automation ช่วยจัดการโพสให้ลูกค้าครับ" — ข้ออื่นที่ไม่เกี่ยวกับ Post ห้ามใส่ประโยคนี้! **</p>
-</div>
+${ACTION_STEP_HTML}
 
 ข้อที่ต้องมี (ปรับ wording ให้เหมาะธุรกิจ):
 
 A) **Google Business Profile Post** — ใช้แนวคิดนี้เป็นหลัก:
-"จริงๆแล้วถ้าอยากให้ธุรกิจ Rank ดีขึ้น การมองเห็นดีขึ้น สิ่งที่ทำได้ง่ายเลยคือการโพส Google Business ครับ ตอนนี้คู่แข่งส่วนใหญ่มองข้ามเรื่องนี้ ลองทำดูก็ได้ครับ วิธีนี้จะช่วยให้อันดับถูกจัดได้ดีขึ้น ถึงแม้กรณีรีวิวน้อย ก็ยังชนะคู่แข่งที่ทุกอย่างใหญ่กว่าได้ด้วยครับ"
+"จริงๆแล้วถ้าอยากให้ธุรกิจ Rank ดีขึ้น สิ่งที่ทำได้ง่ายเลยคือการโพส Google Business ครับ คู่แข่งส่วนใหญ่มองข้ามเรื่องนี้"
 บอก action ชัด: โพสอะไร กี่ครั้ง/สัปดาห์ ใส่อะไรบ้าง
 
-B) **NAP + Map Consistency** — ใช้แนวคิดนี้:
-"ถ้าทำให้เว็บไซต์มีแผนที่ Map ครบถูกต้อง ชื่อธุรกิจและหมุดตรงกับ Google Maps เบอร์โทร ที่อยู่ธุรกิจตรง เว็บไซต์ก็จะช่วยดันอันดับได้ไวมาก ในการเพิ่มลูกค้าเข้ามาฟรีๆ จริงๆก็มีเทคนิคที่ลึกกว่านี้ แต่แค่นี้ลูกค้าจะเข้ามาเยอะขึ้นแน่นอน"
-checklist: ชื่อตรงไหม เบอร์ตรงไหม ที่อยู่ตรงไหม map embed ยัง
+B) **NAP + Map Consistency** — ชื่อ เบอร์ ที่อยู่ตรงกับ Google Maps ช่วยดันอันดับได้ไว
 
-C) **AI Search Optimization** — เรื่องที่ลูกค้าตามหา:
-ตอนนี้คนเริ่มใช้ AI (ChatGPT, Gemini, Perplexity) ค้นหาแทน Google มากขึ้น
-ธุรกิจที่มี structured data + เนื้อหาตอบคำถามชัดจะถูก AI แนะนำก่อน
-แนะนำ action ชัด: ทำอะไรบ้างให้ AI หาเจอ
+C) **AI Search Optimization** — ตอนนี้คนเริ่มใช้ AI (ChatGPT, Gemini, Perplexity) ค้นหาแทน Google มากขึ้น
 
-D) **Website Issues** — จากข้อมูลที่วิเคราะห์ได้ (ถ้ามี issues):
-${issues.length > 0 ? issues.map(i => '- ' + i).join('\\n') : 'วิเคราะห์จาก domain + bizType แล้วแนะนำเรื่อง mobile-first, page speed, CTA ที่ชัด, เว็บหลายภาษา'}
-แนะนำวิธีแก้ที่เห็นผลทันที (ห้ามยก SSL/HTTPS เป็นประเด็น!)
+D) **Website Issues** — จากข้อมูลที่วิเคราะห์ได้:
+${issues.length > 0 ? issues.map(i => '- ' + i).join('\\n') : 'วิเคราะห์จาก domain + bizType แล้วแนะนำเรื่อง mobile-first, page speed, CTA ที่ชัด'}
+ห้ามยก SSL/HTTPS เป็นประเด็น!
 
-E) **อีก 1-2 ข้อ** — คุณเลือกเองจากประสบการณ์ที่ทำให้ลูกค้า WOW:
-เช่น เว็บหลายภาษา (ถ้าธุรกิจมีลูกค้าต่างชาติ), Content Strategy, Local SEO, Social Proof, Conversion Optimization, Structured Data/Schema Markup
-ต้อง WOW จริงๆ ไม่ใช่คำแนะนำทั่วไปที่ใครก็รู้
+E) **อีก 1-2 ข้อ** — เลือกจากประสบการณ์ที่ทำให้ลูกค้า WOW
 
-⚠️ **ห้ามแนะนำเรื่อง SSL/HTTPS เด็ดขาด!** — เว็บทุกวันนี้มี SSL หมดแล้ว ถ้ายกเรื่องนี้ลูกค้าจะรู้ว่าเราไม่ได้ดูเว็บจริง
-⚠️ **ห้ามแนะนำเรื่องพื้นฐานเกินไป** เช่น "ทำเว็บให้สวย" "ใส่รูปสินค้า" — ต้องเป็นคำแนะนำระดับมืออาชีพที่คนทั่วไปไม่รู้
+⚠️ ห้ามแนะนำเรื่อง SSL/HTTPS! ห้ามแนะนำเรื่องพื้นฐานเกินไป!
 
-${isHotel ? `F) **Hotel-Specific: ระบบ Automation สำหรับโรงแรม** —
-ตอนนี้ VisionXBrain มี product เฉพาะสำหรับโรงแรม:
-- ระบบ Auto Reviews — รีวิวจัดการอัตโนมัติ ตอบรีวิวลูกค้าทุก platform
-- Kiosk Self Check-In — ลูกค้า check-in เองได้ ลดงาน front desk
-- Auto Social Post — โพสทุก social media อัตโนมัติทุก platform
-ถ้าเป็นโรงแรม ให้แนะนำ product เหล่านี้ด้วย บอกว่าผมทำระบบพวกนี้ให้ลูกค้าโรงแรมอยู่แล้ว` : ''}
+${generateHotelSection(isHotel)}
+
+**3. ${generateClosingSection(servicePage)}
+
+${generateJsonInstruction(bizName)}`;
+}
+
+/**
+ * Prompt สำหรับธุรกิจที่ไม่มีเว็บไซต์ — เน้น online presence + ทำเว็บ
+ */
+function generateNoWebsitePrompt(bizName, bizType, domain, servicePage, isHotel) {
+  return `คุณคือ ต้าร์ — Founder ของ VisionXBrain เขียน email ถึงเจ้าของ "${bizName}"
+
+${SHARED_RULES}
+
+=== ข้อมูลธุรกิจ ===
+- ชื่อ: ${bizName}
+- ประเภท: ${bizType}
+- เว็บ: ไม่มี (ธุรกิจนี้ยังไม่มีเว็บไซต์)
+
+=== สำคัญมาก: ธุรกิจนี้ไม่มีเว็บไซต์! ===
+- ห้ามพูดว่า "เจอเว็บของคุณ" หรือ "ดูเว็บแล้ว" — เพราะไม่มีเว็บ!
+- ห้ามใส่ screenshot เว็บ — เพราะไม่มีเว็บ!
+- ห้ามวิเคราะห์ website issues — เพราะไม่มีเว็บ!
+- Angle ต้องเปลี่ยน: "เจอธุรกิจ${bizType}ของคุณตอน research ออนไลน์ เห็นว่าธุรกิจดีมาก แต่ยังไม่มี online presence ที่เต็มที่"
+
+=== โครงสร้าง email (ทำตามนี้เท่านั้น) ===
+
+**1. เปิดเรื่อง (2-3 บรรทัด):**
+- "สวัสดีครับ ผมต้าร์ จาก บริษัท วิสัยทัศน์ เอ็กซ์ เบรน จำกัด ครับ"
+- บอกตรงๆ ว่าเจอธุรกิจเขาตอน research ธุรกิจ${bizType}ในพื้นที่ (จาก Google Maps / Social Media)
+- เห็นว่าธุรกิจดี มี potential สูง แต่ตอนนี้ลูกค้าออนไลน์อาจหาไม่เจอง่ายๆ
+- เลยตั้งใจเขียนคำแนะนำเฉพาะสำหรับ ${bizName} มาครับ — ทำเองได้เลย ไม่ต้องจ้างใคร
+- ต้องให้รู้สึกว่า report นี้เขียนให้เฉพาะธุรกิจนี้ ไม่ใช่ template
+- ห้ามพูดถึง Google reviews / rating (อาจไม่ตรง)
+
+**2. Action Plan — 5-6 ข้อที่ทำแล้วเปลี่ยนธุรกิจ:**
+แต่ละข้อต้องมีโครงสร้าง HTML แบบนี้:
+${ACTION_STEP_HTML}
+
+ข้อที่ต้องมี (ปรับ wording ให้เหมาะธุรกิจ):
+
+A) **Google Business Profile Post** — สิ่งแรกที่ต้องทำ:
+"ตอนนี้ยังไม่มีเว็บไซต์ Google Business Profile คือหน้าร้านออนไลน์ฟรีที่ดีที่สุดเลยครับ"
+"โพสสม่ำเสมอ 2-3 ครั้ง/สัปดาห์ จะช่วยดันอันดับขึ้นเร็วมาก คู่แข่งส่วนใหญ่ไม่ทำเลยครับ"
+บอก action ชัด: โพสอะไร กี่ครั้ง/สัปดาห์ ใส่อะไรบ้าง
+
+B) **NAP + Map Consistency** — ชื่อ เบอร์ ที่อยู่ใน Google Maps ต้องถูกต้อง 100%
+"ถึงไม่มีเว็บ แค่ทำให้ข้อมูลใน Google Maps ครบถูกต้อง ลูกค้าก็จะหาเจอง่ายขึ้นเยอะเลยครับ"
+
+C) **ทำเว็บไซต์ — ทำไมสำคัญ:**
+"ตอนนี้ลูกค้า 70-80% search ออนไลน์ก่อนตัดสินใจ ถ้าไม่มีเว็บ = เสียลูกค้าที่พร้อมจ่ายไป"
+"เว็บไม่ต้องใหญ่ แค่ 5-8 หน้าก็พอ: หน้าแรก, บริการ, ผลงาน/รีวิว, ติดต่อเรา, แผนที่"
+"เว็บที่ดีต้องทำงานแทนคุณ — ลูกค้าเข้ามาแล้วต้องรู้ทันทีว่าทำไมต้องเลือกคุณ"
+แนะนำสิ่งที่ควรมีในเว็บ (เฉพาะเจาะจงสำหรับธุรกิจ${bizType})
+
+D) **AI Search Optimization** — เรื่องที่กำลังมา:
+"ตอนนี้คนเริ่มใช้ AI (ChatGPT, Gemini) ค้นหาธุรกิจแทน Google มากขึ้น"
+"ธุรกิจที่มีเว็บ + เนื้อหาตอบคำถามชัด จะถูก AI แนะนำก่อน"
+ถ้าไม่มีเว็บเลย AI จะไม่มีข้อมูลให้แนะนำ — เสียโอกาสฟรีๆ
+
+E) **Social Media Strategy** — สำหรับธุรกิจที่ยังไม่มีเว็บ:
+Social media เป็นช่องทางสำคัญมาก แนะนำ content strategy เฉพาะ${bizType}
+แนะนำ platform ไหนเหมาะกับธุรกิจนี้ + ความถี่ในการโพส
+
+F) **อีก 1 ข้อ** — เลือกจากประสบการณ์ที่ทำให้ลูกค้า WOW
+เช่น Local SEO citation, LINE Official, Booking system, Online reviews strategy
+
+⚠️ ห้ามพูดถึงเว็บที่ไม่มี! ห้ามแนะนำเรื่องพื้นฐานเกินไป!
+
+${generateHotelSection(isHotel)}
 
 **3. ปิดท้าย:**
 - สรุปสั้น 2-3 บรรทัด ว่าถ้าทำตาม action plan นี้ ธุรกิจจะเปลี่ยนยังไง
 - "โดยส่วนตัวผมเชี่ยวชาญด้าน Digital Marketing, SEO, AI Search และระบบ Automation ครับ ทำระบบ SEO + AI Search แบบ Auto ให้ลูกค้าอยู่แล้ว"
 - "พอดีผมรับทำเซอร์วิสนี้ให้ลูกค้าอยู่แล้วครับ ลองดูบริการของผมได้ที่: ${servicePage}"
 - "หากต้องการรับคำปรึกษาเพิ่มเติม โทรตรงหาผมก็ได้ครับ ปรึกษาฟรี 097-153-6565"
-- "ไม่เป็นลูกค้าไม่เป็นไรครับ ผมเป็นครีเอทีฟบัดดี้เพื่อนคู่คิดอยู่แล้ว พอดีเห็นเว็บของคุณลูกค้าเลยลองส่งแนะนำครับ"
+- "ไม่เป็นลูกค้าไม่เป็นไรครับ ผมเป็นครีเอทีฟบัดดี้เพื่อนคู่คิดอยู่แล้ว เห็นธุรกิจคุณน่าสนใจเลยลองส่งแนะนำครับ"
 - "ถ้าอยากได้ report แบบละเอียดกว่านี้ กดปุ่มด้านล่างได้เลยครับ ฟรีครับ"
 - ห้ามใส่ปุ่ม (จะใส่ให้ใน template)
 
-=== กฎเหล็ก ===
-- ห้ามพูดถึงโรงแรม/ปาย/ประสบการณ์เปิดโรงแรม
-- ห้ามพูดถึง Google reviews/rating (อาจผิด)
-- ห้ามให้คะแนน/score "3/10" "4/10"
-- ห้ามตะโกน ห้ามคำว่า "ด่วน" "ก่อนสาย" "รีบ"
-- ห้ามภาษาทางการ — ใช้ "ผม" "คุณ" "ครับ"
-- ห้ามเขียนเหมือน AI — ไม่ใช่ "ข้อเสนอแนะ" "ข้อควรพิจารณา"
-- ประโยคสั้นยาวสลับ อ่านแล้วเหมือนคนพิมพ์
-- Emoji ได้แค่ในกล่อง action (อย่างละไม่เกิน 1 ที่) — ห้ามใส่ emoji ใน subject เด็ดขาด!
-- HTML inline style ทั้งหมด (email client)
-- ตอบ JSON เท่านั้น
+${generateJsonInstruction(bizName)}`;
+}
 
-ตอบ JSON:
-{
-  "subject": "หัวข้อ — ต้องมีชื่อธุรกิจลูกค้า (${bizName}) + สื่อว่ามีคำแนะนำดีๆ ให้อยากเปิดอ่าน — ห้ามหัวข้อทั่วไป! ใช้ CRO คิดเอง ภาษาไทย — ห้ามใส่ emoji เด็ดขาด!",
-  "body": "HTML body ทั้งหมด (ไม่ต้องใส่ signature/ปุ่ม จะใส่ให้ใน template)"
-}`;
+/**
+ * Send full outreach email — 24 กฎ + VXB Template + Tracking + PDF
+ * ใช้ได้ทั้ง auto-send ใน runDaily() และจากภายนอก
+ * รองรับ 2 กรณี: มีเว็บ vs ไม่มีเว็บ
+ */
+async function sendFullOutreachEmail(lead) {
+  const domain = lead.domain || '-';
+  const rawName = lead.businessName || '';
+  const isPlaceholder = !rawName || /ชื่อธุรกิจ|ใส่ชื่อ|ภาษาไทย ถ้า|English name/i.test(rawName);
+  const bizName = isPlaceholder ? (lead.businessNameEn || lead.name || domain) : rawName;
+  const bizType = lead.type || lead.industry || '';
+  const issues = (lead.websiteIssues || []).filter(i => !/ssl|https/i.test(i));
+  const servicePage = findRelevantServicePage(bizType);
+  const isHotel = /hotel|resort|hostel|guesthouse|โรงแรม|ที่พัก/i.test(bizType);
+  const websiteUrl = domain !== '-' ? 'https://' + domain : '';
+  const hasWebsite = websiteUrl && domain !== '-' && !/^info@/i.test(domain);
+  const to = lead.email;
+
+  if (!to) {
+    console.log(`[AUTO-EMAIL] Skip ${bizName} — no email`);
+    return { success: false, error: 'no email' };
+  }
+
+  console.log(`[AUTO-EMAIL] Generating email for ${bizName} (${to})... hasWebsite=${hasWebsite}`);
+
+  // Step 1: AI generates content — different prompt for with/without website
+  const prompt = hasWebsite ? generateWebsitePrompt(bizName, bizType, domain, websiteUrl, issues, servicePage, isHotel)
+    : generateNoWebsitePrompt(bizName, bizType, domain, servicePage, isHotel);
+
+  console.log(`[AUTO-EMAIL] Using ${hasWebsite ? 'WEBSITE' : 'NO-WEBSITE'} template for ${bizName}`);
 
   try {
     const aiRes = await chat(

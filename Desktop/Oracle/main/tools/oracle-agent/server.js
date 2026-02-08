@@ -5330,6 +5330,20 @@ app.get('/api/leads', (req, res) => {
   res.json(leadFinder.getLeads(filter));
 });
 
+// Update a lead by domain or email
+app.post('/api/leads/update', (req, res) => {
+  const { domain, email: matchEmail, updates } = req.body;
+  if (!updates || (!domain && !matchEmail)) {
+    return res.status(400).json({ error: 'Need domain or email + updates' });
+  }
+  const result = leadFinder.updateLead(domain || matchEmail, updates);
+  if (result) {
+    res.json({ ok: true, lead: result });
+  } else {
+    res.status(404).json({ error: 'Lead not found' });
+  }
+});
+
 app.post('/api/leads/run', async (req, res) => {
   res.json({ message: 'Lead finder started' });
   // Run async (don't block response)
