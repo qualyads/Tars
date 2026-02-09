@@ -39,25 +39,56 @@ const CONFIG = {
   // Max ideas to generate per cycle
   maxIdeasPerCycle: 3,
 
-  // Categories to explore
+  // Categories to explore — focused on VXB Digital Growth Partner
   categories: [
-    'micro-saas',
-    'ai-tools',
-    'automation',
-    'developer-tools',
-    'hospitality-tech',
-    'thailand-market'
+    'partner-acquisition',      // หาลูกค้า retainer ใหม่
+    'vertical-expansion',       // เจาะ industry ใหม่ (โรงแรม, คลินิก, อสังหา, แฟรนไชส์)
+    'service-productization',   // เปลี่ยน service → productized/SaaS
+    'outbound-strategy',        // LinkedIn, email, referral, content marketing
+    'retention-upsell',         // เพิ่ม LTV ลูกค้าเดิม, upsell services
+    'competitive-advantage'     // AI automation, pricing, positioning vs agencies
   ],
 
-  // Tars's context for idea generation
+  // VXB Digital Growth Partner context
   tarsContext: `
-Tars owns:
-- Hotels in Pai (The Arch Casa, Betel Palm Village, Paddy Fields Haven)
-- Tech skills: Next.js, Railway, AI, Automation
-- Interest: Gold, Bitcoin, Crypto investments
-- Goal: Passive income, automation, minimal maintenance
-- Budget: Can invest time but prefers low-cost MVPs
-- Market: Thailand + International tourists
+VisionXBrain (VXB) — Digital Growth Partner Agency
+เป้าหมาย: 100M/ปี (8.33M/เดือน)
+
+สถานะปัจจุบัน:
+- เว็บ VXB: 700+ URLs (126 service pages, 77 location pages, 300+ blogs)
+- บริการ: Web Design (Webflow), SEO, CRO, Content
+- ราคา project: 80K-3M+
+- Proof: 30x booking, 24x orders, 3x sales (case studies)
+- Positioning เป้าหมาย: "Digital Growth Partner" (ไม่ใช่แค่รับทำเว็บ)
+
+Revenue Mix เป้าหมาย:
+- Enterprise Projects (2-10M/งาน): 48%
+- Monthly Retainer (30-80K/ลูกค้า): 30% → ต้องมี 50 ราย
+- SaaS / Productized: 18%
+- Training / Course: 4%
+
+Unfair Advantage:
+- Tar + Oracle (AI) = ทำงานแทนทีม 8-15 คน
+- Margin 85-95% (agency อื่น 30-40%)
+- ไม่ต้องจ้างคน — Oracle ทำ SEO, content, audit, report, coding, automation
+
+บริการที่กำลังเปิดใหม่:
+- SEO Retainer (19,900-49,900/เดือน)
+- Content Marketing (14,900-39,900/เดือน)
+- Google Ads Management (15,000-50,000 + % ad spend)
+- Monthly Report + Analytics (9,900-19,900/เดือน)
+- AI Chatbot / Automation (29,900-99,900 setup + monthly)
+
+ลูกค้าเป้าหมาย:
+- โรงแรม/ที่พัก chain
+- คลินิกเสริมความงาม/ทันตกรรม
+- อสังหาริมทรัพย์
+- แฟรนไชส์
+- SME ที่ต้องการโตออนไลน์
+- E-commerce brands
+
+Tech Stack: Webflow, Next.js, Railway, AI APIs, n8n
+ตลาด: ไทย (primary), SEA (expansion)
 `
 };
 
@@ -95,25 +126,26 @@ function saveIdeas(data) {
 async function researchTrends(category) {
   console.log(`[IDEAS] Researching trends in: ${category}`);
 
-  const researchPrompt = `คุณเป็น market researcher ที่เก่งมาก
+  const researchPrompt = `คุณเป็น digital agency growth strategist ที่เก่งมาก
 
-หา 3 trends/opportunities ใน "${category}" ที่:
-1. มีความต้องการจริงในตลาด (2024-2025)
-2. สามารถสร้าง MVP ได้ใน 1-2 วัน
-3. ใช้ tech stack: Next.js, Railway, AI APIs
-4. เหมาะกับ solo developer
+หา 3 โอกาสเติบโตสำหรับ VisionXBrain ในหมวด "${category}" ที่:
+1. ทำให้ได้ลูกค้า retainer ใหม่ หรือเพิ่มรายได้จากลูกค้าเดิม
+2. เหมาะกับ agency ที่ใช้ AI ทำงานแทนทีมคน (margin 85-95%)
+3. สามารถเริ่มทำได้ทันที หรือภายใน 1-2 สัปดาห์
+4. เจาะตลาดไทย (SME, โรงแรม, คลินิก, อสังหา, แฟรนไชส์, E-commerce)
 
-Context ของ Tars (เจ้าของ):
+Context ของ VisionXBrain:
 ${CONFIG.tarsContext}
 
 ตอบเป็น JSON array:
 [
   {
-    "trend": "ชื่อ trend",
-    "opportunity": "โอกาสทำเงินอย่างไร",
-    "targetAudience": "กลุ่มเป้าหมาย",
+    "trend": "โอกาส/กลยุทธ์",
+    "opportunity": "ทำเงินได้อย่างไร (retainer/project/upsell)",
+    "targetAudience": "กลุ่มลูกค้าเป้าหมายเฉพาะเจาะจง",
     "competition": "low/medium/high",
-    "potentialRevenue": "ประมาณรายได้ต่อเดือน"
+    "potentialRevenue": "ประมาณรายได้ต่อเดือนที่เพิ่มขึ้น",
+    "actionable": "ขั้นตอนที่ทำได้ทันที 1-2-3"
   }
 ]
 
@@ -144,35 +176,35 @@ ${CONFIG.tarsContext}
 async function generateIdeas(trends) {
   console.log('[IDEAS] Generating ideas from trends...');
 
-  const ideaPrompt = `คุณเป็น startup idea generator ที่เก่งมาก
+  const ideaPrompt = `คุณเป็น digital agency growth strategist ที่ช่วย VisionXBrain หาลูกค้าและเพิ่มรายได้
 
-**สำคัญมาก: ตอบเป็นภาษาไทยทั้งหมด! ห้ามใช้ภาษาอังกฤษหรือภาษาจีน!**
+**สำคัญมาก: ตอบเป็นภาษาไทยทั้งหมด!**
 
-จาก trends เหล่านี้:
+จากโอกาสเหล่านี้:
 ${JSON.stringify(trends, null, 2)}
 
-สร้าง ${CONFIG.maxIdeasPerCycle} micro-SaaS ideas ที่:
-1. สร้าง MVP ได้ใน 1-2 วัน
-2. ใช้ Next.js + Railway + AI
-3. มี potential revenue $100-1000/month
-4. ต้องการ maintenance น้อย
+สร้าง ${CONFIG.maxIdeasPerCycle} กลยุทธ์ที่ actionable สำหรับ VXB:
+1. ทำได้ทันที ไม่ต้องรอ (Oracle + Tar ลงมือได้เลย)
+2. เพิ่มรายได้ retainer/project อย่างน้อย 30-100K/เดือน
+3. ใช้ AI (Oracle) ทำงาน 80%+ → margin สูง
+4. ไม่ใช่ไอเดียลอยๆ — ต้องมีขั้นตอนชัดเจน
 
-Context ของ Tars:
+Context ของ VXB:
 ${CONFIG.tarsContext}
 
-ตอบเป็น JSON array (ภาษาไทยทั้งหมด ยกเว้น techStack):
+ตอบเป็น JSON array (ภาษาไทยทั้งหมด):
 [
   {
-    "name": "ชื่อโปรเจคภาษาไทย (สั้น จำง่าย ห้ามใช้ภาษาจีน)",
-    "tagline": "คำอธิบายสั้นๆ ภาษาไทย",
-    "problem": "ปัญหาที่แก้ (ภาษาไทย)",
-    "solution": "วิธีแก้ (ภาษาไทย)",
-    "features": ["ฟีเจอร์1 ภาษาไทย", "ฟีเจอร์2", "ฟีเจอร์3"],
-    "techStack": ["Next.js", "..."],
-    "monetization": "วิธีหาเงิน (ภาษาไทย)",
-    "mvpScope": "สิ่งที่ต้องทำใน MVP (ภาษาไทย)",
-    "estimatedHours": 8-16,
-    "targetUsers": "กลุ่มเป้าหมาย (ภาษาไทย)"
+    "name": "ชื่อกลยุทธ์ (สั้น ชัด)",
+    "tagline": "สรุป 1 บรรทัด",
+    "problem": "ปัญหาของลูกค้าเป้าหมายที่ VXB แก้ได้",
+    "solution": "VXB ทำอะไรให้ (service/package)",
+    "features": ["สิ่งที่ทำให้ลูกค้า 1", "สิ่งที่ทำให้ 2", "สิ่งที่ทำให้ 3"],
+    "techStack": ["Webflow", "Oracle AI", "..."],
+    "monetization": "รายได้: retainer X บาท/เดือน × Y ลูกค้า = Z บาท",
+    "mvpScope": "ขั้นตอนเริ่มต้นที่ทำได้ใน 1-2 สัปดาห์",
+    "estimatedHours": 8-40,
+    "targetUsers": "ลูกค้าเป้าหมายเฉพาะเจาะจง (industry + ขนาด + pain point)"
   }
 ]
 
@@ -203,19 +235,19 @@ ${CONFIG.tarsContext}
 async function scoreIdea(idea) {
   console.log(`[IDEAS] Scoring idea: ${idea.name}`);
 
-  const scorePrompt = `คุณเป็น startup advisor ที่ประเมิน idea อย่างเข้มงวด
+  const scorePrompt = `คุณเป็น agency growth advisor ที่ประเมินกลยุทธ์สำหรับ VisionXBrain
 
-ประเมิน idea นี้:
+ประเมินกลยุทธ์นี้:
 ${JSON.stringify(idea, null, 2)}
 
 ให้คะแนน 0-100 ในแต่ละด้าน:
 
-1. **Feasibility** (สร้างได้จริงใน 1-2 วันไหม?)
-2. **Market Demand** (มีคนต้องการจริงไหม?)
-3. **Revenue Potential** (หาเงินได้จริงไหม?)
-4. **Competition** (แข่งขันได้ไหม?)
-5. **Maintenance** (ดูแลง่ายไหม?)
-6. **Tars Fit** (เหมาะกับ Tars ไหม - มีโรงแรม, สนใจ AI/automation)
+1. **Feasibility** (ทำได้จริงด้วย Tar + Oracle AI ไหม? ไม่ต้องจ้างคนเพิ่ม?)
+2. **Market Demand** (ลูกค้าไทยต้องการจริงไหม? มี pain point ชัดเจน?)
+3. **Revenue Potential** (สร้างรายได้ retainer/project ได้เท่าไหร่ต่อเดือน?)
+4. **Scalability** (ขยายได้ไหม? เพิ่มลูกค้าโดยไม่ต้องเพิ่มคน?)
+5. **Speed to Revenue** (เริ่มหาเงินได้เร็วแค่ไหน? ภายใน 1-4 สัปดาห์?)
+6. **VXB Fit** (สอดคล้องกับ positioning "Digital Growth Partner" ไหม? เสริม service เดิมไหม?)
 
 ตอบเป็น JSON:
 {
@@ -223,15 +255,15 @@ ${JSON.stringify(idea, null, 2)}
     "feasibility": 0-100,
     "marketDemand": 0-100,
     "revenuePotential": 0-100,
-    "competition": 0-100,
-    "maintenance": 0-100,
-    "tarsFit": 0-100
+    "scalability": 0-100,
+    "speedToRevenue": 0-100,
+    "vxbFit": 0-100
   },
   "totalScore": 0-100 (weighted average),
   "recommendation": "GO / MAYBE / SKIP",
-  "reasoning": "เหตุผลสั้นๆ",
+  "reasoning": "เหตุผลสั้นๆ ว่าทำไม VXB ควร/ไม่ควรทำ",
   "risks": ["ความเสี่ยง 1", "ความเสี่ยง 2"],
-  "suggestions": ["ข้อเสนอแนะ"]
+  "suggestions": ["ข้อเสนอแนะเพื่อเพิ่มโอกาสสำเร็จ"]
 }
 
 ตอบ JSON เท่านั้น:`;
@@ -320,7 +352,7 @@ const ORACLE_MEMORY_PATH = '/Users/tanakitchaithip/Desktop/Oracle/main/ψ/memory
  */
 function buildIdeasMarkdown(ideas) {
   const today = new Date().toISOString().split('T')[0];
-  let content = `# 💡 Oracle Ideas Engine - ${today}\n\n`;
+  let content = `# 📈 VXB Growth Strategy Engine - ${today}\n\n`;
   content += `Generated: ${new Date().toLocaleString('th-TH')}\n\n`;
   content += `---\n\n`;
 
@@ -447,9 +479,9 @@ async function saveIdeasToOracleMemory(ideas) {
     const topIdeas = ideas.filter(i => (i.score?.totalScore || 0) >= 60).slice(0, 10);
 
     if (topIdeas.length > 0) {
-      let saasContent = `# 💡 SaaS Ideas - Top Picks\n\n`;
+      let saasContent = `# 📈 VXB Growth Strategies - Top Picks\n\n`;
       saasContent += `Last updated: ${new Date().toLocaleString('th-TH')}\n\n`;
-      saasContent += `Ideas with score >= 60\n\n---\n\n`;
+      saasContent += `Strategies with score >= 60\n\n---\n\n`;
 
       for (const idea of topIdeas) {
         const score = idea.score?.totalScore || 0;
@@ -486,23 +518,23 @@ async function saveIdeasToSupabase(ideas) {
   }
 
   try {
-    // Save each idea separately for easy search
+    // Save each strategy separately for easy search
     for (const idea of ideas.slice(0, 5)) {
-      const content = `💡 SaaS Idea: ${idea.name}
+      const content = `📈 VXB Growth Strategy: ${idea.name}
 
 📝 **${idea.tagline || 'No tagline'}**
 
-❓ ปัญหา: ${idea.problem || 'N/A'}
-✅ วิธีแก้: ${idea.solution || 'N/A'}
-👥 กลุ่มเป้าหมาย: ${idea.targetUsers || 'N/A'}
-💰 วิธีหาเงิน: ${idea.monetization || 'N/A'}
-🛠️ MVP: ${idea.mvpScope || 'N/A'}
-⏱️ เวลาสร้าง: ${idea.estimatedHours || 8} ชม.
+🎯 Pain: ${idea.problem || 'N/A'}
+💼 Service: ${idea.solution || 'N/A'}
+👥 ลูกค้าเป้าหมาย: ${idea.targetUsers || 'N/A'}
+💰 Revenue: ${idea.monetization || 'N/A'}
+⚡ เริ่มยังไง: ${idea.mvpScope || 'N/A'}
+⏱️ เวลา: ${idea.estimatedHours || 8} ชม.
 
 📊 Score: ${idea.score?.totalScore || 0}/100
 📋 Recommendation: ${idea.score?.recommendation || 'MAYBE'}
-💰 Revenue: ${idea.score?.scores?.revenuePotential || 0}/100
-🔧 Feasibility: ${idea.score?.scores?.feasibility || 0}/100`;
+💰 Revenue Potential: ${idea.score?.scores?.revenuePotential || 0}/100
+📈 Scalability: ${idea.score?.scores?.scalability || 0}/100`;
 
       let embedding = null;
       try {
@@ -517,8 +549,8 @@ async function saveIdeasToSupabase(ideas) {
         INSERT INTO episodic_memory (user_id, content, context, memory_type, importance, search_text${embedding ? ', embedding' : ''})
         VALUES ($1, $2, $3, $4, $5, $6${embedding ? ', $7' : ''})
       `, embedding
-        ? ['tars', content, { source: 'idea-engine', idea_name: idea.name, score: idea.score?.totalScore }, 'idea', 0.8, searchText, embedding]
-        : ['tars', content, { source: 'idea-engine', idea_name: idea.name, score: idea.score?.totalScore }, 'idea', 0.8, searchText]
+        ? ['tars', content, { source: 'vxb-growth-engine', strategy_name: idea.name, score: idea.score?.totalScore }, 'decision', 0.8, searchText, embedding]
+        : ['tars', content, { source: 'vxb-growth-engine', strategy_name: idea.name, score: idea.score?.totalScore }, 'decision', 0.8, searchText]
       );
     }
 
@@ -630,48 +662,49 @@ async function runThinkingCycle(config) {
       };
     }
 
-    // Build detailed Thai message
-    let summaryMessage = `💡 **Oracle พบโอกาสทำเงิน!**\n\n`;
+    // Build detailed Thai message — VXB Growth Strategy
+    let summaryMessage = `📈 **VXB Growth Strategy — Oracle คิดให้**\n\n`;
 
     for (let i = 0; i < Math.min(3, qualityIdeas.length); i++) {
       const idea = qualityIdeas[i];
       const revenue = idea.score?.scores?.revenuePotential || 0;
-      const feasibility = idea.score?.scores?.feasibility || 0;
+      const scalability = idea.score?.scores?.scalability || 0;
       const total = idea.score?.totalScore || 0;
 
       summaryMessage += `━━━━━━━━━━━━━━━━━━━━\n`;
       summaryMessage += `${i + 1}. **${idea.name}** (${total}/100)\n\n`;
 
-      // Problem & Solution (Thai)
+      // Pain point ลูกค้า
       if (idea.problem) {
-        summaryMessage += `❓ **ปัญหา:** ${idea.problem}\n`;
+        summaryMessage += `🎯 **Pain:** ${idea.problem}\n`;
       }
+      // VXB ทำอะไรให้
       if (idea.solution) {
-        summaryMessage += `✅ **วิธีแก้:** ${idea.solution}\n`;
+        summaryMessage += `💼 **Service:** ${idea.solution}\n`;
       }
 
-      // Target users
+      // ลูกค้าเป้าหมาย
       if (idea.targetUsers) {
-        summaryMessage += `👥 **กลุ่มเป้าหมาย:** ${idea.targetUsers}\n`;
+        summaryMessage += `👥 **ลูกค้า:** ${idea.targetUsers}\n`;
       }
 
-      // Monetization
+      // Revenue model
       if (idea.monetization) {
-        summaryMessage += `💰 **วิธีหาเงิน:** ${idea.monetization}\n`;
+        summaryMessage += `💰 **Revenue:** ${idea.monetization}\n`;
       }
 
-      // MVP Scope
+      // ขั้นตอนเริ่มต้น
       if (idea.mvpScope) {
-        summaryMessage += `🛠️ **MVP:** ${idea.mvpScope}\n`;
+        summaryMessage += `⚡ **เริ่มยังไง:** ${idea.mvpScope}\n`;
       }
 
       // Scores
-      summaryMessage += `\n📊 Revenue: ${revenue} | Feasibility: ${feasibility}\n`;
+      summaryMessage += `\n📊 Revenue: ${revenue} | Scale: ${scalability}\n`;
       summaryMessage += `📋 ${idea.score?.recommendation || 'MAYBE'}\n\n`;
     }
 
     summaryMessage += `━━━━━━━━━━━━━━━━━━━━\n`;
-    summaryMessage += `สนใจ idea ไหนบอกได้เลยครับ! 🚀`;
+    summaryMessage += `สนใจกลยุทธ์ไหน สั่งเลยครับ — Oracle ทำให้ได้`;
 
     // 6. Auto-execute if score is high enough
     if (bestIdea.score?.totalScore >= CONFIG.autoExecuteThreshold &&
@@ -679,7 +712,7 @@ async function runThinkingCycle(config) {
 
       summaryMessage += `\n🚀 **Auto-executing:** ${bestIdea.name}\n`;
       summaryMessage += `Score ${bestIdea.score.totalScore} >= ${CONFIG.autoExecuteThreshold} threshold\n`;
-      summaryMessage += `Terminal จะเปิดบน Mac เพื่อสร้างโปรเจค...`;
+      summaryMessage += `Oracle กำลังเริ่มทำให้...`;
 
       await notifyTars(summaryMessage, config);
 
@@ -704,7 +737,7 @@ async function runThinkingCycle(config) {
         await notifyTars(`❌ ไม่สามารถ execute idea: ${execResult.error}`, config);
       }
     } else {
-      summaryMessage += `สนใจ idea ไหน บอกได้เลยครับ! 🚀`;
+      // message already ends with CTA from above
 
       await notifyTars(summaryMessage, config);
     }
