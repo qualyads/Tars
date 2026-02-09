@@ -38,6 +38,7 @@ function Toggle({ checked, onChange, disabled }) {
 
 function IdeaCard({ idea, toggleState, onToggle, onExecute, executing }) {
   const score = idea.score || {};
+  const s = score.scores || {};
   const rec = score.recommendation || 'MAYBE';
   const badgeClass = rec === 'GO' ? 'badge-go' : rec === 'SKIP' ? 'badge-skip' : 'badge-maybe';
   const ideaKey = (idea.name || '').toLowerCase().replace(/\s+/g, '-');
@@ -70,11 +71,11 @@ function IdeaCard({ idea, toggleState, onToggle, onExecute, executing }) {
       </div>
 
       <div className="score-bars">
-        <ScoreBar label="Feasibility" value={score.feasibility} color="#4caf50" />
-        <ScoreBar label="Market" value={score.marketDemand} color="#2196f3" />
-        <ScoreBar label="Revenue" value={score.revenueImpact} color="#ff9800" />
-        <ScoreBar label="VXB Fit" value={score.vxbFit} color="var(--purple)" />
-        <ScoreBar label="Scale" value={score.scalability} color="#e91e63" />
+        <ScoreBar label="Feasibility" value={s.feasibility} color="#4caf50" />
+        <ScoreBar label="Market" value={s.marketDemand} color="#2196f3" />
+        <ScoreBar label="Revenue" value={s.revenuePotential} color="#ff9800" />
+        <ScoreBar label="VXB Fit" value={s.vxbFit} color="var(--purple)" />
+        <ScoreBar label="Scale" value={s.scalability} color="#e91e63" />
       </div>
 
       <div className="idea-actions">
