@@ -104,7 +104,7 @@ function loadIdeas() {
   } catch (e) {
     console.error('[IDEAS] Error loading ideas:', e.message);
   }
-  return { ideas: [], lastThinking: null, executedIdeas: [] };
+  return { ideas: [], lastThinking: null, executedIdeas: [], masterAutoExecute: false, toggles: {} };
 }
 
 function saveIdeas(data) {
@@ -117,6 +117,35 @@ function saveIdeas(data) {
   } catch (e) {
     console.error('[IDEAS] Error saving ideas:', e.message);
   }
+}
+
+// =============================================================================
+// TOGGLE SYSTEM — Master switch + per-idea toggles
+// =============================================================================
+
+function getToggles() {
+  const data = loadIdeas();
+  return {
+    masterAutoExecute: data.masterAutoExecute || false,
+    toggles: data.toggles || {}
+  };
+}
+
+function setMasterSwitch(enabled) {
+  const data = loadIdeas();
+  data.masterAutoExecute = !!enabled;
+  saveIdeas(data);
+  console.log(`[IDEAS] Master auto-execute: ${enabled ? 'ON' : 'OFF'}`);
+  return getToggles();
+}
+
+function setToggle(name, enabled) {
+  const data = loadIdeas();
+  if (!data.toggles) data.toggles = {};
+  data.toggles[name] = !!enabled;
+  saveIdeas(data);
+  console.log(`[IDEAS] Toggle ${name}: ${enabled ? 'ON' : 'OFF'}`);
+  return getToggles();
 }
 
 // =============================================================================
@@ -706,9 +735,14 @@ async function runThinkingCycle(config) {
     summaryMessage += `━━━━━━━━━━━━━━━━━━━━\n`;
     summaryMessage += `สนใจกลยุทธ์ไหน สั่งเลยครับ — Oracle ทำให้ได้`;
 
-    // 6. Auto-execute if score is high enough
+    // 6. Auto-execute if score is high enough + toggle approved
+    const currentToggles = getToggles();
+    const bestIdeaKey = bestIdea.name.toLowerCase().replace(/\s+/g, '-');
+    const isApproved = currentToggles.masterAutoExecute && currentToggles.toggles[bestIdeaKey] !== false;
+
     if (bestIdea.score?.totalScore >= CONFIG.autoExecuteThreshold &&
-        bestIdea.score?.recommendation === 'GO') {
+        bestIdea.score?.recommendation === 'GO' &&
+        isApproved) {
 
       summaryMessage += `\n🚀 **Auto-executing:** ${bestIdea.name}\n`;
       summaryMessage += `Score ${bestIdea.score.totalScore} >= ${CONFIG.autoExecuteThreshold} threshold\n`;
@@ -736,9 +770,10 @@ async function runThinkingCycle(config) {
       } else {
         await notifyTars(`❌ ไม่สามารถ execute idea: ${execResult.error}`, config);
       }
+    } else if (bestIdea.score?.totalScore >= CONFIG.autoExecuteThreshold && !isApproved) {
+      summaryMessage += `\n⏸️ Auto-execute disabled — เปิดได้ที่ Dashboard /vision/growthstrategy/`;
+      await notifyTars(summaryMessage, config);
     } else {
-      // message already ends with CTA from above
-
       await notifyTars(summaryMessage, config);
     }
 
@@ -825,6 +860,11 @@ export default {
   getIdeas,
   getStatus,
   executeIdeaByName,
+
+  // Toggle system
+  getToggles,
+  setToggle,
+  setMasterSwitch,
 
   // Utilities
   researchTrends,

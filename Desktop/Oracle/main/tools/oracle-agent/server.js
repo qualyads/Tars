@@ -120,6 +120,9 @@ import localAgentServer from './lib/local-agent-server.js';
 // Phase 7: Autonomous Idea Engine
 import autonomousIdeas from './lib/autonomous-ideas.js';
 
+// Autonomous Scheduler (morning briefing, evening summary)
+import autonomousScheduler from './lib/autonomous-scheduler.js';
+
 // Phase 8: API Hunter - หา API, ทดสอบ, วิเคราะห์โอกาส
 import apiHunter from './lib/api-hunter.js';
 
@@ -177,8 +180,15 @@ const __dirname = dirname(__filename);
 const app = express();
 app.use(express.json());
 
-// Dashboard — static React app
-app.use('/dashboard', express.static(join(__dirname, 'public/dashboard')));
+// Email Dashboard — static React app
+// Old paths → redirect to new
+app.get('/email*', (req, res) => res.redirect(301, '/vision/email' + req.path.replace('/email', '') + (req.path.endsWith('/') ? '' : '/')));
+app.get('/costs*', (req, res) => res.redirect(301, '/vision/email/costs/'));
+
+// VisionXBrain dashboards
+app.use('/vision/email/costs', express.static(join(__dirname, 'public/vision/email/costs')));
+app.use('/vision/email', express.static(join(__dirname, 'public/vision/email')));
+app.use('/vision/growthstrategy', express.static(join(__dirname, 'public/vision/growthstrategy')));
 
 // Heartbeat Manager instance
 let heartbeatManager = null;
@@ -1781,6 +1791,108 @@ app.post('/webhook/telegram', async (req, res) => {
         contextString += `\n[Suggestions: ${suggestions.map(s => s.message).join('; ')}]`;
       }
 
+      // =====================================================================
+      // SMART API DATA FETCHING (Telegram) - เหมือน LINE handler
+      // =====================================================================
+      const lowerMessage = userMessage.toLowerCase();
+      const hotelKeywordsTG = ['beds24', 'ห้อง', 'booking', 'จอง', 'ว่าง', 'เต็ม', 'check-in', 'check-out', 'checkin', 'checkout', 'แขก', 'guest', 'occupancy', 'โรงแรม', 'hotel', 'availability', 'วันนี้', 'พรุ่งนี้', 'ลิงค์', 'ลิงก์', 'link', 'เช็คอิน', 'เข้าพัก', 'ที่พัก'];
+      const pricingKeywordsTG = ['ราคา', 'price', 'ตั้งราคา', 'ขายเท่าไหร่', 'ขายเท่าไร', 'แนะนำราคา', 'ควรขาย', 'ควรตั้ง', 'pricing'];
+      const isHotelQueryTG = (isOwner || isTeamMember) && hotelKeywordsTG.some(kw => lowerMessage.includes(kw));
+      const isPricingQueryTG = pricingKeywordsTG.some(kw => lowerMessage.includes(kw));
+
+      if (isHotelQueryTG) {
+        console.log('[TELEGRAM] Detected hotel query, fetching Beds24 data...');
+        try {
+          const isTomorrow = lowerMessage.includes('พรุ่งนี้') || lowerMessage.includes('tomorrow');
+          const dateMatch = userMessage.match(/วันที่\s*(\d{1,2})|(\d{1,2})\s*ก\.?พ\.?|Feb(?:ruary)?\s*(\d{1,2})|(\d{1,2})\s*Feb/i);
+          const specificDay = dateMatch ? parseInt(dateMatch[1] || dateMatch[2] || dateMatch[3] || dateMatch[4]) : null;
+
+          const today = new Date();
+          let targetDate, dateThai;
+
+          if (specificDay) {
+            targetDate = new Date(today.getFullYear(), today.getMonth(), specificDay);
+            dateThai = `วันที่ ${specificDay} ${['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][today.getMonth()]}`;
+          } else if (isTomorrow) {
+            targetDate = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+            dateThai = 'พรุ่งนี้';
+          } else {
+            targetDate = today;
+            dateThai = 'วันนี้';
+          }
+
+          const dateStr = targetDate.toISOString().split('T')[0];
+
+          const [bookings, occupancy] = await Promise.all([
+            beds24.getBookingsByDate(dateStr).catch(e => ({ error: e.message })),
+            beds24.getOccupancyForDate(dateStr).catch(e => ({ error: e.message }))
+          ]);
+
+          contextString += `\n\n📊 **ข้อมูล Beds24 Real-time (${dateThai} ${dateStr}):**`;
+          contextString += `\n🏨 The Arch Casa มี 11 ห้อง`;
+
+          if (occupancy && !occupancy.error) {
+            contextString += `\n📈 **Occupancy ${dateThai}:** ${occupancy.occupied}/${occupancy.totalRooms} ห้อง (${occupancy.occupancyRate}%)`;
+            if (occupancy.occupied === occupancy.totalRooms) {
+              contextString += `\n✅ **เต็มทุกห้อง!**`;
+            }
+
+            // Show all guests staying with check-in links
+            if (occupancy.bookings && occupancy.bookings.length > 0) {
+              contextString += `\n\n**แขกทั้งหมดที่พัก ${dateThai} (${occupancy.bookings.length} ห้อง):**`;
+              occupancy.bookings.forEach((b, i) => {
+                const guestName = (b.firstName && b.lastName) ? `${b.firstName} ${b.lastName}` : (b.guestName || 'Guest');
+                const roomInfo = b.roomSystemId ? `${b.roomSystemId}` : `Room ${b.roomId}`;
+                const checkinLink = b.id ? `https://thearchcasa.com/booking/${b.id}?lang=en` : null;
+                contextString += `\n${i+1}. **${roomInfo}**: ${guestName} (${b.arrival} → ${b.departure})`;
+                if (checkinLink) {
+                  contextString += `\n   🔗 ${checkinLink}`;
+                }
+              });
+            }
+
+            // Show checkouts
+            if (occupancy.checkouts && occupancy.checkouts.length > 0) {
+              contextString += `\n\n**Check-out ${dateThai}:** ${occupancy.checkouts.length} คน`;
+              occupancy.checkouts.forEach(b => {
+                const guestName = (b.firstName && b.lastName) ? `${b.firstName} ${b.lastName}` : (b.guestName || 'Guest');
+                const roomInfo = b.roomSystemId ? `${b.roomSystemId}` : `Room ${b.roomId}`;
+                contextString += `\n- ${roomInfo}: ${guestName}`;
+              });
+            }
+
+            // Pricing recommendations
+            const shouldShowPricing = isPricingQueryTG || (occupancy.available > 0 && occupancy.occupancyRate < 80);
+            if (shouldShowPricing) {
+              try {
+                const pricingAdvice = await pricing.generatePricingAdvice(dateStr, occupancy.occupancyRate);
+                contextString += `\n\n${pricingAdvice}`;
+              } catch (pErr) {
+                console.error('[TELEGRAM] Pricing error:', pErr.message);
+              }
+            }
+          }
+
+          // Show arrivals
+          if (bookings && !bookings.error && Array.isArray(bookings) && bookings.length > 0) {
+            contextString += `\n\n**Arrivals ${dateThai}:** ${bookings.length} คน`;
+            bookings.forEach(b => {
+              const guestName = (b.firstName && b.lastName) ? `${b.firstName} ${b.lastName}` : (b.guestName || 'Guest');
+              const roomInfo = b.roomSystemId ? `${b.roomSystemId}` : `Room ${b.roomId}`;
+              const checkinLink = b.id ? `https://thearchcasa.com/booking/${b.id}?lang=en` : null;
+              contextString += `\n- ${roomInfo}: ${guestName} (${b.numAdult || 1} ผู้ใหญ่)`;
+              if (checkinLink) {
+                contextString += `\n   - 🔗 Self Check-in: ${checkinLink}`;
+              }
+            });
+          }
+
+          console.log(`[TELEGRAM] Hotel context added: ${dateStr}`);
+        } catch (hotelErr) {
+          console.error('[TELEGRAM] Hotel data error:', hotelErr.message);
+        }
+      }
+
       // Build messages for Claude
       const messages = [
         ...history.slice(-10),
@@ -2781,6 +2893,39 @@ app.get('/api/ideas/research/:category', async (req, res) => {
   try {
     const trends = await autonomousIdeas.researchTrends(category);
     res.json({ category, trends });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get toggle states (master + per-idea)
+app.get('/api/ideas/toggles', (req, res) => {
+  res.json(autonomousIdeas.getToggles());
+});
+
+// Toggle master switch or per-idea
+app.post('/api/ideas/toggle', (req, res) => {
+  const { master, name, enabled } = req.body || {};
+  if (master !== undefined) {
+    res.json(autonomousIdeas.setMasterSwitch(master));
+  } else if (name !== undefined) {
+    res.json(autonomousIdeas.setToggle(name, enabled));
+  } else {
+    res.status(400).json({ error: 'Provide { master: bool } or { name, enabled }' });
+  }
+});
+
+// Approve idea for execution
+app.post('/api/ideas/approve/:name', async (req, res) => {
+  const { name } = req.params;
+  console.log(`[IDEAS] Approval + execution for: ${name}`);
+  try {
+    // Enable toggle first
+    const ideaKey = name.toLowerCase().replace(/\s+/g, '-');
+    autonomousIdeas.setToggle(ideaKey, true);
+    // Then execute
+    const result = await autonomousIdeas.executeIdeaByName(name, config);
+    res.json(result);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -4281,7 +4426,7 @@ app.post('/api/memory-consolidation/add-fact', (req, res) => {
 app.post('/api/memory-consolidation/consolidate', async (req, res) => {
   try {
     const { force = false } = req.body || {};
-    const result = await memoryConsolidation.consolidate({ force });
+    const result = await memoryConsolidation.runConsolidation('tars', !force);
     res.json({ success: true, result });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -4343,7 +4488,7 @@ app.get('/api/goals/progress', async (req, res) => {
 // Manual trigger for testing
 app.post('/api/briefing', async (req, res) => {
   try {
-    await heartbeat.morningBriefing();
+    await autonomousScheduler.triggerBriefing();
     res.json({ success: true, message: 'Briefing sent' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -4950,14 +5095,22 @@ app.post('/api/summarize', async (req, res) => {
 if (config.autonomy.auto_morning_briefing) {
   cron.schedule(config.schedule.morning_briefing, async () => {
     console.log('[HEARTBEAT] Morning briefing triggered');
-    await heartbeat.morningBriefing();
+    try {
+      await autonomousScheduler.triggerBriefing();
+    } catch (error) {
+      console.error('[HEARTBEAT] Morning briefing error:', error.message);
+    }
   }, { timezone: config.agent.timezone });
 }
 
 // Evening Summary - 18:00 Bangkok time
 cron.schedule(config.schedule.evening_summary, async () => {
   console.log('[HEARTBEAT] Evening summary triggered');
-  await heartbeat.eveningSummary();
+  try {
+    await autonomousScheduler.triggerSummary();
+  } catch (error) {
+    console.error('[HEARTBEAT] Evening summary error:', error.message);
+  }
 }, { timezone: config.agent.timezone });
 
 // Hotel Daily Summary - 08:00 Bangkok time (after morning briefing)
@@ -4983,11 +5136,11 @@ cron.schedule('0 9 * * *', async () => {
   }
 }, { timezone: config.agent.timezone });
 
-// Weekly Rank Check - Monday 09:00
+// Weekly Rank Check - Monday 09:00 (disabled: rankReport not implemented yet)
+// TODO: Implement rank check via SEO engine or autonomous-scheduler
 if (config.autonomy.auto_rank_report) {
   cron.schedule(config.schedule.rank_check, async () => {
-    console.log('[HEARTBEAT] Rank check triggered');
-    await heartbeat.rankReport();
+    console.log('[HEARTBEAT] Rank check triggered (skipped - not implemented)');
   }, { timezone: config.agent.timezone });
 }
 
@@ -5314,12 +5467,23 @@ cron.schedule('0 8-21 * * *', async () => {
 // =============================================================================
 
 cron.schedule('0 10 * * *', async () => {
-  console.log('[LEAD-FINDER] ⏰ Daily lead search CRON TRIGGERED at', new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }));
+  console.log('[LEAD-FINDER] ⏰ Morning lead search CRON at', new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }));
   try {
     const result = await leadFinder.runDaily();
-    console.log('[LEAD-FINDER] ✅ Daily result:', JSON.stringify(result));
+    console.log('[LEAD-FINDER] ✅ Morning result:', JSON.stringify(result));
   } catch (error) {
-    console.error('[LEAD-FINDER] ❌ Daily run error:', error.message, error.stack);
+    console.error('[LEAD-FINDER] ❌ Morning run error:', error.message, error.stack);
+  }
+}, { timezone: config.agent.timezone });
+
+// Lead Finder: Afternoon run (15:00) — ใช้ RapidAPI Pro quota ให้คุ้ม
+cron.schedule('0 15 * * *', async () => {
+  console.log('[LEAD-FINDER] ⏰ Afternoon lead search CRON at', new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }));
+  try {
+    const result = await leadFinder.runDaily();
+    console.log('[LEAD-FINDER] ✅ Afternoon result:', JSON.stringify(result));
+  } catch (error) {
+    console.error('[LEAD-FINDER] ❌ Afternoon run error:', error.message, error.stack);
   }
 }, { timezone: config.agent.timezone });
 
@@ -5393,6 +5557,29 @@ app.post('/api/leads/update', (req, res) => {
 
 let leadFinderRunning = false;
 let leadFinderLastResult = null;
+let enrichRunning = false;
+let enrichLastResult = null;
+
+// Enrich leads — find website + email via DuckDuckGo + scraping
+app.post('/api/leads/enrich', async (req, res) => {
+  if (enrichRunning) {
+    return res.json({ message: 'Enrichment already running', status: 'busy' });
+  }
+  enrichRunning = true;
+  res.json({ message: 'Enrichment started', status: 'started' });
+  try {
+    enrichLastResult = await leadFinder.enrichLeads();
+  } catch (e) {
+    enrichLastResult = { error: e.message };
+    console.error('[ENRICH] Error:', e.message);
+  } finally {
+    enrichRunning = false;
+  }
+});
+
+app.get('/api/leads/enrich/status', (req, res) => {
+  res.json({ running: enrichRunning, lastResult: enrichLastResult });
+});
 
 app.post('/api/leads/run', async (req, res) => {
   if (leadFinderRunning) {
@@ -5418,7 +5605,7 @@ app.get('/api/leads/status', (req, res) => {
     running: leadFinderRunning,
     lastResult: leadFinderLastResult,
     lastRun: stats.lastRun,
-    nextCron: '10:00 Bangkok daily',
+    nextCron: '10:00 + 15:00 Bangkok daily',
     serverTime: bangkokTime,
     stats
   });
@@ -6113,9 +6300,137 @@ app.post('/api/leads/clean', async (req, res) => {
   }
 });
 
-// Dashboard SPA fallback — serve index.html for all /dashboard/* routes
-app.get('/dashboard/*', (req, res) => {
-  res.sendFile(join(__dirname, 'public/dashboard/index.html'));
+// =============================================================================
+// API COSTS — ค่าบริการ API ประจำเดือน
+// =============================================================================
+
+app.get('/api/costs', (req, res) => {
+  try {
+    const stats = leadFinder.getStats();
+    const totalLeads = stats.total || 0;
+    const emailed = stats.emailed || 0;
+    const processedDomains = stats.processedDomains || 0;
+    const leadsWithAnalysis = totalLeads; // ทุก lead ใช้ AI analyze
+
+    // --- RapidAPI ---
+    // Local Rank Tracker: ~1 call per search query
+    const searchesEstimate = processedDomains; // rough: 1 place = came from 1 search
+    // Local Business Data: 1 call per lead enriched
+    const businessDetailsUsed = processedDomains;
+
+    // --- AI Costs ---
+    // Analysis: $0 — ใช้ regex + heuristic แทน AI 100%
+    // Email gen: Haiku 4.5 — Input $0.80/MTok, Output $4/MTok
+    //   ~3500 input + ~1750 output = ~$0.010/call
+    // Follow-up: Haiku 4.5 — ~$0.003/call (สั้นกว่า)
+    const COST_PER_ANALYSIS = 0; // NO AI — pure local
+    const COST_PER_EMAIL = 0.010; // Haiku 4.5
+    const USD_TO_THB = 34;
+
+    const aiAnalysisCalls = leadsWithAnalysis;
+    const aiEmailCalls = emailed;
+    const anthropicAnalysisCost = aiAnalysisCalls * COST_PER_ANALYSIS;
+    const anthropicEmailCost = aiEmailCalls * COST_PER_EMAIL;
+    const anthropicTotal = anthropicAnalysisCost + anthropicEmailCost;
+
+    // --- Monthly projections (based on settings) ---
+    const daysInMonth = 30;
+    const runsPerDay = 2;
+    const searchesPerRun = 25;
+    const leadsPerSearch = 10; // avg
+    const emailsPerDay = 20;
+
+    const projectedSearches = runsPerDay * searchesPerRun * daysInMonth;
+    const projectedBusinessDetails = runsPerDay * searchesPerRun * leadsPerSearch * daysInMonth * 0.5; // 50% unique
+    const projectedEmails = emailsPerDay * daysInMonth;
+    const projectedAiAnalysis = 0; // NO AI for analysis — pure regex + heuristic
+    const projectedAiEmail = projectedEmails;
+
+    const projAnthropic = projectedAiAnalysis * COST_PER_ANALYSIS + projectedAiEmail * COST_PER_EMAIL;
+    const projTotal = 25 + projAnthropic + 7;
+
+    res.json({
+      currentUsage: {
+        rapidapi: {
+          searchCalls: searchesEstimate,
+          businessDetailCalls: businessDetailsUsed,
+          businessDetailLimit: 20000,
+          businessDetailUsedPercent: Math.round((businessDetailsUsed / 20000) * 100),
+          planCostUsd: 25.00,
+          planCostThb: 25 * USD_TO_THB,
+          overageCostPer: 0.005,
+          overageCost: Math.max(0, (businessDetailsUsed - 20000) * 0.005),
+        },
+        anthropic: {
+          analysisModel: 'none (local regex)',
+          emailModel: 'claude-haiku-4.5',
+          pricingNote: 'Analysis: $0 (local) | Email: Haiku 4.5 ($0.80/$4 MTok)',
+          analysisCalls: aiAnalysisCalls,
+          emailCalls: aiEmailCalls,
+          estimatedCostUsd: Math.round(anthropicTotal * 100) / 100,
+          estimatedCostThb: Math.round(anthropicTotal * USD_TO_THB),
+          costPerAnalysis: COST_PER_ANALYSIS,
+          costPerEmail: COST_PER_EMAIL,
+        },
+        gmail: {
+          emailsSent: emailed,
+          costUsd: 0,
+          costThb: 0,
+          note: 'Free (Google OAuth)',
+        },
+        railway: {
+          estimatedMonthlyCostUsd: 7.00,
+          estimatedMonthlyCostThb: 7 * USD_TO_THB,
+          note: 'Usage-based ~$5-10/mo',
+        },
+        totalUsd: Math.round((25 + anthropicTotal + 7) * 100) / 100,
+        totalThb: Math.round((25 + anthropicTotal + 7) * USD_TO_THB),
+      },
+      monthlyProjection: {
+        rapidapi: {
+          searches: projectedSearches,
+          businessDetails: Math.round(projectedBusinessDetails),
+          costUsd: 25.00,
+          costThb: 25 * USD_TO_THB,
+          overageCost: Math.max(0, Math.round((projectedBusinessDetails - 20000) * 0.005 * 100) / 100),
+        },
+        anthropic: {
+          analysisCalls: Math.round(projectedAiAnalysis),
+          emailCalls: projectedEmails,
+          estimatedCostUsd: Math.round(projAnthropic * 100) / 100,
+          estimatedCostThb: Math.round(projAnthropic * USD_TO_THB),
+        },
+        railway: { costUsd: 7.00, costThb: 7 * USD_TO_THB },
+        gmail: { costUsd: 0, costThb: 0 },
+        totalEstimatedUsd: Math.round(projTotal * 100) / 100,
+        totalEstimatedThb: Math.round(projTotal * USD_TO_THB),
+      },
+      leads: {
+        total: totalLeads,
+        emailed: emailed,
+        goodTargets: stats.goodTargets || 0,
+        processedDomains: processedDomains,
+      },
+      usdToThb: USD_TO_THB,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Email Dashboard SPA fallback
+app.get('/vision/email/*', (req, res) => {
+  // Costs page has its own static file
+  if (req.path.startsWith('/vision/email/costs')) {
+    return res.sendFile(join(__dirname, 'public/vision/email/costs/index.html'));
+  }
+  res.sendFile(join(__dirname, 'public/vision/email/index.html'));
+});
+
+// Growth Strategy Dashboard SPA fallback
+app.get('/vision/growthstrategy/*', (req, res) => {
+  res.sendFile(join(__dirname, 'public/vision/growthstrategy/index.html'));
 });
 
 // =============================================================================
@@ -6282,7 +6597,7 @@ const server = app.listen(PORT, async () => {
     try {
       const digest = await dailyDigest.generateMorning();
       if (digest.output && digest.output !== '✅ ไม่มีอะไรต้องรายงาน') {
-        await gateway.notifyHotelTeam(`📬 Morning Briefing\n\n${digest.output}`);
+        await gateway.notifyHotelTeam(`📬 Morning Briefing\n\n${digest.output}`, 'digest');
         logSystemEvent('digest', 'morning_sent', { id: digest.id });
       }
     } catch (err) {
@@ -6296,7 +6611,7 @@ const server = app.listen(PORT, async () => {
     try {
       const digest = await dailyDigest.generateEvening();
       if (digest.output && digest.output !== '✅ ไม่มีอะไรต้องรายงาน') {
-        await gateway.notifyHotelTeam(`📊 Evening Summary\n\n${digest.output}`);
+        await gateway.notifyHotelTeam(`📊 Evening Summary\n\n${digest.output}`, 'digest');
         logSystemEvent('digest', 'evening_sent', { id: digest.id });
       }
     } catch (err) {
@@ -6383,9 +6698,9 @@ const server = app.listen(PORT, async () => {
   cron.schedule('0 0 * * *', async () => {
     console.log('[MEMORY] Running daily consolidation...');
     try {
-      const result = await memoryConsolidation.consolidate();
+      const result = await memoryConsolidation.runConsolidation('tars', false);
       logSystemEvent('memory', 'consolidation', result);
-      console.log(`[MEMORY] Consolidated ${result.consolidated} items into ${result.summaries} summaries`);
+      console.log(`[MEMORY] Consolidation complete:`, result);
     } catch (err) {
       console.error('[MEMORY] Consolidation failed:', err.message);
     }
