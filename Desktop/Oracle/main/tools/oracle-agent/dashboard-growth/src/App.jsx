@@ -36,47 +36,134 @@ function Toggle({ checked, onChange, disabled }) {
   );
 }
 
-function IdeaCard({ idea, toggleState, onToggle, onExecute, executing }) {
+// Phase 1 Progress Card
+function PhaseProgress({ ideas }) {
+  const phase1Target = { retainer: 5, projects: 5, revenue: 500000 };
+
+  // Count by type
+  const retainerPlans = ideas.filter(i => i.type === 'retainer-sales' || (i.name || '').toLowerCase().includes('retainer'));
+  const projectPlans = ideas.filter(i => i.type === 'project-closing');
+  const doNowCount = ideas.filter(i => (i.score?.recommendation === 'DO NOW')).length;
+
+  return (
+    <div className="phase-card">
+      <div className="phase-header">
+        <h2>Phase 1 — เป้า 500K/เดือน</h2>
+        <span className="phase-timeline">เดือน 1-3</span>
+      </div>
+      <div className="phase-targets">
+        <div className="target-item">
+          <div className="target-number">{retainerPlans.length}</div>
+          <div className="target-label">แผน Retainer</div>
+          <div className="target-goal">เป้า: {phase1Target.retainer} ราย</div>
+        </div>
+        <div className="target-item">
+          <div className="target-number">{doNowCount}</div>
+          <div className="target-label">DO NOW</div>
+          <div className="target-goal">ทำได้เลย</div>
+        </div>
+        <div className="target-item">
+          <div className="target-number">{ideas.length}</div>
+          <div className="target-label">แผนทั้งหมด</div>
+          <div className="target-goal">Oracle คิดให้</div>
+        </div>
+      </div>
+      <div className="phase-checklist">
+        <h4>Checklist สิ่งที่ยังขาด</h4>
+        <div className="checklist-item pending">หน้า /services/seo-services</div>
+        <div className="checklist-item pending">หน้า /services/monthly-growth-packages</div>
+        <div className="checklist-item pending">หน้า /services/content-marketing</div>
+        <div className="checklist-item pending">หน้า /services/digital-growth-partner</div>
+        <div className="checklist-item pending">Case study มี ROI ตัวเลข</div>
+        <div className="checklist-item pending">ลูกค้า retainer ราย 1</div>
+      </div>
+    </div>
+  );
+}
+
+function ActionCard({ idea, toggleState, onToggle, onExecute, executing }) {
   const score = idea.score || {};
   const s = score.scores || {};
-  const rec = score.recommendation || 'MAYBE';
-  const badgeClass = rec === 'GO' ? 'badge-go' : rec === 'SKIP' ? 'badge-skip' : 'badge-maybe';
+  const rec = score.recommendation || 'PLAN';
+  const badgeClass = rec === 'DO NOW' ? 'badge-go' : rec === 'SKIP' ? 'badge-skip' : 'badge-maybe';
   const ideaKey = (idea.name || '').toLowerCase().replace(/\s+/g, '-');
+
+  const typeLabels = {
+    'retainer-sales': 'Retainer',
+    'project-closing': 'Project',
+    'service-page': 'Service Page',
+    'case-study': 'Case Study',
+    'outbound': 'Outbound',
+  };
+  const typeLabel = typeLabels[idea.type] || idea.type || 'Action';
 
   return (
     <div className="idea-card">
       <div className="idea-header">
         <div>
+          <span className="type-tag">{typeLabel}</span>
           <span className="idea-name">{idea.name}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className={`idea-badge ${badgeClass}`}>{rec}</span>
           <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--purple)' }}>
-            {score.totalScore || 0}/100
+            {score.totalScore || 0}
           </span>
         </div>
       </div>
 
-      <div className="idea-meta">
-        {idea.category && <span>Category: {idea.category}</span>}
-        {idea.generatedAt && <span>Generated: {timeAgo(idea.generatedAt)}</span>}
-      </div>
+      {idea.tagline && <p className="idea-tagline">{idea.tagline}</p>}
 
       <div className="idea-details">
-        {idea.problem && <p><strong>Problem:</strong> {idea.problem}</p>}
-        {idea.solution && <p><strong>Service:</strong> {idea.solution}</p>}
-        {idea.targetUsers && <p><strong>Target:</strong> {idea.targetUsers}</p>}
-        {idea.monetization && <p><strong>Revenue:</strong> {idea.monetization}</p>}
-        {idea.mvpScope && <p><strong>MVP:</strong> {idea.mvpScope}</p>}
+        {idea.problem && <p><strong>Pain:</strong> {idea.problem}</p>}
+        {idea.solution && <p><strong>ขายอะไร:</strong> {idea.solution}</p>}
+        {idea.targetClient && <p><strong>ขายใคร:</strong> {idea.targetClient}</p>}
+        {idea.revenueTarget && <p><strong>เป้ารายได้:</strong> {idea.revenueTarget}</p>}
+        {idea.timeToRevenue && <p><strong>เห็นเงินใน:</strong> {idea.timeToRevenue}</p>}
       </div>
 
+      {/* Steps */}
+      {idea.steps && idea.steps.length > 0 && (
+        <div className="steps-list">
+          {idea.steps.map((step, i) => (
+            <div key={i} className="step-item">
+              <span className="step-num">{i + 1}</span>
+              <span>{step}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Who does what */}
+      {(idea.oracleCanDo || idea.tarMustDo) && (
+        <div className="who-does">
+          {idea.oracleCanDo && (
+            <div className="who-item oracle">
+              <strong>Oracle:</strong> {idea.oracleCanDo}
+            </div>
+          )}
+          {idea.tarMustDo && (
+            <div className="who-item tar">
+              <strong>Tar:</strong> {idea.tarMustDo}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Score bars */}
       <div className="score-bars">
+        <ScoreBar label="Speed" value={s.speedToRevenue} color="#f44336" />
         <ScoreBar label="Feasibility" value={s.feasibility} color="#4caf50" />
-        <ScoreBar label="Market" value={s.marketDemand} color="#2196f3" />
         <ScoreBar label="Revenue" value={s.revenuePotential} color="#ff9800" />
+        <ScoreBar label="Demand" value={s.marketDemand} color="#2196f3" />
         <ScoreBar label="VXB Fit" value={s.vxbFit} color="var(--purple)" />
-        <ScoreBar label="Scale" value={s.scalability} color="#e91e63" />
       </div>
+
+      {score.nextStep && (
+        <div className="next-step">
+          Next: {score.nextStep}
+        </div>
+      )}
 
       <div className="idea-actions">
         <div className="master-toggle">
@@ -91,7 +178,7 @@ function IdeaCard({ idea, toggleState, onToggle, onExecute, executing }) {
           onClick={() => onExecute(idea.name)}
           disabled={executing}
         >
-          {executing ? 'Executing...' : 'Execute Now'}
+          {executing ? 'Running...' : 'Execute'}
         </button>
       </div>
     </div>
@@ -157,10 +244,10 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ master: newVal }),
       });
-      showToast(`Master auto-execute: ${newVal ? 'ON' : 'OFF'}`);
+      showToast(`Auto-execute: ${newVal ? 'ON' : 'OFF'}`);
     } catch {
       setMasterSwitch(!newVal);
-      showToast('Error toggling master switch');
+      showToast('Error toggling');
     }
   };
 
@@ -172,10 +259,8 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: ideaKey, enabled }),
       });
-      showToast(`${ideaKey}: ${enabled ? 'ON' : 'OFF'}`);
     } catch {
       setToggles(prev => ({ ...prev, [ideaKey]: !enabled }));
-      showToast('Error toggling idea');
     }
   };
 
@@ -187,12 +272,8 @@ export default function App() {
         method: 'POST',
       });
       const data = await res.json();
-      if (data.success) {
-        showToast(`Executed: ${name}`);
-        fetchData();
-      } else {
-        showToast(`Error: ${data.error}`);
-      }
+      showToast(data.success ? `Done: ${name}` : `Error: ${data.error}`);
+      fetchData();
     } catch {
       showToast('Execution failed');
     } finally {
@@ -202,18 +283,14 @@ export default function App() {
 
   const handleForceThink = async () => {
     setThinking(true);
-    showToast('Oracle is thinking...');
+    showToast('Oracle กำลังคิดแผน...');
     try {
       const res = await fetch(`${API_BASE}/api/ideas/think`, { method: 'POST' });
       const data = await res.json();
-      if (data.success) {
-        showToast('Thinking complete! Refreshing...');
-        fetchData();
-      } else {
-        showToast(`Think error: ${data.error}`);
-      }
+      showToast(data.success ? 'คิดเสร็จ! กำลังโหลด...' : `Error: ${data.error}`);
+      fetchData();
     } catch {
-      showToast('Thinking failed');
+      showToast('Failed');
     } finally {
       setThinking(false);
     }
@@ -223,7 +300,7 @@ export default function App() {
     return (
       <div className="loader-wrap">
         <div className="loader" />
-        <p style={{ marginTop: 16, color: 'var(--text-secondary)' }}>Loading Growth Strategies...</p>
+        <p style={{ marginTop: 16, color: 'var(--text-secondary)' }}>Loading Growth Tracker...</p>
       </div>
     );
   }
@@ -231,12 +308,18 @@ export default function App() {
   if (error) {
     return (
       <div className="error-wrap">
-        <h3>Error loading data</h3>
+        <h3>Error</h3>
         <p>{error}</p>
         <button className="btn btn-primary" onClick={fetchData}>Retry</button>
       </div>
     );
   }
+
+  // Separate DO NOW vs PLAN
+  const doNow = ideas.filter(i => i.score?.recommendation === 'DO NOW')
+    .sort((a, b) => (b.score?.totalScore || 0) - (a.score?.totalScore || 0));
+  const planLater = ideas.filter(i => i.score?.recommendation !== 'DO NOW')
+    .sort((a, b) => (b.score?.totalScore || 0) - (a.score?.totalScore || 0));
 
   return (
     <div className="app-shell">
@@ -244,7 +327,7 @@ export default function App() {
       <nav className="navbar">
         <div className="navbar-inner">
           <div className="navbar-title">
-            <span>VXB</span> Growth Strategy Engine
+            <span>VXB</span> Growth Tracker
           </div>
           <div className="navbar-actions">
             <div className="master-toggle">
@@ -258,10 +341,10 @@ export default function App() {
       {/* Stats bar */}
       <div className="stats-bar">
         <div className="stats-inner">
-          <span>Last thinking: <strong>{timeAgo(status?.lastThinking)}</strong></span>
-          <span>Ideas: <strong>{status?.total || 0}</strong></span>
-          <span>Executed: <strong>{status?.executed || 0}</strong></span>
-          <span>Master: <strong style={{ color: masterSwitch ? '#4caf50' : '#f44336' }}>
+          <span>Last scan: <strong>{timeAgo(status?.lastThinking)}</strong></span>
+          <span>Actions: <strong>{status?.total || 0}</strong></span>
+          <span>DO NOW: <strong style={{ color: '#2e7d32' }}>{doNow.length}</strong></span>
+          <span>Auto: <strong style={{ color: masterSwitch ? '#4caf50' : '#f44336' }}>
             {masterSwitch ? 'ON' : 'OFF'}
           </strong></span>
         </div>
@@ -269,19 +352,18 @@ export default function App() {
 
       {/* Content */}
       <div className="content">
-        {ideas.length === 0 ? (
-          <div className="empty-state">
-            <h3>No ideas yet</h3>
-            <p>Oracle hasn't generated any growth strategies yet. Click "Force Think Now" to start.</p>
-          </div>
-        ) : (
-          <div className="idea-grid">
-            {ideas
-              .sort((a, b) => (b.score?.totalScore || 0) - (a.score?.totalScore || 0))
-              .map((idea, i) => {
+        {/* Phase 1 Progress */}
+        <PhaseProgress ideas={ideas} />
+
+        {/* DO NOW section */}
+        {doNow.length > 0 && (
+          <>
+            <h3 className="section-title do-now-title">DO NOW — ทำได้เลยวันนี้</h3>
+            <div className="idea-grid">
+              {doNow.map((idea, i) => {
                 const ideaKey = (idea.name || '').toLowerCase().replace(/\s+/g, '-');
                 return (
-                  <IdeaCard
+                  <ActionCard
                     key={ideaKey + i}
                     idea={idea}
                     toggleState={toggles[ideaKey]}
@@ -291,22 +373,50 @@ export default function App() {
                   />
                 );
               })}
+            </div>
+          </>
+        )}
+
+        {/* PLAN section */}
+        {planLater.length > 0 && (
+          <>
+            <h3 className="section-title">PLAN — วางแผนก่อน</h3>
+            <div className="idea-grid">
+              {planLater.map((idea, i) => {
+                const ideaKey = (idea.name || '').toLowerCase().replace(/\s+/g, '-');
+                return (
+                  <ActionCard
+                    key={ideaKey + i}
+                    idea={idea}
+                    toggleState={toggles[ideaKey]}
+                    onToggle={handleIdeaToggle}
+                    onExecute={handleExecute}
+                    executing={executing === idea.name}
+                  />
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {ideas.length === 0 && (
+          <div className="empty-state">
+            <h3>ยังไม่มีแผน</h3>
+            <p>กด "Scan Now" ให้ Oracle คิดแผนหาเงินให้</p>
           </div>
         )}
 
-        {/* Force Think */}
         <div className="force-think-bar">
           <button
-            className="btn btn-outline"
+            className="btn btn-primary"
             onClick={handleForceThink}
             disabled={thinking}
           >
-            {thinking ? 'Thinking...' : 'Force Think Now'}
+            {thinking ? 'กำลังคิด...' : 'Scan Now — หาโอกาสใหม่'}
           </button>
         </div>
       </div>
 
-      {/* Toast */}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

@@ -39,56 +39,49 @@ const CONFIG = {
   // Max ideas to generate per cycle
   maxIdeasPerCycle: 3,
 
-  // Categories to explore — focused on VXB Digital Growth Partner
+  // Categories — Phase 1 focused (เดือน 1-3: หาเงินเร็วที่สุด)
   categories: [
-    'partner-acquisition',      // หาลูกค้า retainer ใหม่
-    'vertical-expansion',       // เจาะ industry ใหม่ (โรงแรม, คลินิก, อสังหา, แฟรนไชส์)
-    'service-productization',   // เปลี่ยน service → productized/SaaS
-    'outbound-strategy',        // LinkedIn, email, referral, content marketing
-    'retention-upsell',         // เพิ่ม LTV ลูกค้าเดิม, upsell services
-    'competitive-advantage'     // AI automation, pricing, positioning vs agencies
+    'retainer-sales',           // ขาย retainer ให้ได้ 5 ราย (500K/เดือน)
+    'service-page-creation',    // สร้าง service pages ที่ยังขาด
+    'case-study-roi',           // เขียน case study มีตัวเลข ROI
+    'outbound-closing',         // LinkedIn/email/referral → ปิดดีล
+    'quick-win-revenue',        // โปรเจคที่ปิดได้ภายใน 2 สัปดาห์
+    'positioning-proof'         // สร้าง proof ว่า VXB เป็น Growth Partner จริง
   ],
 
-  // VXB Digital Growth Partner context
+  // VXB Phase 1 context — actionable, ไม่ใช่ฝันไกล
   tarsContext: `
-VisionXBrain (VXB) — Digital Growth Partner Agency
-เป้าหมาย: 100M/ปี (8.33M/เดือน)
+VisionXBrain (VXB) — กำลังเปลี่ยนจาก "รับทำเว็บ" → "Digital Growth Partner"
+เป้า Phase 1 (เดือน 1-3): 500K/เดือน = ทำเว็บ 3-5 งาน + retainer 5 ราย
 
-สถานะปัจจุบัน:
+สถานะตอนนี้:
 - เว็บ VXB: 700+ URLs (126 service pages, 77 location pages, 300+ blogs)
 - บริการ: Web Design (Webflow), SEO, CRO, Content
 - ราคา project: 80K-3M+
-- Proof: 30x booking, 24x orders, 3x sales (case studies)
-- Positioning เป้าหมาย: "Digital Growth Partner" (ไม่ใช่แค่รับทำเว็บ)
+- Proof: 30x booking, 24x orders, 3x sales
+- ลูกค้า retainer ปัจจุบัน: 0 ราย ← ต้องหาให้ได้ 5 ราย!
+- Case study ที่มี ROI ตัวเลข: 0 ← ต้องเขียน!
 
-Revenue Mix เป้าหมาย:
-- Enterprise Projects (2-10M/งาน): 48%
-- Monthly Retainer (30-80K/ลูกค้า): 30% → ต้องมี 50 ราย
-- SaaS / Productized: 18%
-- Training / Course: 4%
+บริการ retainer ที่พร้อมขาย (Oracle ทำงานได้เลย):
+- SEO Retainer: 19,900-49,900/เดือน (Oracle ทำ audit, content, report, tracking)
+- Content Marketing: 14,900-39,900/เดือน (Oracle เขียน blog, social post)
+- Monthly Report + Analytics: 9,900-19,900/เดือน (Oracle ดึง data, สร้าง report อัตโนมัติ)
+- CRO Ongoing: 19,900-39,900/เดือน (Oracle ทำ A/B test, heatmap analysis)
 
-Unfair Advantage:
-- Tar + Oracle (AI) = ทำงานแทนทีม 8-15 คน
-- Margin 85-95% (agency อื่น 30-40%)
-- ไม่ต้องจ้างคน — Oracle ทำ SEO, content, audit, report, coding, automation
+Service pages ที่ยังไม่มีบนเว็บ (ต้องสร้าง!):
+1. /services/seo-services — "รับทำ SEO" (keyword vol สูงมาก)
+2. /services/monthly-growth-packages — แพ็คเกจรายเดือน Bronze/Silver/Gold
+3. /services/content-marketing — "รับทำ Content Marketing"
+4. /services/digital-growth-partner — หน้าหลัก DGP concept
 
-บริการที่กำลังเปิดใหม่:
-- SEO Retainer (19,900-49,900/เดือน)
-- Content Marketing (14,900-39,900/เดือน)
-- Google Ads Management (15,000-50,000 + % ad spend)
-- Monthly Report + Analytics (9,900-19,900/เดือน)
-- AI Chatbot / Automation (29,900-99,900 setup + monthly)
+ลูกค้าเป้าหมาย Phase 1:
+- โรงแรม/ที่พัก chain (มี connection อยู่แล้ว)
+- คลินิกเสริมความงาม/ทันตกรรม (ต้องการ SEO + content มาก)
+- อสังหาริมทรัพย์ (budget สูง)
+- SME ที่มีเว็บแล้วแต่ไม่มีคนดูแล (retainer fit ที่สุด)
 
-ลูกค้าเป้าหมาย:
-- โรงแรม/ที่พัก chain
-- คลินิกเสริมความงาม/ทันตกรรม
-- อสังหาริมทรัพย์
-- แฟรนไชส์
-- SME ที่ต้องการโตออนไลน์
-- E-commerce brands
-
+Unfair Advantage: Tar + Oracle (AI) = ทำงานแทนทีม 8-15 คน, margin 85-95%
 Tech Stack: Webflow, Next.js, Railway, AI APIs, n8n
-ตลาด: ไทย (primary), SEA (expansion)
 `
 };
 
@@ -155,26 +148,29 @@ function setToggle(name, enabled) {
 async function researchTrends(category) {
   console.log(`[IDEAS] Researching trends in: ${category}`);
 
-  const researchPrompt = `คุณเป็น digital agency growth strategist ที่เก่งมาก
+  const researchPrompt = `คุณเป็น agency sales strategist ที่ช่วย VXB ปิดดีลและหารายได้ให้เร็วที่สุด
 
-หา 3 โอกาสเติบโตสำหรับ VisionXBrain ในหมวด "${category}" ที่:
-1. ทำให้ได้ลูกค้า retainer ใหม่ หรือเพิ่มรายได้จากลูกค้าเดิม
-2. เหมาะกับ agency ที่ใช้ AI ทำงานแทนทีมคน (margin 85-95%)
-3. สามารถเริ่มทำได้ทันที หรือภายใน 1-2 สัปดาห์
-4. เจาะตลาดไทย (SME, โรงแรม, คลินิก, อสังหา, แฟรนไชส์, E-commerce)
+VXB กำลังอยู่ Phase 1 (เดือน 1-3) เป้าหมาย: 500K/เดือน
+ต้องการ: ลูกค้า retainer 5 ราย + โปรเจคเว็บ 3-5 งาน
 
-Context ของ VisionXBrain:
+หา 3 actions ที่ทำได้ใน "${category}" เพื่อ:
+1. ปิดลูกค้า retainer ได้จริงภายใน 1-4 สัปดาห์
+2. สร้าง proof/case study ที่ช่วยปิดดีลถัดไป
+3. สร้าง service page หรือ content ที่ดึงลูกค้าเข้ามาเอง
+4. ห้ามเป็นไอเดีย SaaS/platform ที่ต้องสร้าง 3+ เดือน!
+
+Context:
 ${CONFIG.tarsContext}
 
 ตอบเป็น JSON array:
 [
   {
-    "trend": "โอกาส/กลยุทธ์",
-    "opportunity": "ทำเงินได้อย่างไร (retainer/project/upsell)",
-    "targetAudience": "กลุ่มลูกค้าเป้าหมายเฉพาะเจาะจง",
-    "competition": "low/medium/high",
-    "potentialRevenue": "ประมาณรายได้ต่อเดือนที่เพิ่มขึ้น",
-    "actionable": "ขั้นตอนที่ทำได้ทันที 1-2-3"
+    "action": "สิ่งที่ต้องทำ (เฉพาะเจาะจง ไม่ใช่ไอเดียลอยๆ)",
+    "expectedResult": "ผลลัพธ์ที่จะได้ (ลูกค้ากี่ราย/รายได้เท่าไหร่)",
+    "targetClient": "ลูกค้าเป้าหมายแบบเจาะจง (industry + ขนาด + pain)",
+    "timeToRevenue": "กี่วัน/สัปดาห์ถึงจะเห็นเงิน",
+    "steps": "ขั้นตอน 1-2-3 ที่ทำได้เลยวันนี้",
+    "revenuePerMonth": "ประมาณรายได้ต่อเดือน (บาท)"
   }
 ]
 
@@ -205,35 +201,39 @@ ${CONFIG.tarsContext}
 async function generateIdeas(trends) {
   console.log('[IDEAS] Generating ideas from trends...');
 
-  const ideaPrompt = `คุณเป็น digital agency growth strategist ที่ช่วย VisionXBrain หาลูกค้าและเพิ่มรายได้
+  const ideaPrompt = `คุณเป็น agency sales closer ที่ช่วย VXB หารายได้ให้เร็วที่สุด
 
 **สำคัญมาก: ตอบเป็นภาษาไทยทั้งหมด!**
+**สำคัญมาก: ห้ามเสนอ SaaS/platform/tool ที่ต้องสร้างนานกว่า 2 สัปดาห์!**
 
-จากโอกาสเหล่านี้:
+VXB เป้าหมายเดือนนี้: retainer 5 ราย + โปรเจค 3 งาน = 500K/เดือน
+
+จาก actions เหล่านี้:
 ${JSON.stringify(trends, null, 2)}
 
-สร้าง ${CONFIG.maxIdeasPerCycle} กลยุทธ์ที่ actionable สำหรับ VXB:
-1. ทำได้ทันที ไม่ต้องรอ (Oracle + Tar ลงมือได้เลย)
-2. เพิ่มรายได้ retainer/project อย่างน้อย 30-100K/เดือน
-3. ใช้ AI (Oracle) ทำงาน 80%+ → margin สูง
-4. ไม่ใช่ไอเดียลอยๆ — ต้องมีขั้นตอนชัดเจน
+สร้าง ${CONFIG.maxIdeasPerCycle} แผนปฏิบัติการที่ทำได้ทันที:
+1. ต้องระบุชัดว่าขายใคร ขายอะไร ราคาเท่าไหร่
+2. ต้องมีขั้นตอนที่ Tar/Oracle ทำได้เลยวันนี้
+3. ต้องเห็นเงินภายใน 1-4 สัปดาห์
+4. ห้ามเป็นไอเดียที่ต้อง "สร้างระบบ" ก่อน
 
-Context ของ VXB:
+Context:
 ${CONFIG.tarsContext}
 
 ตอบเป็น JSON array (ภาษาไทยทั้งหมด):
 [
   {
-    "name": "ชื่อกลยุทธ์ (สั้น ชัด)",
-    "tagline": "สรุป 1 บรรทัด",
-    "problem": "ปัญหาของลูกค้าเป้าหมายที่ VXB แก้ได้",
-    "solution": "VXB ทำอะไรให้ (service/package)",
-    "features": ["สิ่งที่ทำให้ลูกค้า 1", "สิ่งที่ทำให้ 2", "สิ่งที่ทำให้ 3"],
-    "techStack": ["Webflow", "Oracle AI", "..."],
-    "monetization": "รายได้: retainer X บาท/เดือน × Y ลูกค้า = Z บาท",
-    "mvpScope": "ขั้นตอนเริ่มต้นที่ทำได้ใน 1-2 สัปดาห์",
-    "estimatedHours": 8-40,
-    "targetUsers": "ลูกค้าเป้าหมายเฉพาะเจาะจง (industry + ขนาด + pain point)"
+    "name": "ชื่อแผน (สั้น ชัด เช่น 'ขาย SEO Retainer ให้คลินิก 5 แห่ง')",
+    "type": "retainer-sales | project-closing | service-page | case-study | outbound",
+    "tagline": "สรุป 1 บรรทัด (ต้องมีตัวเลขเป้าหมาย)",
+    "problem": "pain point ที่ลูกค้ามี (เฉพาะเจาะจง ไม่ใช่กว้างๆ)",
+    "solution": "VXB ขายอะไร + ราคาเท่าไหร่",
+    "targetClient": "ลูกค้าเป้าหมาย (industry + ขนาด + จำนวนเท่าไหร่)",
+    "revenueTarget": "รายได้เป้าหมาย/เดือน (ตัวเลขชัด)",
+    "steps": ["ขั้นตอน 1 (ทำวันนี้)", "ขั้นตอน 2 (สัปดาห์นี้)", "ขั้นตอน 3 (สัปดาห์หน้า)"],
+    "timeToRevenue": "กี่วัน/สัปดาห์",
+    "oracleCanDo": "Oracle ช่วยอะไรได้บ้าง (เฉพาะเจาะจง)",
+    "tarMustDo": "Tar ต้องทำอะไรเอง (เฉพาะเจาะจง)"
   }
 ]
 
@@ -264,35 +264,34 @@ ${CONFIG.tarsContext}
 async function scoreIdea(idea) {
   console.log(`[IDEAS] Scoring idea: ${idea.name}`);
 
-  const scorePrompt = `คุณเป็น agency growth advisor ที่ประเมินกลยุทธ์สำหรับ VisionXBrain
+  const scorePrompt = `คุณเป็น agency revenue advisor ที่ช่วยประเมินว่าแผนไหนจะทำเงินได้เร็วที่สุด
 
-ประเมินกลยุทธ์นี้:
+ประเมินแผนนี้:
 ${JSON.stringify(idea, null, 2)}
 
-ให้คะแนน 0-100 ในแต่ละด้าน:
+VXB เป้าหมาย Phase 1: 500K/เดือน ภายใน 3 เดือน (retainer 5 ราย + โปรเจค 3-5 งาน)
 
-1. **Feasibility** (ทำได้จริงด้วย Tar + Oracle AI ไหม? ไม่ต้องจ้างคนเพิ่ม?)
-2. **Market Demand** (ลูกค้าไทยต้องการจริงไหม? มี pain point ชัดเจน?)
-3. **Revenue Potential** (สร้างรายได้ retainer/project ได้เท่าไหร่ต่อเดือน?)
-4. **Scalability** (ขยายได้ไหม? เพิ่มลูกค้าโดยไม่ต้องเพิ่มคน?)
-5. **Speed to Revenue** (เริ่มหาเงินได้เร็วแค่ไหน? ภายใน 1-4 สัปดาห์?)
-6. **VXB Fit** (สอดคล้องกับ positioning "Digital Growth Partner" ไหม? เสริม service เดิมไหม?)
+ให้คะแนน 0-100 โดยถ่วงน้ำหนัก "ทำเงินได้เร็ว" มากที่สุด:
+
+1. **speedToRevenue** (น้ำหนัก 30%) — เห็นเงินเร็วแค่ไหน? ภายใน 1-2 สัปดาห์ = สูง, 1+ เดือน = ต่ำ
+2. **feasibility** (น้ำหนัก 25%) — Tar + Oracle ทำได้เลยไหม? ไม่ต้องจ้างคน/สร้างระบบ?
+3. **revenuePotential** (น้ำหนัก 20%) — ได้เงินเท่าไหร่/เดือน? retainer ดีกว่า one-time
+4. **marketDemand** (น้ำหนัก 15%) — ลูกค้าไทยมี pain point นี้จริงไหม? ยอมจ่ายไหม?
+5. **vxbFit** (น้ำหนัก 10%) — ตรงกับ positioning "Digital Growth Partner" ไหม?
 
 ตอบเป็น JSON:
 {
   "scores": {
-    "feasibility": 0-100,
-    "marketDemand": 0-100,
-    "revenuePotential": 0-100,
-    "scalability": 0-100,
     "speedToRevenue": 0-100,
+    "feasibility": 0-100,
+    "revenuePotential": 0-100,
+    "marketDemand": 0-100,
     "vxbFit": 0-100
   },
-  "totalScore": 0-100 (weighted average),
-  "recommendation": "GO / MAYBE / SKIP",
-  "reasoning": "เหตุผลสั้นๆ ว่าทำไม VXB ควร/ไม่ควรทำ",
-  "risks": ["ความเสี่ยง 1", "ความเสี่ยง 2"],
-  "suggestions": ["ข้อเสนอแนะเพื่อเพิ่มโอกาสสำเร็จ"]
+  "totalScore": 0-100 (weighted average ตามน้ำหนักข้างบน),
+  "recommendation": "DO NOW / PLAN / SKIP",
+  "reasoning": "เหตุผล 1-2 ประโยค ว่าทำไมควร/ไม่ควรทำตอนนี้",
+  "nextStep": "สิ่งแรกที่ต้องทำเลย (1 ขั้นตอนเดียว)"
 }
 
 ตอบ JSON เท่านั้น:`;
