@@ -62,5 +62,42 @@
     "onboarded": true,
     "createdAt": "2026-02-05T04:30:00.000Z",
     "addedBy": "Tars"
+  },
+  "telegram:8534538790": {
+    "userId": "telegram:8534538790",
+    "telegramChatId": "8534538790",
+    "name": "Natiya",
+    "fullName": "Natiya Pankaew",
+    "role": "partner",
+    "permissions": {
+      "level": 80,
+      "access": [
+        "bookings",
+        "revenue",
+        "pricing_strategy",
+        "daily_briefing",
+        "hotel_operations"
+      ],
+      "dailyBriefing": true,
+      "hotelUpdates": true,
+      "pricingStrategy": true,
+      "investmentAlerts": false,
+      "businessOpportunities": false
+    },
+    "preferences": {
+      "language": "th",
+      "dailyBriefing": true,
+      "hotelUpdates": true,
+      "callStyle": "polite"
+    },
+    "subscriptions": {
+      "dailyPricingStrategy": true,
+      "checkInAlerts": true,
+      "occupancyUpdates": true,
+      "weeklyRevenue": true
+    },
+    "onboarded": true,
+    "createdAt": "2026-02-09T04:33:00.000Z",
+    "addedBy": "Tars"
   }
 }

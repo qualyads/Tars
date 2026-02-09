@@ -23,7 +23,19 @@
     "enabled": true,
     "bot_token": "8507346052:AAHbfDqGO7H-VGoIJqc7pcZ2e4gx1MxJLLM",
     "owner_id": "5305207553",
-    "webhook_path": "/webhook/telegram"
+    "webhook_path": "/webhook/telegram",
+    "hotel_team": [
+      {
+        "chat_id": "5305207553",
+        "name": "Tars",
+        "role": "owner"
+      },
+      {
+        "chat_id": "8534538790",
+        "name": "Natiya",
+        "role": "partner"
+      }
+    ]
   },
 
   "voice": {

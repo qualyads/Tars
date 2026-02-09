@@ -114,6 +114,35 @@ async function sendLong(channel, chatId, message) {
 }
 
 /**
+ * Notify hotel team (owner + subscribers) via Telegram
+ * Used for hotel reports, daily summaries, heartbeat alerts
+ * @param {string} message - Message to send
+ */
+async function notifyHotelTeam(message) {
+  const team = config.telegram?.hotel_team || [];
+  const results = [];
+
+  for (const member of team) {
+    try {
+      await telegram.sendLong(member.chat_id, message);
+      results.push({ name: member.name, success: true });
+      console.log(`[GATEWAY] Hotel report sent to ${member.name}`);
+    } catch (error) {
+      console.error(`[GATEWAY] Failed to notify ${member.name}:`, error.message);
+      results.push({ name: member.name, success: false, error: error.message });
+    }
+  }
+
+  // Fallback: if no hotel_team configured, send to owner only
+  if (team.length === 0 && config.telegram?.owner_id) {
+    await telegram.notifyOwner(message);
+    results.push({ name: 'owner', success: true });
+  }
+
+  return results;
+}
+
+/**
  * Notify owner across preferred channel(s)
  * @param {string} message - Message to send
  * @param {string|string[]} channels - Which channels to use (default: all configured)
@@ -233,6 +262,7 @@ export default {
   send,
   sendLong,
   notifyOwner,
+  notifyHotelTeam,
   getConfiguredChannels,
   isOwner,
   getUserDisplayName,

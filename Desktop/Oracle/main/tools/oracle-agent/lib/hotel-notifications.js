@@ -13,6 +13,7 @@
 
 import telegram from './telegram.js';
 import beds24 from './beds24.js';
+import gateway from './gateway.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const config = require('../config.json');
@@ -77,7 +78,7 @@ function formatDate(dateStr) {
 // ============================================================
 
 /**
- * Send notification if Telegram is configured
+ * Send notification to hotel team (owner + subscribers)
  */
 async function notify(message) {
   if (!telegram.isConfigured()) {
@@ -86,8 +87,8 @@ async function notify(message) {
   }
 
   try {
-    await telegram.notifyOwner(message);
-    console.log('[HOTEL-NOTIFY] Sent:', message.substring(0, 50) + '...');
+    await gateway.notifyHotelTeam(message);
+    console.log('[HOTEL-NOTIFY] Sent to hotel team:', message.substring(0, 50) + '...');
     return true;
   } catch (error) {
     console.error('[HOTEL-NOTIFY] Failed to send:', error.message);

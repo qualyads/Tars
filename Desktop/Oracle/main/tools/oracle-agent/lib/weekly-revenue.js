@@ -442,8 +442,8 @@ async function sendLineNotification(report, config) {
   }
 
   try {
-    await gateway.notifyOwner(msg);
-    console.log('[REVENUE] Notification sent');
+    await gateway.notifyHotelTeam(msg);
+    console.log('[REVENUE] Notification sent to hotel team');
   } catch (e) {
     console.error('[REVENUE] Notification error:', e.message);
   }

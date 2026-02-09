@@ -5295,24 +5295,52 @@ cron.schedule('0 8-21 * * *', async () => {
 // =============================================================================
 
 cron.schedule('0 10 * * *', async () => {
-  console.log('[LEAD-FINDER] Daily lead search triggered');
+  console.log('[LEAD-FINDER] ⏰ Daily lead search CRON TRIGGERED at', new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }));
   try {
     const result = await leadFinder.runDaily();
-    console.log('[LEAD-FINDER] Daily result:', result);
+    console.log('[LEAD-FINDER] ✅ Daily result:', JSON.stringify(result));
   } catch (error) {
-    console.error('[LEAD-FINDER] Daily run error:', error.message);
+    console.error('[LEAD-FINDER] ❌ Daily run error:', error.message, error.stack);
   }
 }, { timezone: config.agent.timezone });
 
 // Lead Finder: Check replies (ทุก 3 ชม. ระหว่าง 9:00-18:00)
 cron.schedule('0 9,12,15,18 * * *', async () => {
-  console.log('[LEAD-FINDER] Checking for replies...');
+  console.log('[LEAD-FINDER] 🔍 Reply check CRON TRIGGERED at', new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }));
   try {
     await leadFinder.checkReplies();
   } catch (error) {
     console.error('[LEAD-FINDER] Reply check error:', error.message);
   }
 }, { timezone: config.agent.timezone });
+
+// Lead Finder: Startup catchup — ถ้า server เพิ่ง boot และยังไม่เคย run วันนี้ → run เลย
+setTimeout(async () => {
+  try {
+    const stats = leadFinder.getStats();
+    const lastRun = stats.lastRun ? new Date(stats.lastRun) : null;
+    const now = new Date();
+    const today = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+    today.setHours(0, 0, 0, 0);
+
+    const ranToday = lastRun && new Date(lastRun.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' })) >= today;
+
+    if (!ranToday) {
+      const bangkokHour = parseInt(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok', hour: 'numeric', hour12: false }));
+      if (bangkokHour >= 10 && bangkokHour < 22) {
+        console.log(`[LEAD-FINDER] 🚀 Startup catchup — lastRun: ${stats.lastRun || 'never'}, running now...`);
+        const result = await leadFinder.runDaily();
+        console.log('[LEAD-FINDER] ✅ Startup catchup result:', JSON.stringify(result));
+      } else {
+        console.log(`[LEAD-FINDER] ⏳ Startup catchup skipped — Bangkok hour: ${bangkokHour} (will run at 10:00)`);
+      }
+    } else {
+      console.log(`[LEAD-FINDER] ✅ Already ran today: ${stats.lastRun}`);
+    }
+  } catch (error) {
+    console.error('[LEAD-FINDER] Startup catchup error:', error.message);
+  }
+}, 30000); // 30 วินาทีหลัง boot (ให้ระบบอื่น init ก่อน)
 
 // =============================================================================
 // LEAD FINDER API — Manual control + stats
@@ -5344,10 +5372,132 @@ app.post('/api/leads/update', (req, res) => {
   }
 });
 
+let leadFinderRunning = false;
+let leadFinderLastResult = null;
+
 app.post('/api/leads/run', async (req, res) => {
-  res.json({ message: 'Lead finder started' });
+  if (leadFinderRunning) {
+    return res.json({ message: 'Lead finder already running', status: 'busy' });
+  }
+  leadFinderRunning = true;
+  res.json({ message: 'Lead finder started', status: 'started' });
   // Run async (don't block response)
-  leadFinder.runDaily().catch(e => console.error('[LEAD-FINDER] Manual run error:', e.message, e.stack));
+  try {
+    leadFinderLastResult = await leadFinder.runDaily();
+  } catch (e) {
+    leadFinderLastResult = { error: e.message };
+    console.error('[LEAD-FINDER] Manual run error:', e.message, e.stack);
+  } finally {
+    leadFinderRunning = false;
+  }
+});
+
+app.get('/api/leads/status', (req, res) => {
+  const stats = leadFinder.getStats();
+  const bangkokTime = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+  res.json({
+    running: leadFinderRunning,
+    lastResult: leadFinderLastResult,
+    lastRun: stats.lastRun,
+    nextCron: '10:00 Bangkok daily',
+    serverTime: bangkokTime,
+    stats
+  });
+});
+
+// Export full leads data (สำหรับ backup ก่อน deploy)
+app.get('/api/leads/export', async (req, res) => {
+  try {
+    const fs = await import('fs');
+    const { fileURLToPath } = await import('url');
+    const { dirname: dn, join: jn } = await import('path');
+    const __dir = dn(fileURLToPath(import.meta.url));
+    const leadsPath = jn(__dir, 'data', 'leads.json');
+    const data = JSON.parse(fs.readFileSync(leadsPath, 'utf-8'));
+    res.json(data);
+  } catch (e) {
+    // Fallback: build from getLeads
+    const leads = leadFinder.getLeads();
+    const stats = leadFinder.getStats();
+    res.json({ leads, processedDomains: [], lastRun: stats.lastRun });
+  }
+});
+
+// Import/merge leads data (กู้ข้อมูลหลัง deploy)
+app.post('/api/leads/import', async (req, res) => {
+  try {
+    const incoming = req.body;
+    if (!incoming || !incoming.leads) {
+      return res.status(400).json({ error: 'Need { leads: [...] }' });
+    }
+
+    const fs = await import('fs');
+    const { fileURLToPath } = await import('url');
+    const { dirname: dn, join: jn } = await import('path');
+    const __dir = dn(fileURLToPath(import.meta.url));
+    const leadsPath = jn(__dir, 'data', 'leads.json');
+
+    // Replace mode: overwrite entire leads.json
+    if (incoming.replace) {
+      fs.writeFileSync(leadsPath, JSON.stringify(incoming, null, 2));
+      console.log(`[LEADS-IMPORT] REPLACE mode: ${incoming.leads.length} leads`);
+      return res.json({ ok: true, mode: 'replace', total: incoming.leads.length });
+    }
+
+    let current;
+    try {
+      current = JSON.parse(fs.readFileSync(leadsPath, 'utf-8'));
+    } catch {
+      current = { leads: [], processedDomains: [], lastRun: null };
+    }
+
+    let merged = 0;
+    let added = 0;
+    for (const inLead of incoming.leads) {
+      const id = inLead.place_id || inLead.domain || inLead.email;
+      if (!id) continue;
+
+      const existing = current.leads.find(l =>
+        (l.place_id && inLead.place_id && l.place_id === inLead.place_id) ||
+        (l.domain && inLead.domain && l.domain === inLead.domain) ||
+        (l.email && inLead.email && l.email === inLead.email)
+      );
+
+      if (existing) {
+        // Merge tracking data ที่อาจหายไป
+        if (inLead.emailTrackingId && !existing.emailTrackingId) existing.emailTrackingId = inLead.emailTrackingId;
+        if (inLead.emailClicked && !existing.emailClicked) {
+          existing.emailClicked = inLead.emailClicked;
+          existing.emailClickedAt = inLead.emailClickedAt;
+          existing.emailClickCount = inLead.emailClickCount;
+          existing.lastClickAt = inLead.lastClickAt;
+        }
+        if (inLead.emailOpened && !existing.emailOpened) existing.emailOpened = inLead.emailOpened;
+        if (inLead.threadId && !existing.threadId) existing.threadId = inLead.threadId;
+        merged++;
+      } else {
+        // Lead ไม่มีใน local — เพิ่มเข้าไป
+        current.leads.push(inLead);
+        if (inLead.place_id && !current.processedDomains.includes(inLead.place_id)) {
+          current.processedDomains.push(inLead.place_id);
+        }
+        added++;
+      }
+    }
+
+    // Merge processedDomains
+    if (incoming.processedDomains) {
+      for (const pd of incoming.processedDomains) {
+        if (!current.processedDomains.includes(pd)) current.processedDomains.push(pd);
+      }
+    }
+
+    fs.writeFileSync(leadsPath, JSON.stringify(current, null, 2));
+    console.log(`[LEADS-IMPORT] Merged: ${merged}, Added: ${added}, Total: ${current.leads.length}`);
+    res.json({ ok: true, merged, added, total: current.leads.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Debug: test search only (sync, returns results)
@@ -5838,28 +5988,34 @@ app.post('/api/email/sync-history', async (req, res) => {
 
       const toDomain = toEmail.split('@').pop();
 
-      // Extract business name from subject
+      // Extract business name from subject — รองรับทุก template ที่ใช้
       let bizName = '';
-      // Try various patterns
       const patterns = [
-        /(?:คำแนะนำ(?:สำหรับ)?)\s*(.+?)(?:\s*[—–\-:|]|$)/,
-        /(?:เว็บไซต์)\s*(.+?)(?:\s*[—–\-:|]|$)/,
-        /(.+?)\s*(?:—|–|\-)\s*(?:VisionXBrain|วิเคราะห์|report|เว็บไซต์)/i,
+        // Current templates (2026-02-08+)
+        /เพิ่มลูกค้า(?:ให้|ที่)\s*(.+?)\s*(?:ด้วย|—|–|\-|$)/,
+        /เคล็ดลับ(?:เพิ่มลูกค้า)?(?:ที่|สำหรับ)\s*(.+?)\s*(?:ด้วย|ควร|—|–|\-|$)/,
+        /(?:เพื่อ)?ขยายธุรกิจ\s*(.+?)\s*(?:ด้วย|—|–|\-|$)/,
+        /ดึงดูดลูกค้า(?:ให้|ที่)\s*(.+?)\s*(?:ด้วย|—|–|\-|$)/,
+        // Legacy templates
+        /เว็บไซต์\s*(.+?)\s*(?:—|–|\-:|มี|$)/,
+        /คำแนะนำ(?:สำหรับ)?\s*(.+?)(?:\s*[—–\-:|]|$)/,
+        /(.+?)\s*(?:—|–|\-)\s*(?:VisionXBrain|วิเคราะห์|report|เว็บไซต์|มี\s*\d)/i,
       ];
       for (const pat of patterns) {
         const m = subject.match(pat);
         if (m) { bizName = m[1].trim(); break; }
       }
-      if (!bizName) bizName = subject.split(/[—–\-:|]/)[0].trim() || toDomain;
+      // Last resort: ดึงแค่ส่วนแรกก่อน — หรือ — (จำกัด 50 ตัวอักษร)
+      if (!bizName) {
+        const firstPart = subject.split(/[—–|]/)[0].trim();
+        bizName = firstPart.length > 50 ? firstPart.substring(0, 50) : (firstPart || toDomain);
+      }
 
       // Create new lead entry from Gmail history
+      const isFreeEmail = ['gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com', 'live.com'].includes(toDomain);
       const newLead = {
-        domain: toDomain === 'gmail.com' || toDomain === 'hotmail.com' || toDomain === 'yahoo.com'
-          ? bizName.replace(/\s+/g, '-').toLowerCase() + '.' + toDomain
-          : toDomain,
-        url: toDomain === 'gmail.com' || toDomain === 'hotmail.com' || toDomain === 'yahoo.com'
-          ? ''
-          : `https://${toDomain}`,
+        domain: isFreeEmail ? null : toDomain,
+        url: isFreeEmail ? '' : `https://${toDomain}`,
         industry: '',
         businessName: bizName,
         businessNameEn: '',
@@ -6012,10 +6168,10 @@ const server = app.listen(PORT, async () => {
   if (config.heartbeat?.enabled) {
     heartbeatManager = new HeartbeatManager(config.heartbeat);
 
-    // Set notification callback to all channels
+    // Set notification callback to hotel team (owner + subscribers)
     heartbeatManager.setNotifyCallback(async (message) => {
-      console.log('[HEARTBEAT] Sending alert to all channels...');
-      await gateway.notifyOwner(message);
+      console.log('[HEARTBEAT] Sending alert to hotel team...');
+      await gateway.notifyHotelTeam(message);
       logSystemEvent('heartbeat', 'alert_sent', { length: message.length });
     });
 
@@ -6107,7 +6263,7 @@ const server = app.listen(PORT, async () => {
     try {
       const digest = await dailyDigest.generateMorning();
       if (digest.output && digest.output !== '✅ ไม่มีอะไรต้องรายงาน') {
-        await gateway.notifyOwner(`📬 Morning Briefing\n\n${digest.output}`);
+        await gateway.notifyHotelTeam(`📬 Morning Briefing\n\n${digest.output}`);
         logSystemEvent('digest', 'morning_sent', { id: digest.id });
       }
     } catch (err) {
@@ -6121,7 +6277,7 @@ const server = app.listen(PORT, async () => {
     try {
       const digest = await dailyDigest.generateEvening();
       if (digest.output && digest.output !== '✅ ไม่มีอะไรต้องรายงาน') {
-        await gateway.notifyOwner(`📊 Evening Summary\n\n${digest.output}`);
+        await gateway.notifyHotelTeam(`📊 Evening Summary\n\n${digest.output}`);
         logSystemEvent('digest', 'evening_sent', { id: digest.id });
       }
     } catch (err) {
@@ -6162,12 +6318,20 @@ const server = app.listen(PORT, async () => {
             if (existingEmails.has(toEmail)) continue;
             const toDomain = toEmail.split('@').pop();
             let bizName = '';
-            const patterns = [/(?:คำแนะนำ(?:สำหรับ)?)\s*(.+?)(?:\s*[—–\-:|]|$)/, /(?:เว็บไซต์)\s*(.+?)(?:\s*[—–\-:|]|$)/, /(.+?)\s*(?:—|–|\-)\s*(?:VisionXBrain|วิเคราะห์|report)/i];
+            const patterns = [
+              /เพิ่มลูกค้า(?:ให้|ที่)\s*(.+?)\s*(?:ด้วย|—|–|\-|$)/,
+              /เคล็ดลับ(?:เพิ่มลูกค้า)?(?:ที่|สำหรับ)\s*(.+?)\s*(?:ด้วย|ควร|—|–|\-|$)/,
+              /(?:เพื่อ)?ขยายธุรกิจ\s*(.+?)\s*(?:ด้วย|—|–|\-|$)/,
+              /ดึงดูดลูกค้า(?:ให้|ที่)\s*(.+?)\s*(?:ด้วย|—|–|\-|$)/,
+              /เว็บไซต์\s*(.+?)\s*(?:—|–|\-:|มี|$)/,
+              /คำแนะนำ(?:สำหรับ)?\s*(.+?)(?:\s*[—–\-:|]|$)/,
+              /(.+?)\s*(?:—|–|\-)\s*(?:VisionXBrain|วิเคราะห์|report)/i,
+            ];
             for (const pat of patterns) { const m = subject.match(pat); if (m) { bizName = m[1].trim(); break; } }
-            if (!bizName) bizName = subject.split(/[—–\-:|]/)[0].trim() || toDomain;
-            const isFreeMail = ['gmail.com','hotmail.com','yahoo.com','icloud.com'].includes(toDomain);
+            if (!bizName) { const fp = subject.split(/[—–|]/)[0].trim(); bizName = fp.length > 50 ? fp.substring(0,50) : (fp || toDomain); }
+            const isFreeMail = ['gmail.com','hotmail.com','yahoo.com','icloud.com','outlook.com','live.com'].includes(toDomain);
             ld.leads.push({
-              domain: isFreeMail ? bizName.replace(/\s+/g, '-').toLowerCase() + '.' + toDomain : toDomain,
+              domain: isFreeMail ? null : toDomain,
               url: isFreeMail ? '' : `https://${toDomain}`,
               industry: '', businessName: bizName, businessNameEn: '', emails: [toEmail], email: toEmail,
               phones: [], lineId: null, facebook: null, address: '', googleMapsLink: null,
