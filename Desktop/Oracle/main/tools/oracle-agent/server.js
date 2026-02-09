@@ -837,10 +837,11 @@ app.post('/webhook/line', async (req, res) => {
         let contextString = '';
 
         // Real-time Context (Standard: ทุก feature ต้องมี!)
+        const hasHotelAccess = isOwner || userProfile.canAccess?.bookings || userProfile.canAccess?.hotel_operations;
         try {
           const rtContext = await realtimeContext.generateRealtimeContext({
             includeInvestment: isOwner, // Only show investment to owner
-            includeHotel: isOwner
+            includeHotel: isOwner || hasHotelAccess // Hotel team sees hotel data
           });
           if (rtContext) {
             contextString += rtContext;
@@ -1702,6 +1703,14 @@ ${shouldDeploy ? '- จะ deploy ขึ้น Railway เมื่อเสร�
 });
 
 // =============================================================================
+// HELPER: Check if user is hotel team member
+// =============================================================================
+function isHotelTeamMember(chatId) {
+  const team = config.telegram?.hotel_team || [];
+  return team.some(m => m.chat_id === chatId?.toString());
+}
+
+// =============================================================================
 // TELEGRAM WEBHOOK
 // =============================================================================
 
@@ -1735,8 +1744,9 @@ app.post('/webhook/telegram', async (req, res) => {
       // Load conversation history
       const history = await memory.getConversation(chatId);
 
-      // Check if this is owner
+      // Check if this is owner or hotel team
       const isOwner = userId === config.telegram?.owner_id?.toString();
+      const isTeamMember = isHotelTeamMember(chatId);
 
       // Phase 2: Get intelligent context
       const context = await memory.getIntelligentContext();
@@ -1751,8 +1761,8 @@ app.post('/webhook/telegram', async (req, res) => {
       // Real-time Context (Standard: ทุก feature ต้องมี!)
       try {
         const rtContext = await realtimeContext.generateRealtimeContext({
-          includeInvestment: isOwner,
-          includeHotel: isOwner
+          includeInvestment: isOwner, // Only owner sees investment
+          includeHotel: isOwner || isTeamMember // Hotel team sees hotel data
         });
         if (rtContext) {
           contextString += rtContext;
@@ -1778,9 +1788,18 @@ app.post('/webhook/telegram', async (req, res) => {
       ];
 
       // Get response from Claude
-      const systemPrompt = SYSTEM_PROMPT +
-        (isOwner ? '\n\nนี่คือข้อความจาก Tars (เจ้าของ) ผ่าน Telegram - สามารถพูดคุยได้ตรงๆ' : '\n\nนี่คือข้อความจากผู้ใช้ทาง Telegram - ตอบอย่างสุภาพและเป็นมืออาชีพ') +
-        contextString;
+      // Build role-specific system prompt
+      let rolePrompt;
+      if (isOwner) {
+        rolePrompt = '\n\nนี่คือข้อความจาก Tars (เจ้าของ) ผ่าน Telegram - สามารถพูดคุยได้ตรงๆ';
+      } else if (isTeamMember) {
+        const member = config.telegram.hotel_team.find(m => m.chat_id === chatId);
+        rolePrompt = `\n\nนี่คือข้อความจาก ${member?.name || 'ทีมโรงแรม'} (${member?.role || 'partner'}) ผ่าน Telegram - สามารถตอบเรื่องที่พัก booking check-in check-out occupancy revenue ได้ทั้งหมด ตอบสุภาพ`;
+      } else {
+        rolePrompt = '\n\nนี่คือข้อความจากผู้ใช้ทาง Telegram - ตอบอย่างสุภาพและเป็นมืออาชีพ';
+      }
+
+      const systemPrompt = SYSTEM_PROMPT + rolePrompt + contextString;
 
       const response = await claude.chat(messages, {
         system: systemPrompt
