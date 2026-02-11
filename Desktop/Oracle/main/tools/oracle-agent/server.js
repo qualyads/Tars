@@ -178,7 +178,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Email Dashboard — static React app
 // Old paths → redirect to new
@@ -189,6 +189,7 @@ app.get('/costs*', (req, res) => res.redirect(301, '/vision/email/costs/'));
 app.use('/vision/email/costs', express.static(join(__dirname, 'public/vision/email/costs')));
 app.use('/vision/email', express.static(join(__dirname, 'public/vision/email')));
 app.use('/vision/growthstrategy', express.static(join(__dirname, 'public/vision/growthstrategy')));
+app.use('/vision/analytics', express.static(join(__dirname, 'public/vision/analytics')));
 
 // Heartbeat Manager instance
 let heartbeatManager = null;
@@ -4263,6 +4264,29 @@ app.get('/api/ga4/trends', async (req, res) => {
   }
 });
 
+app.get('/api/ga4/landing', async (req, res) => {
+  try {
+    const { startDate, endDate, limit } = req.query;
+    const data = await ga4.runReport({
+      dateRanges: [{ startDate: startDate || '28daysAgo', endDate: endDate || 'today' }],
+      dimensions: [{ name: 'landingPage' }],
+      metrics: [
+        { name: 'sessions' },
+        { name: 'totalUsers' },
+        { name: 'bounceRate' },
+        { name: 'engagementRate' },
+        { name: 'averageSessionDuration' },
+        { name: 'keyEvents' },
+      ],
+      orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+      limit: parseInt(limit) || 20,
+    });
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get('/api/ga4/conversions', async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
@@ -6426,6 +6450,11 @@ app.get('/vision/email/*', (req, res) => {
     return res.sendFile(join(__dirname, 'public/vision/email/costs/index.html'));
   }
   res.sendFile(join(__dirname, 'public/vision/email/index.html'));
+});
+
+// Analytics Dashboard SPA fallback
+app.get('/vision/analytics/*', (req, res) => {
+  res.sendFile(join(__dirname, 'public/vision/analytics/index.html'));
 });
 
 // Growth Strategy Dashboard SPA fallback
