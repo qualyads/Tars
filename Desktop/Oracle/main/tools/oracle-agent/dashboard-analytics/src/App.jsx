@@ -11,37 +11,40 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@relume_io/relume-ui';
 import {
   BiBarChartAlt2,
+  BiCheckCircle,
   BiCog,
+  BiDotsHorizontalRounded,
+  BiDollar,
+  BiDownArrowAlt,
   BiEnvelope,
-  BiLineChart,
+  BiErrorCircle,
+  BiFile,
+  BiGroup,
+  BiHelpCircle,
+  BiInfoCircle,
   BiPieChartAlt2,
   BiRefresh,
   BiRocket,
-  BiUpArrowAlt,
-  BiDownArrowAlt,
-  BiErrorCircle,
-  BiCheckCircle,
-  BiInfoCircle,
-  BiGroup,
-  BiFile,
-  BiTime,
-  BiXCircle,
-  BiTrendingUp,
+  BiSearch,
   BiSearchAlt,
   BiTargetLock,
-  BiDollar,
+  BiTime,
+  BiTrendingUp,
+  BiUpArrowAlt,
+  BiXCircle,
 } from 'react-icons/bi';
 
 const API = window.location.origin;
@@ -53,8 +56,8 @@ function fmtNum(n) {
 }
 
 function fmtDuration(secs) {
-  if (!secs) return '0 วินาที';
-  if (secs < 60) return Math.round(secs) + ' วินาที';
+  if (!secs) return '0 วิ';
+  if (secs < 60) return Math.round(secs) + ' วิ';
   return Math.floor(secs / 60) + ' นาที';
 }
 
@@ -114,29 +117,34 @@ const PERIOD_LABELS = {
   '90daysAgo': '90 วัน',
 };
 
-// ============ SIDEBAR NAV ============
-const sidebarMenu = [
+// ============ SIDEBAR NAV (ApplicationShell3 pattern) ============
+const menuItems = [
   { title: 'รายงานเว็บ', url: '/vision/analytics/', icon: BiBarChartAlt2, active: true },
   { title: 'แผนเติบโต', url: '/vision/growthstrategy/', icon: BiRocket },
   { title: 'อีเมลลูกค้า', url: '/vision/email/', icon: BiEnvelope },
   { title: 'ค่าใช้จ่าย', url: '/costs/', icon: BiDollar },
 ];
 
-// ============ APP SIDEBAR (Shell 3 Pattern) ============
+const footerItems = [
+  { title: 'Support', url: '#', icon: BiHelpCircle },
+  { title: 'Settings', url: '#', icon: BiCog },
+];
+
+// ============ APP SIDEBAR (ApplicationShell3 exact pattern) ============
 function AppSidebar({ children }) {
   return (
     <SidebarProvider>
       <Sidebar className="py-6" closeButtonClassName="fixed top-4 right-4 text-white">
         <SidebarHeader className="hidden lg:block">
-          <a href="/vision/analytics/" className="flex items-center gap-2 text-lg font-bold">
-            <BiPieChartAlt2 className="size-6 text-neutral-dark" />
-            <span>VXB Report</span>
+          <a href="/vision/analytics/" className="flex items-center gap-2">
+            <BiPieChartAlt2 className="size-6" />
+            <span className="text-lg font-bold">VXB Report</span>
           </a>
         </SidebarHeader>
         <SidebarContent className="mt-6">
           <SidebarMenu>
-            {sidebarMenu.map((item, i) => (
-              <SidebarMenuItem key={i}>
+            {menuItems.map((item, index) => (
+              <SidebarMenuItem key={index}>
                 <SidebarMenuButton asChild data-active={item.active || false}>
                   <a href={item.url} className="flex w-full items-center">
                     <item.icon className="size-5" />
@@ -148,8 +156,17 @@ function AppSidebar({ children }) {
           </SidebarMenu>
         </SidebarContent>
         <SidebarFooter className="pb-6 lg:pb-0">
-          <div className="px-2 text-center text-xs text-neutral">
-            Oracle Agent — VisionXBrain
+          <div>
+            {footerItems.map((item, index) => (
+              <SidebarMenuItem key={index}>
+                <SidebarMenuButton asChild>
+                  <a href={item.url} className="flex w-full items-center">
+                    <item.icon />
+                    <span>{item.title}</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
           </div>
         </SidebarFooter>
       </Sidebar>
@@ -158,14 +175,15 @@ function AppSidebar({ children }) {
   );
 }
 
-// ============ TOPBAR (Shell 3 Pattern) ============
+// ============ TOPBAR (ApplicationShell3 exact pattern) ============
 function Topbar({ period, setPeriod, onRefresh, refreshing }) {
   return (
     <>
-      {/* Desktop topbar */}
       <div className="sticky top-0 z-30 hidden h-auto min-h-16 w-full items-center border-b border-border-primary bg-white px-6 md:min-h-18 lg:flex lg:px-8">
         <div className="mx-auto grid size-full grid-cols-1 items-center gap-4 lg:grid-cols-[1fr_max-content] lg:justify-between lg:justify-items-stretch">
-          <div className="text-base font-semibold">รายงานเว็บ VisionXBrain</div>
+          <div className="hidden w-full max-w-md lg:block">
+            <h1 className="text-base font-semibold">รายงานเว็บ VisionXBrain</h1>
+          </div>
           <div className="flex items-center gap-3">
             <select
               className="rounded border border-border-primary bg-white px-3 py-2 text-sm"
@@ -185,11 +203,12 @@ function Topbar({ period, setPeriod, onRefresh, refreshing }) {
         </div>
       </div>
 
-      {/* Mobile topbar */}
       <div className="fixed left-0 right-0 top-0 z-30 flex min-h-16 w-full items-center justify-between border-b border-border-primary bg-white px-6 lg:hidden">
         <div className="flex items-center gap-4">
           <SidebarTrigger />
-          <span className="text-sm font-semibold">VXB Report</span>
+          <a href="/vision/analytics/" className="flex items-center">
+            <span className="text-sm font-bold">VXB Report</span>
+          </a>
         </div>
         <Button variant="secondary" size="sm" onClick={onRefresh} disabled={refreshing}>
           <BiRefresh className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
@@ -199,85 +218,174 @@ function Topbar({ period, setPeriod, onRefresh, refreshing }) {
   );
 }
 
-// ============ HEALTH HERO ============
-function HealthHero({ health, periodLabel }) {
-  const color = health.score >= 80 ? 'text-system-success-green' : health.score >= 50 ? 'text-orange-600' : 'text-system-error-red';
-  const bgColor = health.score >= 80 ? 'bg-system-success-green-light' : health.score >= 50 ? 'bg-orange-50' : 'bg-system-error-red-light';
-  const borderColor = health.score >= 80 ? 'border-system-success-green' : health.score >= 50 ? 'border-orange-400' : 'border-system-error-red';
-  const label = health.score >= 80 ? 'ดี' : health.score >= 50 ? 'ต้องปรับปรุง' : 'ต้องแก้ด่วน';
-  const emoji = health.score >= 80 ? '✅' : health.score >= 50 ? '⚠️' : '🔴';
-
-  return (
-    <div className={`mb-6 flex items-center gap-8 rounded-xl border-2 ${borderColor} ${bgColor} p-8`}>
-      <div className={`health-ring flex size-24 flex-shrink-0 flex-col items-center justify-center rounded-full border-4 ${borderColor}`}>
-        <span className={`text-3xl font-extrabold ${color}`}>{health.score}</span>
-        <span className={`text-xs ${color}`}>คะแนน</span>
-      </div>
-      <div className="flex-1">
-        <h1 className={`mb-1 text-xl font-bold md:text-2xl ${color}`}>
-          {emoji} สุขภาพเว็บ: {label}
-        </h1>
-        <p className="mb-3 text-sm text-neutral">ข้อมูลย้อนหลัง {periodLabel}</p>
-        <div className="flex flex-col gap-1.5">
-          {health.issues.map((issue, i) => (
-            <div key={i} className="flex items-center gap-2 text-sm">
-              {issue.severity === 'critical' && <BiErrorCircle className="size-4 shrink-0 text-system-error-red" />}
-              {issue.severity === 'warning' && <BiErrorCircle className="size-4 shrink-0 text-orange-500" />}
-              {issue.severity === 'info' && <BiInfoCircle className="size-4 shrink-0 text-blue-500" />}
-              <span>{issue.text}</span>
-            </div>
-          ))}
-          {health.issues.length === 0 && (
-            <div className="flex items-center gap-2 text-sm text-system-success-green">
-              <BiCheckCircle className="size-4" /> ไม่พบปัญหา
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============ KPI CARDS (Stat Card pattern) ============
-function KpiCards({ traffic, periodLabel }) {
-  const bounce = Math.round((traffic.bounceRate || 0) * 100);
-  const cards = [
-    { icon: <BiGroup className="size-7" />, num: fmtNum(traffic.totalUsers || 0), label: 'คนเข้าชม', sub: `ใน ${periodLabel}` },
-    { icon: <BiFile className="size-7" />, num: fmtNum(traffic.screenPageViews || 0), label: 'หน้าที่ถูกดู', sub: `เฉลี่ย ${traffic.totalUsers ? ((traffic.screenPageViews || 0) / traffic.totalUsers).toFixed(1) : '0'} หน้า/คน` },
-    { icon: <BiTime className="size-7" />, num: fmtDuration(traffic.averageSessionDuration || 0), label: 'เวลาอยู่ในเว็บ', sub: 'เฉลี่ยต่อคน' },
-    { icon: bounce > 60 ? <BiDownArrowAlt className="size-7 text-system-error-red" /> : <BiUpArrowAlt className="size-7 text-system-success-green" />, num: `${bounce}%`, label: 'ออกทันที', sub: bounce > 60 ? 'สูงกว่าปกติ (ควร < 40%)' : 'อยู่ในเกณฑ์' },
+// ============ HEALTH (Stat3 pattern — cards with progress bar) ============
+function HealthSection({ health, periodLabel }) {
+  const stats = [
+    {
+      title: 'คะแนนสุขภาพเว็บ',
+      description: `${health.score}/100`,
+      icon: health.score >= 50 ? <BiUpArrowAlt /> : <BiDownArrowAlt />,
+      badge: health.score >= 80 ? 'ดี' : health.score >= 50 ? 'ต้องปรับปรุง' : 'ต้องแก้ด่วน',
+      progressBar: health.score,
+    },
+    {
+      title: 'ปัญหาที่พบ',
+      description: `${health.issues.length} รายการ`,
+      icon: health.issues.length === 0 ? <BiUpArrowAlt /> : <BiDownArrowAlt />,
+      badge: health.issues.filter(i => i.severity === 'critical').length > 0 ? 'มีเรื่องเร่งด่วน' : 'ไม่มีเรื่องด่วน',
+      progressBar: Math.max(0, 100 - health.issues.length * 20),
+    },
+    {
+      title: 'โอกาสเติบโต',
+      description: health.score < 50 ? 'สูง' : health.score < 80 ? 'ปานกลาง' : 'ต่ำ',
+      icon: <BiTrendingUp />,
+      badge: 'แก้ปัญหา = โตทันที',
+      progressBar: Math.max(0, 100 - health.score),
+    },
   ];
 
   return (
-    <div className="mb-6 grid grid-cols-1 gap-4 md:grid-flow-col md:auto-cols-fr md:gap-6">
-      {cards.map((c, i) => (
-        <div key={i} className="flex flex-col items-center border border-border-primary bg-white p-6 text-center">
-          <div className="mb-2 text-neutral-dark">{c.icon}</div>
-          <h2 className="text-2xl font-bold md:text-3xl">{c.num}</h2>
-          <p className="mt-1 text-sm font-semibold">{c.label}</p>
-          <p className="text-xs text-neutral">{c.sub}</p>
+    <section className="mb-8">
+      {/* Stat3 header pattern */}
+      <div className="mb-5 grid auto-cols-fr grid-cols-1 items-end gap-4 md:mb-6 md:grid-cols-[1fr_max-content] md:gap-6">
+        <div className="w-full max-w-lg">
+          <h1 className="text-xl font-bold md:text-2xl">สุขภาพเว็บ VisionXBrain</h1>
+          <p className="mt-2">ข้อมูลย้อนหลัง {periodLabel}</p>
         </div>
-      ))}
-    </div>
+        <div className="flex items-center justify-between gap-4 md:justify-normal">
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <BiDotsHorizontalRounded className="size-6" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem>ดูรายละเอียด</DropdownMenuItem>
+              <DropdownMenuItem>ส่งออกรายงาน</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+      {/* Stat3 cards pattern */}
+      <div className="grid auto-cols-fr grid-cols-1 gap-4 md:grid-flow-col md:gap-6">
+        {stats.map((stat, index) => (
+          <div key={index} className="flex flex-col justify-between border border-border-primary p-6 md:justify-normal">
+            <p className="mb-1">{stat.title}</p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold md:text-2xl">{stat.description}</h2>
+              <div className="flex items-center gap-1">
+                {stat.icon}
+                <p className="text-sm">{stat.badge}</p>
+              </div>
+            </div>
+            <div className="relative mt-3 h-1 bg-background-secondary md:mt-4">
+              <div
+                className="absolute left-0 top-0 h-full bg-background-alternative"
+                style={{ width: `${stat.progressBar}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Issues list */}
+      {health.issues.length > 0 && (
+        <div className="mt-4 border border-border-primary p-6">
+          <p className="mb-3 text-sm font-semibold">ปัญหาที่พบ:</p>
+          <div className="flex flex-col gap-2">
+            {health.issues.map((issue, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm">
+                {issue.severity === 'critical' && <BiErrorCircle className="size-4 shrink-0 text-system-error-red" />}
+                {issue.severity === 'warning' && <BiErrorCircle className="size-4 shrink-0 text-orange-500" />}
+                {issue.severity === 'info' && <BiInfoCircle className="size-4 shrink-0 text-blue-500" />}
+                <span>{issue.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
-// ============ TREND CHART ============
+// ============ KPI CARDS (Stat2 exact pattern — horizontal with trend) ============
+function KpiCards({ traffic, periodLabel }) {
+  const bounce = Math.round((traffic.bounceRate || 0) * 100);
+
+  const stats = [
+    {
+      title: 'คนเข้าชม',
+      description: fmtNum(traffic.totalUsers || 0),
+      icon: <BiUpArrowAlt />,
+      badge: `ใน ${periodLabel}`,
+      comparisonText: `${fmtNum(traffic.sessions || 0)} sessions`,
+    },
+    {
+      title: 'หน้าที่ถูกดู',
+      description: fmtNum(traffic.screenPageViews || 0),
+      icon: <BiUpArrowAlt />,
+      badge: `${traffic.totalUsers ? ((traffic.screenPageViews || 0) / traffic.totalUsers).toFixed(1) : '0'} หน้า/คน`,
+      comparisonText: 'เฉลี่ย',
+    },
+    {
+      title: 'เวลาอยู่ในเว็บ',
+      description: fmtDuration(traffic.averageSessionDuration || 0),
+      icon: (traffic.averageSessionDuration || 0) > 60 ? <BiUpArrowAlt /> : <BiDownArrowAlt />,
+      badge: 'เฉลี่ยต่อคน',
+      comparisonText: '',
+    },
+    {
+      title: 'ออกทันที (Bounce)',
+      description: `${bounce}%`,
+      icon: bounce > 60 ? <BiDownArrowAlt /> : <BiUpArrowAlt />,
+      badge: bounce > 60 ? 'สูงกว่าปกติ' : 'ดี',
+      comparisonText: bounce > 60 ? 'ควร < 40%' : '',
+    },
+  ];
+
+  return (
+    <section className="mb-8">
+      {/* Stat2 cards pattern */}
+      <div className="grid auto-cols-fr grid-cols-1 gap-4 md:grid-flow-col md:gap-6">
+        {stats.map((stat, index) => (
+          <div key={index} className="flex items-center justify-between gap-4 border border-border-primary p-6">
+            <div className="flex flex-col items-start">
+              <p className="mb-1">{stat.title}</p>
+              <h2 className="text-xl font-bold md:text-2xl">{stat.description}</h2>
+              <div className="mt-1 flex flex-wrap items-center gap-x-1 lg:gap-1">
+                <div className="flex items-center gap-0.5">
+                  {stat.icon}
+                  <p className="text-sm">{stat.badge}</p>
+                </div>
+                {stat.comparisonText && <p className="text-sm">{stat.comparisonText}</p>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ============ TREND CHART (custom — Relume has no chart component) ============
 function TrendChart({ trends }) {
   const rows = (trends?.rows || []).slice(-14);
   const max = Math.max(...rows.map(r => r.sessions || 0), 1);
   const avg = rows.length ? Math.round(rows.reduce((s, r) => s + (r.sessions || 0), 0) / rows.length) : 0;
 
   return (
-    <div className="mb-6 border border-border-primary bg-white">
-      <div className="flex items-center justify-between border-b border-border-primary px-6 py-4">
-        <h2 className="text-base font-bold">คนเข้าเว็บรายวัน</h2>
-        <Badge variant="secondary">เฉลี่ย {avg} คน/วัน</Badge>
+    <section className="mb-8">
+      {/* CardHeader1 pattern for header */}
+      <div className="grid grid-cols-1 items-end justify-between gap-4 border border-b-0 border-border-primary p-6 md:grid-cols-[1fr_max-content] md:gap-6">
+        <div className="max-w-lg">
+          <h2 className="text-xl font-bold md:text-2xl">คนเข้าเว็บรายวัน</h2>
+          <p className="mt-1">จำนวนคนเข้าเว็บในแต่ละวัน</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <Badge variant="secondary">เฉลี่ย {avg} คน/วัน</Badge>
+        </div>
       </div>
-      <div className="flex items-end gap-1 px-6 py-5" style={{ height: 180 }}>
+      <div className="flex items-end gap-1 border border-t-0 border-border-primary px-6 py-5" style={{ height: 200 }}>
         {rows.map((r, i) => (
           <div key={i} className="flex flex-1 flex-col items-center justify-end" style={{ height: '100%' }}>
-            <span className="mb-1 text-[10px] font-semibold text-neutral">{r.sessions}</span>
+            <span className="mb-1 text-[10px] font-semibold">{r.sessions}</span>
             <div
               className="trend-bar-animated w-full max-w-[40px] rounded-t"
               style={{
@@ -292,11 +400,11 @@ function TrendChart({ trends }) {
           <div className="flex w-full items-center justify-center py-8 text-sm text-neutral">ยังไม่มีข้อมูล</div>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
-// ============ ACTION ITEMS ============
+// ============ ACTION ITEMS (CardHeader1 + custom content) ============
 function ActionItems({ allPages, landing, gscQueries, traffic }) {
   const bounceLandings = (landing?.rows || []).filter(r =>
     r.sessions >= 2 && r.bounceRate >= 0.9 && r.landingPage && r.landingPage !== '' && r.landingPage !== '(not set)'
@@ -307,76 +415,100 @@ function ActionItems({ allPages, landing, gscQueries, traffic }) {
 
   const actions = [];
   if (!hasConversions) actions.push({
-    priority: 'ด่วนมาก', bg: 'bg-system-error-red-light', border: 'border-system-error-red', color: 'text-system-error-red',
+    priority: 'ด่วนมาก', color: 'text-system-error-red',
     title: 'ติดตั้งระบบนับลูกค้า',
-    desc: 'ตอนนี้ไม่รู้เลยว่าคนกดติดต่อ/กรอกฟอร์มกี่คน เหมือนขายของแต่ไม่นับเงิน',
+    desc: 'ตอนนี้ไม่รู้เลยว่าคนกดติดต่อ/กรอกฟอร์มกี่คน',
     how: 'ตั้ง Google Analytics Events ให้ track เมื่อคนกดปุ่มติดต่อ, กรอกฟอร์ม, หรือเข้าหน้า Thank You',
+    pages: [],
   });
   if (notFound.length > 0) actions.push({
-    priority: 'ด่วนมาก', bg: 'bg-system-error-red-light', border: 'border-system-error-red', color: 'text-system-error-red',
+    priority: 'ด่วนมาก', color: 'text-system-error-red',
     title: `แก้หน้าที่พัง (${notFound.length} หน้า)`,
     desc: 'มีหน้าเว็บที่เปิดไม่ได้ คนคลิกจาก Google มาเจอหน้าเปล่า',
-    pages: notFound.map(p => p.pagePath),
     how: 'Redirect URL เก่าไปหน้าที่ถูกต้อง หรือสร้าง content ใหม่',
+    pages: notFound.map(p => p.pagePath),
   });
   if (bounceLandings.length > 0) actions.push({
-    priority: 'ควรแก้', bg: 'bg-orange-50', border: 'border-orange-400', color: 'text-orange-600',
+    priority: 'ควรแก้', color: 'text-orange-600',
     title: `หน้าที่คนเข้าแล้วออกทันที (${bounceLandings.length} หน้า)`,
-    desc: 'คน Google เข้ามาแล้วไม่อ่านต่อ อาจเป็นเพราะ content ไม่ตรงที่คนหา',
+    desc: 'คน Google เข้ามาแล้วไม่อ่านต่อ',
+    how: 'เพิ่มปุ่ม CTA ให้ชัดเจน ปรับ content ให้ตรง keyword',
     pages: bounceLandings.slice(0, 4).map(r => `${r.landingPage} (${r.sessions} คน)`),
-    how: 'เพิ่มปุ่ม "ติดต่อเรา" / "ดูผลงาน" ให้ชัดเจน ปรับ content ให้ตรง keyword',
   });
   if (lowCTR.length > 0) actions.push({
-    priority: 'โอกาส', bg: 'bg-blue-50', border: 'border-blue-400', color: 'text-blue-600',
+    priority: 'โอกาส', color: 'text-blue-600',
     title: 'เว็บขึ้น Google แล้ว แต่คนไม่คลิก',
-    desc: 'มีคำค้นที่เว็บขึ้นแสดงแล้วแต่ชื่อไม่ดึงดูดพอ คนเห็นแล้วเลื่อนผ่าน',
-    how: 'เขียน Title และคำอธิบายใหม่ให้น่าคลิก ใส่ตัวเลขหรือ benefit ที่ชัดเจน',
-  });
-  if ((traffic.sessions || 0) < 100) actions.push({
-    priority: 'โอกาส', bg: 'bg-blue-50', border: 'border-blue-400', color: 'text-blue-600',
-    title: 'คนเข้าเว็บยังน้อย',
-    desc: 'ส่วนใหญ่เป็นคนที่รู้จักเว็บอยู่แล้ว ยังไม่มีช่องทางดึงคนใหม่เข้ามา',
-    how: 'โพสต์ใน LinkedIn / เขียน Blog ที่ตรง keyword / ลอง Google Ads ทดสอบ',
+    desc: 'มีคำค้นที่เว็บขึ้นแสดงแล้วแต่ชื่อไม่ดึงดูดพอ',
+    how: 'เขียน Title และคำอธิบายใหม่ให้น่าคลิก',
+    pages: [],
   });
 
   return (
-    <div className="mb-6 border border-border-primary bg-white">
-      <div className="flex items-center justify-between border-b border-border-primary px-6 py-4">
-        <h2 className="text-base font-bold flex items-center gap-2">
-          <BiTargetLock className="size-5" /> สิ่งที่ต้องทำ
-        </h2>
-        <Badge>{actions.length} รายการ</Badge>
+    <section className="mb-8">
+      {/* CardHeader1 pattern */}
+      <div className="grid grid-cols-1 items-end justify-between gap-4 border border-border-primary p-6 md:grid-cols-[1fr_max-content] md:gap-6">
+        <div className="max-w-lg">
+          <h2 className="text-xl font-bold md:text-2xl">สิ่งที่ต้องทำ</h2>
+          <p className="mt-1">รายการที่ต้องแก้ไขเพื่อปรับปรุงเว็บ</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <Badge>{actions.length} รายการ</Badge>
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <BiDotsHorizontalRounded className="size-6" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem>ดูทั้งหมด</DropdownMenuItem>
+              <DropdownMenuItem>ส่งออก</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
-      <div className="flex flex-col gap-4 p-6">
-        {actions.map((a, i) => (
-          <div key={i} className={`rounded-lg border-l-4 ${a.border} ${a.bg} p-5`}>
-            <span className={`text-xs font-bold uppercase tracking-wide ${a.color}`}>{a.priority}</span>
-            <h3 className="mt-1 text-sm font-bold">{a.title}</h3>
-            <p className="mt-1 text-sm text-neutral-dark">{a.desc}</p>
-            {a.pages && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {a.pages.map((p, j) => (
-                  <Badge key={j} variant="secondary" className="font-mono text-xs">{p}</Badge>
-                ))}
-              </div>
-            )}
-            <div className="mt-3 rounded-md bg-white/70 px-3 py-2 text-sm">
-              <strong>วิธีแก้:</strong> {a.how}
-            </div>
-          </div>
-        ))}
-        {actions.length === 0 && (
-          <div className="flex items-center gap-2 text-sm text-system-success-green">
-            <BiCheckCircle className="size-5" /> ไม่พบปัญหาเร่งด่วน
-          </div>
-        )}
-      </div>
-    </div>
+      {/* Table1 pattern for action items */}
+      {actions.length > 0 && (
+        <Table className="border-collapse">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[100px]">ความสำคัญ</TableHead>
+              <TableHead className="w-[250px]">ปัญหา</TableHead>
+              <TableHead>รายละเอียด</TableHead>
+              <TableHead className="w-[300px]">วิธีแก้</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {actions.map((a, i) => (
+              <TableRow key={i}>
+                <TableCell>
+                  <span className={`text-sm font-bold ${a.color}`}>{a.priority}</span>
+                </TableCell>
+                <TableCell className="font-medium">{a.title}</TableCell>
+                <TableCell>
+                  <p className="text-sm">{a.desc}</p>
+                  {a.pages.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {a.pages.map((p, j) => (
+                        <Badge key={j} variant="secondary" className="font-mono text-xs">{p}</Badge>
+                      ))}
+                    </div>
+                  )}
+                </TableCell>
+                <TableCell className="text-sm">{a.how}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      {actions.length === 0 && (
+        <div className="border border-t-0 border-border-primary p-6 text-sm text-system-success-green">
+          <BiCheckCircle className="mr-1 inline size-4" /> ไม่พบปัญหาเร่งด่วน
+        </div>
+      )}
+    </section>
   );
 }
 
-// ============ SOURCES + DEVICES ============
-function SourcesAndDevices({ topSources, devices, countries }) {
+// ============ SOURCES (Stat2 pattern — horizontal cards) ============
+function SourcesSection({ topSources, devices, countries }) {
   const total = topSources.reduce((s, x) => s + (x.sessions || 0), 0) || 1;
 
   const sourceLabel = (s) => {
@@ -388,184 +520,229 @@ function SourcesAndDevices({ topSources, devices, countries }) {
   };
 
   const deviceLabel = (d) => {
-    if (d === 'desktop') return '🖥️ คอมพิวเตอร์';
-    if (d === 'mobile') return '📱 มือถือ';
-    return '📟 แท็บเล็ต';
+    if (d === 'desktop') return 'คอมพิวเตอร์';
+    if (d === 'mobile') return 'มือถือ';
+    return 'แท็บเล็ต';
   };
 
-  const countryLabel = (c) => {
-    const map = { Thailand: '🇹🇭 ไทย', 'United States': '🇺🇸 สหรัฐฯ', China: '🇨🇳 จีน', Singapore: '🇸🇬 สิงคโปร์' };
-    return map[c] || c;
-  };
+  // Stat2 pattern — sources as horizontal cards
+  const sourceStats = topSources.slice(0, 3).map(s => ({
+    title: sourceLabel(s),
+    description: `${fmtNum(s.sessions)} คน`,
+    icon: <BiUpArrowAlt />,
+    badge: `${Math.round((s.sessions / total) * 100)}%`,
+    comparisonText: 'ของทั้งหมด',
+  }));
 
   return (
-    <div className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2">
-      <div className="border border-border-primary bg-white">
-        <div className="border-b border-border-primary px-6 py-4">
-          <h2 className="text-base font-bold">คนมาจากไหน</h2>
+    <section className="mb-8">
+      {/* Stat2 header pattern */}
+      <div className="grid auto-cols-fr grid-cols-1 items-end gap-4 pb-5 md:grid-cols-[1fr_max-content] md:gap-6 md:pb-6">
+        <div className="w-full max-w-lg">
+          <h1 className="text-xl font-bold md:text-2xl">คนมาจากไหน</h1>
+          <p className="mt-2">แหล่งที่มาของผู้เข้าชมเว็บ</p>
         </div>
-        <div className="p-6">
-          {topSources.map((s, i) => {
-            const pct = Math.round((s.sessions / total) * 100);
-            return (
-              <div key={i} className="mb-4 last:mb-0">
-                <div className="mb-1 flex items-center justify-between text-sm">
-                  <span>{sourceLabel(s)}</span>
-                  <span className="text-neutral">{s.sessions} คน</span>
+        <div className="flex items-center gap-4">
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <BiDotsHorizontalRounded className="size-6" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem>ดูทั้งหมด</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+      {/* Stat2 cards */}
+      <div className="grid auto-cols-fr grid-cols-1 gap-4 md:grid-flow-col md:gap-6">
+        {sourceStats.map((stat, index) => (
+          <div key={index} className="flex items-center justify-between gap-4 border border-border-primary p-6">
+            <div className="flex flex-col items-start">
+              <p className="mb-1">{stat.title}</p>
+              <h2 className="text-xl font-bold md:text-2xl">{stat.description}</h2>
+              <div className="mt-1 flex flex-wrap items-center gap-x-1 lg:gap-1">
+                <div className="flex items-center gap-0.5">
+                  {stat.icon}
+                  <p className="text-sm">{stat.badge}</p>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-background-secondary">
-                  <div className="h-full rounded-full bg-neutral-darkest transition-all" style={{ width: `${pct}%` }} />
-                </div>
+                <p className="text-sm">{stat.comparisonText}</p>
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="border border-border-primary bg-white">
-        <div className="border-b border-border-primary px-6 py-4">
-          <h2 className="text-base font-bold">อุปกรณ์ & ประเทศ</h2>
-        </div>
-        <div className="p-6">
-          {devices.map((d, i) => (
-            <div key={i} className="flex items-center justify-between border-b border-background-secondary py-3 text-sm last:border-0">
-              <span>{deviceLabel(d.deviceCategory)}</span>
-              <span className="font-semibold">{fmtNum(d.sessions)} คน</span>
-            </div>
-          ))}
-          <div className="my-3 h-px bg-border-primary" />
-          {countries.slice(0, 4).map((c, i) => (
-            <div key={i} className="flex items-center justify-between border-b border-background-secondary py-3 text-sm last:border-0">
-              <span>{countryLabel(c.country)}</span>
-              <span className="font-semibold">{fmtNum(c.sessions)} คน</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============ TOP PAGES FROM GOOGLE ============
-function TopFromGoogle({ gscPages }) {
-  const pages = (gscPages || []).filter(p => p.clicks >= 1).sort((a, b) => b.clicks - a.clicks).slice(0, 6);
-
-  return (
-    <div className="mb-6 border border-border-primary bg-white">
-      <div className="border-b border-border-primary px-6 py-4">
-        <h2 className="flex items-center gap-2 text-base font-bold">
-          <BiSearchAlt className="size-5" /> หน้าที่คนจาก Google เข้ามามากสุด
-        </h2>
-      </div>
-      <div className="divide-y divide-background-secondary">
-        {pages.map((p, i) => {
-          const path = p.keys?.[0]?.replace('https://www.visionxbrain.com', '') || '';
-          return (
-            <div key={i} className="flex items-center gap-4 px-6 py-4">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-background-secondary text-sm font-bold">
-                {i + 1}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{path}</p>
-                <p className="text-xs text-neutral">
-                  {p.clicks} คลิก &middot; {fmtNum(p.impressions)} ครั้งที่ขึ้น Google &middot; อันดับ {p.position?.toFixed(0)}
-                </p>
-              </div>
-              <Badge variant={p.ctr > 5 ? 'default' : 'secondary'}>
-                {p.ctr}% คลิก
-              </Badge>
-            </div>
-          );
-        })}
-        {pages.length === 0 && (
-          <div className="px-6 py-8 text-center text-sm text-neutral">ยังไม่มีข้อมูลจาก Google</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============ OPPORTUNITIES ============
-function Opportunities({ gscQueries }) {
-  const opps = (gscQueries || [])
-    .filter(q => q.impressions >= 10 && q.keys?.[0]?.length < 60)
-    .sort((a, b) => b.impressions - a.impressions)
-    .slice(0, 8);
-
-  return (
-    <div className="mb-6 border border-border-primary bg-white">
-      <div className="flex items-center justify-between border-b border-border-primary px-6 py-4">
-        <h2 className="flex items-center gap-2 text-base font-bold">
-          <BiTrendingUp className="size-5" /> โอกาสที่พลาดไป
-        </h2>
-        <Badge variant="secondary">คำค้นที่เว็บขึ้น Google แล้วแต่คนไม่คลิก</Badge>
-      </div>
-      <div className="divide-y divide-background-secondary">
-        {opps.map((q, i) => (
-          <div key={i} className="px-6 py-4">
-            <p className="text-sm font-semibold">"{q.keys?.[0]}"</p>
-            <div className="mt-1 flex flex-wrap gap-3 text-xs text-neutral">
-              <span>ขึ้น Google <strong className="text-text-primary">{fmtNum(q.impressions)}</strong> ครั้ง</span>
-              <span>คลิกแค่ <strong className="text-text-primary">{q.clicks}</strong> ครั้ง ({q.ctr}%)</span>
-              <span>อันดับ {q.position?.toFixed(0)}</span>
-            </div>
-            <div className="mt-2 h-1 overflow-hidden rounded-full bg-background-secondary">
-              <div className="h-full rounded-full bg-neutral" style={{ width: `${Math.min(q.ctr * 5, 100)}%` }} />
             </div>
           </div>
         ))}
       </div>
-    </div>
+
+      {/* Devices + Countries — 2-column grid with Stat3 style */}
+      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+        <div className="border border-border-primary">
+          <div className="border-b border-border-primary p-6">
+            <h3 className="font-bold">อุปกรณ์</h3>
+          </div>
+          <div className="p-6">
+            {devices.map((d, i) => (
+              <div key={i} className="flex items-center justify-between border-b border-background-secondary py-3 text-sm last:border-0">
+                <span>{deviceLabel(d.deviceCategory)}</span>
+                <span className="font-semibold">{fmtNum(d.sessions)} คน</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="border border-border-primary">
+          <div className="border-b border-border-primary p-6">
+            <h3 className="font-bold">ประเทศ</h3>
+          </div>
+          <div className="p-6">
+            {countries.slice(0, 5).map((c, i) => (
+              <div key={i} className="flex items-center justify-between border-b border-background-secondary py-3 text-sm last:border-0">
+                <span>{c.country}</span>
+                <span className="font-semibold">{fmtNum(c.sessions)} คน</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
-// ============ GOOD vs PROBLEM PAGES ============
-function PageHealth({ allPages }) {
-  const good = (allPages?.rows || []).filter(r => r.pageTitle !== 'Not Found' && r.bounceRate < 0.9 && r.screenPageViews >= 2);
-  const problem = (allPages?.rows || []).filter(r => r.pageTitle === 'Not Found' || r.bounceRate >= 0.9);
+// ============ TOP PAGES (Table1 exact pattern) ============
+function PagesTable({ allPages }) {
+  const rows = (allPages?.rows || []).filter(r => r.screenPageViews >= 1).slice(0, 10);
 
   return (
-    <div className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2">
-      <div className="border border-border-primary bg-white">
-        <div className="border-b border-border-primary px-6 py-4">
-          <h2 className="flex items-center gap-2 text-base font-bold">
-            <BiCheckCircle className="size-5 text-system-success-green" /> หน้าที่ทำได้ดี
-          </h2>
+    <section className="mb-8">
+      {/* Table1 header pattern */}
+      <div className="flex flex-col items-start justify-between gap-4 border border-b-0 border-border-primary p-6 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="mb-1 text-md font-semibold md:text-lg">หน้ายอดนิยม</h1>
+          <p>หน้าเว็บที่มีคนเข้าชมมากที่สุด</p>
         </div>
-        <div className="divide-y divide-background-secondary">
-          {good.slice(0, 6).map((p, i) => (
-            <div key={i} className="px-6 py-3">
-              <p className="truncate text-sm font-medium">{p.pagePath}</p>
-              <p className="text-xs text-neutral">{fmtNum(p.screenPageViews)} views &middot; อ่านนาน {fmtDuration(p.averageSessionDuration)}</p>
-            </div>
-          ))}
+        <div className="flex gap-4">
+          <Button variant="secondary" size="sm" title="ดูทั้งหมด">ดูทั้งหมด</Button>
         </div>
       </div>
-      <div className="border border-border-primary bg-white">
-        <div className="border-b border-border-primary px-6 py-4">
-          <h2 className="flex items-center gap-2 text-base font-bold">
-            <BiXCircle className="size-5 text-system-error-red" /> หน้าที่มีปัญหา
-          </h2>
+      {/* Table1 table pattern */}
+      <Table className="border-collapse">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[280px] pr-4">หน้าเว็บ</TableHead>
+            <TableHead className="w-[80px] pr-4">Views</TableHead>
+            <TableHead className="w-[80px] pr-4">คน</TableHead>
+            <TableHead className="w-[100px] pr-4">เวลาอยู่</TableHead>
+            <TableHead className="w-[80px] pr-4">Bounce</TableHead>
+            <TableHead className="w-[80px] pr-4 text-center">สถานะ</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row, i) => {
+            const bounce = Math.round((row.bounceRate || 0) * 100);
+            return (
+              <TableRow key={i}>
+                <TableCell className="font-medium">{row.pagePath}</TableCell>
+                <TableCell>{fmtNum(row.screenPageViews)}</TableCell>
+                <TableCell>{fmtNum(row.totalUsers)}</TableCell>
+                <TableCell>{fmtDuration(row.averageSessionDuration)}</TableCell>
+                <TableCell>{bounce}%</TableCell>
+                <TableCell className="text-center">
+                  {row.pageTitle === 'Not Found' ? (
+                    <Badge className="bg-system-error-red-light text-system-error-red">404</Badge>
+                  ) : bounce > 80 ? (
+                    <Badge variant="secondary">สูง</Badge>
+                  ) : (
+                    <Badge>ดี</Badge>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </section>
+  );
+}
+
+// ============ GOOGLE SEARCH (Table1 exact pattern) ============
+function GoogleSearchTable({ gscPages, gscQueries }) {
+  const pages = (gscPages || []).filter(p => p.clicks >= 1).sort((a, b) => b.clicks - a.clicks).slice(0, 8);
+  const opps = (gscQueries || []).filter(q => q.impressions >= 10 && q.keys?.[0]?.length < 60).sort((a, b) => b.impressions - a.impressions).slice(0, 8);
+
+  return (
+    <section className="mb-8">
+      {/* Table1 header pattern */}
+      <div className="flex flex-col items-start justify-between gap-4 border border-b-0 border-border-primary p-6 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="mb-1 text-md font-semibold md:text-lg">ผลลัพธ์จาก Google Search</h1>
+          <p>หน้าที่คนจาก Google เข้ามา + คำค้นที่เว็บขึ้นแสดง</p>
         </div>
-        <div className="divide-y divide-background-secondary">
-          {problem.slice(0, 6).map((p, i) => (
-            <div key={i} className="px-6 py-3">
-              <div className="flex items-center gap-2">
-                {p.pageTitle === 'Not Found' && <Badge className="bg-system-error-red-light text-system-error-red">404</Badge>}
-                {p.pageTitle !== 'Not Found' && <Badge variant="secondary">ออกทันที</Badge>}
-                <p className="truncate text-sm font-medium">{p.pagePath}</p>
-              </div>
-              <p className="mt-0.5 text-xs text-neutral">
-                {p.pageTitle === 'Not Found' ? 'หน้าไม่มีอยู่แล้ว' : `${fmtNum(p.sessions)} คนเข้า แต่ไม่ทำอะไร`}
-              </p>
-            </div>
-          ))}
-          {problem.length === 0 && (
-            <div className="px-6 py-4 text-sm text-system-success-green">ไม่มีหน้าที่มีปัญหา 🎉</div>
-          )}
+        <div className="flex gap-4">
+          <Badge variant="secondary">{pages.length} หน้า</Badge>
         </div>
       </div>
-    </div>
+      {/* Top pages from Google */}
+      <Table className="border-collapse">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[320px] pr-4">หน้า/คำค้น</TableHead>
+            <TableHead className="w-[80px] pr-4">คลิก</TableHead>
+            <TableHead className="w-[100px] pr-4">ขึ้น Google</TableHead>
+            <TableHead className="w-[80px] pr-4">อันดับ</TableHead>
+            <TableHead className="w-[80px] pr-4 text-center">CTR</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {pages.map((p, i) => {
+            const path = p.keys?.[0]?.replace('https://www.visionxbrain.com', '') || '';
+            return (
+              <TableRow key={i}>
+                <TableCell className="font-medium">{path}</TableCell>
+                <TableCell>{p.clicks}</TableCell>
+                <TableCell>{fmtNum(p.impressions)}</TableCell>
+                <TableCell>{p.position?.toFixed(0)}</TableCell>
+                <TableCell className="text-center">
+                  <Badge variant={p.ctr > 5 ? 'default' : 'secondary'}>{p.ctr}%</Badge>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+
+      {/* Opportunities - keywords with low CTR */}
+      {opps.length > 0 && (
+        <>
+          <div className="mt-6 flex flex-col items-start justify-between gap-4 border border-b-0 border-border-primary p-6 sm:flex-row sm:items-center">
+            <div>
+              <h1 className="mb-1 text-md font-semibold md:text-lg">โอกาสที่พลาดไป</h1>
+              <p>คำค้นที่เว็บขึ้น Google แล้วแต่คนไม่คลิก</p>
+            </div>
+          </div>
+          <Table className="border-collapse">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[320px] pr-4">คำค้น</TableHead>
+                <TableHead className="w-[100px] pr-4">ขึ้น Google</TableHead>
+                <TableHead className="w-[80px] pr-4">คลิก</TableHead>
+                <TableHead className="w-[80px] pr-4">อันดับ</TableHead>
+                <TableHead className="w-[80px] pr-4 text-center">CTR</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {opps.map((q, i) => (
+                <TableRow key={i}>
+                  <TableCell className="font-medium">"{q.keys?.[0]}"</TableCell>
+                  <TableCell>{fmtNum(q.impressions)}</TableCell>
+                  <TableCell>{q.clicks}</TableCell>
+                  <TableCell>{q.position?.toFixed(0)}</TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant="secondary">{q.ctr}%</Badge>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -631,15 +808,16 @@ export default function App() {
       <div className="relative flex-1 bg-background-secondary">
         <Topbar period={period} setPeriod={setPeriod} onRefresh={() => fetchData(false)} refreshing={refreshing} />
         <div className="h-[calc(100vh-4.5rem)] overflow-auto">
-          <div className="mx-auto max-w-[1200px] px-6 py-8 md:px-8">
-            <HealthHero health={health} periodLabel={periodLabel} />
-            <KpiCards traffic={traffic} periodLabel={periodLabel} />
-            <TrendChart trends={trends} />
-            <ActionItems allPages={allPages} landing={landing} gscQueries={gscQueries} traffic={traffic} />
-            <SourcesAndDevices topSources={topSources} devices={devices} countries={countries} />
-            <TopFromGoogle gscPages={gscPages} />
-            <Opportunities gscQueries={gscQueries} />
-            <PageHealth allPages={allPages} />
+          <div className="container px-6 py-8 md:px-8 md:py-10 lg:py-12">
+            <div className="grid grid-cols-1 gap-0">
+              <HealthSection health={health} periodLabel={periodLabel} />
+              <KpiCards traffic={traffic} periodLabel={periodLabel} />
+              <TrendChart trends={trends} />
+              <ActionItems allPages={allPages} landing={landing} gscQueries={gscQueries} traffic={traffic} />
+              <SourcesSection topSources={topSources} devices={devices} countries={countries} />
+              <PagesTable allPages={allPages} />
+              <GoogleSearchTable gscPages={gscPages} gscQueries={gscQueries} />
+            </div>
           </div>
         </div>
       </div>
