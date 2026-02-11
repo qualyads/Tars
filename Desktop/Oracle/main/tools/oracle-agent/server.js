@@ -85,6 +85,7 @@ import leadFinder from './lib/lead-finder.js';
 import imageGen from './lib/image-gen.js';
 import autonomy from './lib/autonomy.js';
 import hotelNotify from './lib/hotel-notifications.js';
+import checker404 from './lib/404-checker.js';
 
 // Phase 5.3: Tier 1-3 OpenClaw Features
 import typingIndicators from './lib/typing-indicators.js';
@@ -190,6 +191,7 @@ app.use('/vision/email/costs', express.static(join(__dirname, 'public/vision/ema
 app.use('/vision/email', express.static(join(__dirname, 'public/vision/email')));
 app.use('/vision/growthstrategy', express.static(join(__dirname, 'public/vision/growthstrategy')));
 app.use('/vision/analytics', express.static(join(__dirname, 'public/vision/analytics')));
+app.use('/vision/404check', express.static(join(__dirname, 'public/vision/404check')));
 
 // Heartbeat Manager instance
 let heartbeatManager = null;
@@ -3109,6 +3111,44 @@ app.post('/api/seo/submit-sitemap', async (req, res) => {
   }
 });
 
+app.post('/api/seo/delete-sitemap', async (req, res) => {
+  try {
+    const siteUrl = config.seo?.siteUrl || 'sc-domain:visionxbrain.com';
+    const sitemapUrl = req.body?.sitemapUrl;
+    if (!sitemapUrl) return res.status(400).json({ success: false, error: 'sitemapUrl required' });
+    const result = await searchConsole.deleteSitemap(siteUrl, sitemapUrl);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/seo/inspect-url', async (req, res) => {
+  try {
+    const siteUrl = config.seo?.siteUrl || 'sc-domain:visionxbrain.com';
+    const inspectionUrl = req.body?.url;
+    if (!inspectionUrl) return res.status(400).json({ success: false, error: 'url required' });
+    const result = await searchConsole.inspectUrl(siteUrl, inspectionUrl);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/seo/batch-inspect', async (req, res) => {
+  try {
+    const siteUrl = config.seo?.siteUrl || 'sc-domain:visionxbrain.com';
+    const urls = req.body?.urls;
+    if (!urls || !Array.isArray(urls)) return res.status(400).json({ success: false, error: 'urls array required' });
+    const results = await searchConsole.batchInspect(siteUrl, urls, 400);
+    const indexed = results.filter(r => r.verdict === 'PASS').length;
+    const notIndexed = results.filter(r => r.verdict !== 'PASS' && !r.error).length;
+    res.json({ success: true, total: results.length, indexed, notIndexed, results });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // =============================================================================
 // API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส
 // =============================================================================
@@ -5669,8 +5709,12 @@ app.post('/api/leads/import', async (req, res) => {
 
     // Replace mode: overwrite entire leads.json
     if (incoming.replace) {
-      fs.writeFileSync(leadsPath, JSON.stringify(incoming, null, 2));
-      console.log(`[LEADS-IMPORT] REPLACE mode: ${incoming.leads.length} leads`);
+      const content = JSON.stringify(incoming, null, 2);
+      const fd = fs.openSync(leadsPath, 'w');
+      fs.writeSync(fd, content);
+      fs.fsyncSync(fd);
+      fs.closeSync(fd);
+      console.log(`[LEADS-IMPORT] REPLACE mode: ${incoming.leads.length} leads (fsync'd)`);
       return res.json({ ok: true, mode: 'replace', total: incoming.leads.length });
     }
 
@@ -5722,8 +5766,12 @@ app.post('/api/leads/import', async (req, res) => {
       }
     }
 
-    fs.writeFileSync(leadsPath, JSON.stringify(current, null, 2));
-    console.log(`[LEADS-IMPORT] Merged: ${merged}, Added: ${added}, Total: ${current.leads.length}`);
+    const mergeContent = JSON.stringify(current, null, 2);
+    const fd2 = fs.openSync(leadsPath, 'w');
+    fs.writeSync(fd2, mergeContent);
+    fs.fsyncSync(fd2);
+    fs.closeSync(fd2);
+    console.log(`[LEADS-IMPORT] Merged: ${merged}, Added: ${added}, Total: ${current.leads.length} (fsync'd)`);
     res.json({ ok: true, merged, added, total: current.leads.length });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -6460,6 +6508,79 @@ app.get('/vision/analytics/*', (req, res) => {
 // Growth Strategy Dashboard SPA fallback
 app.get('/vision/growthstrategy/*', (req, res) => {
   res.sendFile(join(__dirname, 'public/vision/growthstrategy/index.html'));
+});
+
+// =============================================================================
+// 404 CHECK DASHBOARD API
+// =============================================================================
+
+// Start GSC scan (async)
+app.post('/api/404check/scan', async (req, res) => {
+  try {
+    const siteUrl = req.body?.siteUrl || 'sc-domain:visionxbrain.com';
+    // Run async — don't await
+    checker404.scanGSC(siteUrl).catch(err => console.error('[404check] Scan error:', err.message));
+    res.json({ ok: true, message: 'Scan started', status: checker404.getJobStatus() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Check scan status
+app.get('/api/404check/status', (req, res) => {
+  res.json(checker404.getJobStatus());
+});
+
+// Get cached results
+app.get('/api/404check/results', (req, res) => {
+  const data = checker404.loadResults();
+  if (!data) return res.json({ empty: true });
+  res.json(data);
+});
+
+// Run auto-match redirects
+app.post('/api/404check/match', async (req, res) => {
+  try {
+    const result = await checker404.matchRedirects();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update single redirect
+app.put('/api/404check/redirect/:index', (req, res) => {
+  const index = parseInt(req.params.index);
+  const { target } = req.body;
+  if (isNaN(index) || !target) return res.status(400).json({ error: 'Missing index or target' });
+
+  const updated = checker404.updateRedirect(index, target);
+  if (!updated) return res.status(404).json({ error: 'Redirect not found' });
+  res.json(updated);
+});
+
+// Validate all targets
+app.post('/api/404check/validate', async (req, res) => {
+  try {
+    const result = await checker404.validateTargets();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Download CSV
+app.get('/api/404check/csv', (req, res) => {
+  const csv = checker404.generateCSV();
+  if (!csv) return res.status(404).json({ error: 'No redirect data' });
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename=redirects-404.csv');
+  res.send(csv);
+});
+
+// 404 Check Dashboard SPA fallback
+app.get('/vision/404check/*', (req, res) => {
+  res.sendFile(join(__dirname, 'public/vision/404check/index.html'));
 });
 
 // =============================================================================
