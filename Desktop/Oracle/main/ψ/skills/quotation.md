@@ -688,6 +688,30 @@ Email: vxb.visionxbrain@gmail.com
 Web: www.visionxbrain.com
 ```
 
+### แจ้งเตือน LINE หลังส่งอีเมล (บังคับ!)
+
+> **ทุกครั้ง**ที่ส่งอีเมลเอกสาร (QT/BL/RC) ให้ลูกค้า → ต้องแจ้ง Tar ใน LINE ทันที
+
+```
+Format:
+ส่ง{ประเภท} {เลขเอกสาร} ให้ {ลูกค้า} แล้ว
+- ยอด: {จำนวน} บาท ({งวดที่/รายละเอียด})
+- อีเมล: {email ผู้รับ}
+- แนบ: {รายการไฟล์}
+```
+
+วิธีส่ง LINE:
+```bash
+curl -s -X POST "https://oracle-agent-production-546e.up.railway.app/api/line/push" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: oracle-memory-secret-2026" \
+  -d '{"message":"..."}'
+```
+
+> รวมถึงการกระทำอื่นที่เกี่ยวข้อง เช่น สร้างเอกสารเสร็จ, ลูกค้าตอบกลับ, ฯลฯ
+
+---
+
 ### วิธีส่งอีเมลผ่าน Gmail API (Node.js)
 
 ```

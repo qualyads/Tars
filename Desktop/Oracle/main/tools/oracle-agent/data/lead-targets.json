@@ -1,48 +1,224 @@
 {
   "searches": [
-    { "query": "คลินิกความงาม กรุงเทพ", "industry": "คลินิก" },
-    { "query": "คลินิกทันตกรรม กรุงเทพ", "industry": "คลินิก" },
-    { "query": "คลินิกผิวหนัง กรุงเทพ", "industry": "คลินิก" },
-    { "query": "คลินิกศัลยกรรม กรุงเทพ", "industry": "คลินิก" },
-    { "query": "คลินิก botox filler กรุงเทพ", "industry": "คลินิก" },
-    { "query": "สปา กรุงเทพ premium", "industry": "สปา" },
-    { "query": "สปา เชียงใหม่", "industry": "สปา" },
-    { "query": "สปา ภูเก็ต", "industry": "สปา" },
-    { "query": "ร้านอาหาร กรุงเทพ fine dining", "industry": "ร้านอาหาร" },
-    { "query": "ร้านอาหารญี่ปุ่น กรุงเทพ premium", "industry": "ร้านอาหาร" },
-    { "query": "โรงแรม boutique เชียงใหม่", "industry": "โรงแรม" },
-    { "query": "โรงแรม boutique กรุงเทพ", "industry": "โรงแรม" },
-    { "query": "โรงแรม pool villa ภูเก็ต", "industry": "โรงแรม" },
-    { "query": "ฟิตเนส กรุงเทพ", "industry": "ฟิตเนส" },
-    { "query": "โรงเรียนสอนภาษา กรุงเทพ", "industry": "การศึกษา" },
-    { "query": "โรงเรียนกวดวิชา กรุงเทพ", "industry": "การศึกษา" },
-    { "query": "สถาบันสอนดำน้ำ ไทย", "industry": "การศึกษา" },
-    { "query": "สตูดิโอถ่ายภาพ กรุงเทพ", "industry": "ถ่ายภาพ" },
-    { "query": "wedding studio กรุงเทพ", "industry": "ถ่ายภาพ" },
-    { "query": "คาเฟ่ กรุงเทพ", "industry": "คาเฟ่" },
-    { "query": "co-working space กรุงเทพ", "industry": "co-working" },
-    { "query": "โยคะ สตูดิโอ กรุงเทพ", "industry": "สุขภาพ" },
-    { "query": "pilates studio กรุงเทพ", "industry": "สุขภาพ" },
-    { "query": "pet grooming กรุงเทพ", "industry": "สัตว์เลี้ยง" },
-    { "query": "โรงพยาบาลสัตว์ กรุงเทพ", "industry": "สัตว์เลี้ยง" },
-    { "query": "ร้านดอกไม้ กรุงเทพ delivery", "industry": "ดอกไม้" },
-    { "query": "wedding planner กรุงเทพ", "industry": "อีเว้นท์" },
-    { "query": "event organizer กรุงเทพ", "industry": "อีเว้นท์" },
-    { "query": "interior design กรุงเทพ", "industry": "ออกแบบ" },
-    { "query": "สถาปนิก กรุงเทพ", "industry": "ออกแบบ" },
-    { "query": "เนอสเซอรี่ กรุงเทพ", "industry": "การศึกษา" },
-    { "query": "โรงเรียนอนุบาล นานาชาติ กรุงเทพ", "industry": "การศึกษา" },
-    { "query": "ร้านเค้ก bakery กรุงเทพ", "industry": "เบเกอรี่" },
-    { "query": "car detailing กรุงเทพ", "industry": "รถยนต์" },
-    { "query": "ร้านซ่อมรถหรู กรุงเทพ", "industry": "รถยนต์" }
+    {"query": "คลินิกความงาม", "industry": "คลินิก", "city": "กรุงเทพ"},
+    {"query": "คลินิกทันตกรรม", "industry": "คลินิก", "city": "กรุงเทพ"},
+    {"query": "คลินิกผิวหนัง", "industry": "คลินิก", "city": "กรุงเทพ"},
+    {"query": "คลินิกศัลยกรรม", "industry": "คลินิก", "city": "กรุงเทพ"},
+    {"query": "คลินิก botox filler", "industry": "คลินิก", "city": "กรุงเทพ"},
+    {"query": "คลินิกตา lasik", "industry": "คลินิก", "city": "กรุงเทพ"},
+    {"query": "คลินิกกระดูก กายภาพบำบัด", "industry": "คลินิก", "city": "กรุงเทพ"},
+    {"query": "คลินิกความงาม", "industry": "คลินิก", "city": "เชียงใหม่"},
+    {"query": "คลินิกทันตกรรม", "industry": "คลินิก", "city": "เชียงใหม่"},
+    {"query": "คลินิกความงาม", "industry": "คลินิก", "city": "ภูเก็ต"},
+    {"query": "คลินิกความงาม", "industry": "คลินิก", "city": "พัทยา"},
+    {"query": "คลินิกความงาม", "industry": "คลินิก", "city": "ขอนแก่น"},
+
+    {"query": "สปา premium", "industry": "สปา", "city": "กรุงเทพ"},
+    {"query": "day spa", "industry": "สปา", "city": "กรุงเทพ"},
+    {"query": "สปา", "industry": "สปา", "city": "เชียงใหม่"},
+    {"query": "สปา", "industry": "สปา", "city": "ภูเก็ต"},
+    {"query": "สปา", "industry": "สปา", "city": "หัวหิน"},
+    {"query": "สปา", "industry": "สปา", "city": "สมุย"},
+    {"query": "สปา wellness", "industry": "สปา", "city": "พัทยา"},
+
+    {"query": "ร้านอาหาร fine dining", "industry": "ร้านอาหาร", "city": "กรุงเทพ"},
+    {"query": "ร้านอาหารญี่ปุ่น premium", "industry": "ร้านอาหาร", "city": "กรุงเทพ"},
+    {"query": "ร้านอาหาร italian", "industry": "ร้านอาหาร", "city": "กรุงเทพ"},
+    {"query": "ร้านอาหาร rooftop", "industry": "ร้านอาหาร", "city": "กรุงเทพ"},
+    {"query": "ร้านอาหาร premium", "industry": "ร้านอาหาร", "city": "เชียงใหม่"},
+    {"query": "ร้านอาหาร", "industry": "ร้านอาหาร", "city": "ภูเก็ต"},
+    {"query": "ร้านอาหาร beachfront", "industry": "ร้านอาหาร", "city": "พัทยา"},
+
+    {"query": "โรงแรม boutique", "industry": "โรงแรม", "city": "กรุงเทพ"},
+    {"query": "โรงแรม boutique", "industry": "โรงแรม", "city": "เชียงใหม่"},
+    {"query": "pool villa resort", "industry": "โรงแรม", "city": "ภูเก็ต"},
+    {"query": "โรงแรม boutique", "industry": "โรงแรม", "city": "พัทยา"},
+    {"query": "resort", "industry": "โรงแรม", "city": "หัวหิน"},
+    {"query": "resort villa", "industry": "โรงแรม", "city": "สมุย"},
+    {"query": "โรงแรม boutique", "industry": "โรงแรม", "city": "เชียงราย"},
+    {"query": "โรงแรม", "industry": "โรงแรม", "city": "กาญจนบุรี"},
+
+    {"query": "ฟิตเนส gym", "industry": "ฟิตเนส", "city": "กรุงเทพ"},
+    {"query": "crossfit", "industry": "ฟิตเนส", "city": "กรุงเทพ"},
+    {"query": "muay thai gym", "industry": "ฟิตเนส", "city": "กรุงเทพ"},
+    {"query": "ฟิตเนส", "industry": "ฟิตเนส", "city": "เชียงใหม่"},
+    {"query": "ฟิตเนส", "industry": "ฟิตเนส", "city": "ภูเก็ต"},
+
+    {"query": "โรงเรียนสอนภาษา", "industry": "การศึกษา", "city": "กรุงเทพ"},
+    {"query": "โรงเรียนกวดวิชา", "industry": "การศึกษา", "city": "กรุงเทพ"},
+    {"query": "โรงเรียนอนุบาล นานาชาติ", "industry": "การศึกษา", "city": "กรุงเทพ"},
+    {"query": "เนอสเซอรี่", "industry": "การศึกษา", "city": "กรุงเทพ"},
+    {"query": "สถาบันสอนดำน้ำ", "industry": "การศึกษา", "city": "ภูเก็ต"},
+    {"query": "โรงเรียนสอนภาษา", "industry": "การศึกษา", "city": "เชียงใหม่"},
+    {"query": "สถาบันสอนดนตรี", "industry": "การศึกษา", "city": "กรุงเทพ"},
+    {"query": "driving school โรงเรียนสอนขับรถ", "industry": "การศึกษา", "city": "กรุงเทพ"},
+
+    {"query": "สตูดิโอถ่ายภาพ", "industry": "ถ่ายภาพ", "city": "กรุงเทพ"},
+    {"query": "wedding studio", "industry": "ถ่ายภาพ", "city": "กรุงเทพ"},
+    {"query": "สตูดิโอถ่ายภาพ", "industry": "ถ่ายภาพ", "city": "เชียงใหม่"},
+
+    {"query": "คาเฟ่ specialty coffee", "industry": "คาเฟ่", "city": "กรุงเทพ"},
+    {"query": "คาเฟ่", "industry": "คาเฟ่", "city": "เชียงใหม่"},
+    {"query": "คาเฟ่", "industry": "คาเฟ่", "city": "ภูเก็ต"},
+
+    {"query": "co-working space", "industry": "co-working", "city": "กรุงเทพ"},
+    {"query": "co-working space", "industry": "co-working", "city": "เชียงใหม่"},
+
+    {"query": "โยคะ สตูดิโอ", "industry": "สุขภาพ", "city": "กรุงเทพ"},
+    {"query": "pilates studio", "industry": "สุขภาพ", "city": "กรุงเทพ"},
+    {"query": "โยคะ", "industry": "สุขภาพ", "city": "เชียงใหม่"},
+
+    {"query": "pet grooming", "industry": "สัตว์เลี้ยง", "city": "กรุงเทพ"},
+    {"query": "โรงพยาบาลสัตว์", "industry": "สัตว์เลี้ยง", "city": "กรุงเทพ"},
+    {"query": "pet hotel", "industry": "สัตว์เลี้ยง", "city": "กรุงเทพ"},
+    {"query": "โรงพยาบาลสัตว์", "industry": "สัตว์เลี้ยง", "city": "เชียงใหม่"},
+
+    {"query": "ร้านดอกไม้ delivery", "industry": "ดอกไม้", "city": "กรุงเทพ"},
+    {"query": "wedding planner", "industry": "อีเว้นท์", "city": "กรุงเทพ"},
+    {"query": "event organizer", "industry": "อีเว้นท์", "city": "กรุงเทพ"},
+    {"query": "wedding planner", "industry": "อีเว้นท์", "city": "เชียงใหม่"},
+    {"query": "wedding planner", "industry": "อีเว้นท์", "city": "ภูเก็ต"},
+
+    {"query": "interior design", "industry": "ออกแบบ", "city": "กรุงเทพ"},
+    {"query": "สถาปนิก", "industry": "ออกแบบ", "city": "กรุงเทพ"},
+    {"query": "รับออกแบบบ้าน", "industry": "ออกแบบ", "city": "กรุงเทพ"},
+    {"query": "landscape design", "industry": "ออกแบบ", "city": "กรุงเทพ"},
+
+    {"query": "ร้านเค้ก bakery", "industry": "เบเกอรี่", "city": "กรุงเทพ"},
+    {"query": "ร้านเบเกอรี่ custom cake", "industry": "เบเกอรี่", "city": "กรุงเทพ"},
+
+    {"query": "car detailing", "industry": "รถยนต์", "city": "กรุงเทพ"},
+    {"query": "ร้านซ่อมรถหรู", "industry": "รถยนต์", "city": "กรุงเทพ"},
+    {"query": "showroom รถมือสอง", "industry": "รถยนต์", "city": "กรุงเทพ"},
+    {"query": "car wrap สติ๊กเกอร์รถ", "industry": "รถยนต์", "city": "กรุงเทพ"},
+
+    {"query": "สำนักงานกฎหมาย ทนายความ", "industry": "กฎหมาย", "city": "กรุงเทพ"},
+    {"query": "สำนักงานบัญชี", "industry": "บัญชี", "city": "กรุงเทพ"},
+    {"query": "สำนักงานบัญชี", "industry": "บัญชี", "city": "เชียงใหม่"},
+
+    {"query": "ร้านทอง จิวเวลรี่", "industry": "จิวเวลรี่", "city": "กรุงเทพ"},
+    {"query": "custom jewelry", "industry": "จิวเวลรี่", "city": "กรุงเทพ"},
+
+    {"query": "อสังหาริมทรัพย์ บ้านจัดสรร", "industry": "อสังหาฯ", "city": "กรุงเทพ"},
+    {"query": "คอนโด ขาย เช่า", "industry": "อสังหาฯ", "city": "กรุงเทพ"},
+    {"query": "real estate agency", "industry": "อสังหาฯ", "city": "กรุงเทพ"},
+    {"query": "อสังหาริมทรัพย์", "industry": "อสังหาฯ", "city": "เชียงใหม่"},
+    {"query": "real estate villa", "industry": "อสังหาฯ", "city": "ภูเก็ต"},
+    {"query": "อสังหาริมทรัพย์ คอนโด", "industry": "อสังหาฯ", "city": "พัทยา"},
+
+    {"query": "travel agency ทัวร์", "industry": "ท่องเที่ยว", "city": "กรุงเทพ"},
+    {"query": "tour operator", "industry": "ท่องเที่ยว", "city": "เชียงใหม่"},
+    {"query": "tour boat diving", "industry": "ท่องเที่ยว", "city": "ภูเก็ต"},
+    {"query": "tour operator", "industry": "ท่องเที่ยว", "city": "พัทยา"},
+
+    {"query": "nail salon ร้านทำเล็บ", "industry": "ความงาม", "city": "กรุงเทพ"},
+    {"query": "ร้านตัดผม barbershop premium", "industry": "ความงาม", "city": "กรุงเทพ"},
+    {"query": "hair salon premium", "industry": "ความงาม", "city": "กรุงเทพ"},
+    {"query": "ร้านตัดผม", "industry": "ความงาม", "city": "เชียงใหม่"},
+
+    {"query": "ร้านเฟอร์นิเจอร์ custom", "industry": "เฟอร์นิเจอร์", "city": "กรุงเทพ"},
+    {"query": "โซฟา เฟอร์นิเจอร์ premium", "industry": "เฟอร์นิเจอร์", "city": "กรุงเทพ"},
+
+    {"query": "โรงพิมพ์ printing", "industry": "โรงพิมพ์", "city": "กรุงเทพ"},
+    {"query": "ป้ายโฆษณา สื่อสิ่งพิมพ์", "industry": "โรงพิมพ์", "city": "กรุงเทพ"},
+
+    {"query": "ร้านซ่อมมือถือ IT service", "industry": "IT", "city": "กรุงเทพ"},
+    {"query": "CCTV กล้องวงจรปิด", "industry": "IT", "city": "กรุงเทพ"},
+
+    {"query": "moving company ขนส่ง ย้ายบ้าน", "industry": "ขนส่ง", "city": "กรุงเทพ"},
+
+    {"query": "ร้านวัสดุก่อสร้าง", "industry": "ก่อสร้าง", "city": "กรุงเทพ"},
+    {"query": "รับเหมาก่อสร้าง สร้างบ้าน", "industry": "ก่อสร้าง", "city": "กรุงเทพ"},
+    {"query": "รับเหมาก่อสร้าง", "industry": "ก่อสร้าง", "city": "เชียงใหม่"},
+
+    {"query": "ร้านซักรีด laundry premium", "industry": "บริการ", "city": "กรุงเทพ"},
+    {"query": "cleaning service ทำความสะอาด", "industry": "บริการ", "city": "กรุงเทพ"},
+    {"query": "pest control กำจัดปลวก", "industry": "บริการ", "city": "กรุงเทพ"},
+
+    {"query": "โรงงาน OEM manufacturer", "industry": "โรงงาน", "city": "กรุงเทพ"},
+    {"query": "โรงงานเครื่องสำอาง OEM", "industry": "โรงงาน", "city": "กรุงเทพ"},
+    {"query": "โรงงานอาหาร OEM", "industry": "โรงงาน", "city": "กรุงเทพ"},
+
+    {"query": "ร้านดนตรี สอนกีตาร์", "industry": "ดนตรี", "city": "กรุงเทพ"},
+    {"query": "สอนเปียโน สอนร้องเพลง", "industry": "ดนตรี", "city": "กรุงเทพ"},
+
+    {"query": "art gallery แกลเลอรี่", "industry": "ศิลปะ", "city": "กรุงเทพ"},
+    {"query": "tattoo studio", "industry": "ศิลปะ", "city": "กรุงเทพ"},
+    {"query": "tattoo studio", "industry": "ศิลปะ", "city": "เชียงใหม่"},
+
+    {"query": "shipping freight forwarder", "industry": "logistics", "city": "กรุงเทพ"},
+    {"query": "customs broker ชิปปิ้ง", "industry": "logistics", "city": "กรุงเทพ"},
+
+    {"query": "โรงเรียนนานาชาติ international school", "industry": "การศึกษา", "city": "กรุงเทพ"},
+    {"query": "tutoring center กวดวิชา", "industry": "การศึกษา", "city": "ขอนแก่น"},
+    {"query": "โรงเรียนสอนภาษา", "industry": "การศึกษา", "city": "พัทยา"},
+
+    {"query": "คลินิกทันตกรรม", "industry": "คลินิก", "city": "หาดใหญ่"},
+    {"query": "คลินิกความงาม", "industry": "คลินิก", "city": "นครราชสีมา"},
+    {"query": "คลินิกทันตกรรม", "industry": "คลินิก", "city": "อุดรธานี"},
+
+    {"query": "ร้านอาหาร premium", "industry": "ร้านอาหาร", "city": "ขอนแก่น"},
+    {"query": "ร้านอาหาร", "industry": "ร้านอาหาร", "city": "หาดใหญ่"},
+    {"query": "ร้านอาหาร", "industry": "ร้านอาหาร", "city": "นครราชสีมา"},
+
+    {"query": "ฟิตเนส gym", "industry": "ฟิตเนส", "city": "ขอนแก่น"},
+    {"query": "ฟิตเนส gym", "industry": "ฟิตเนส", "city": "พัทยา"},
+
+    {"query": "โรงแรม resort", "industry": "โรงแรม", "city": "เชียงราย"},
+    {"query": "โรงแรม resort", "industry": "โรงแรม", "city": "ขอนแก่น"},
+
+    {"query": "ร้านทอง", "industry": "จิวเวลรี่", "city": "เชียงใหม่"},
+    {"query": "ร้านทอง", "industry": "จิวเวลรี่", "city": "หาดใหญ่"},
+
+    {"query": "อสังหาริมทรัพย์ บ้าน", "industry": "อสังหาฯ", "city": "ขอนแก่น"},
+    {"query": "อสังหาริมทรัพย์ บ้าน", "industry": "อสังหาฯ", "city": "นครราชสีมา"},
+
+    {"query": "pet shop ร้านสัตว์เลี้ยง", "industry": "สัตว์เลี้ยง", "city": "กรุงเทพ"},
+    {"query": "aquarium ร้านปลา", "industry": "สัตว์เลี้ยง", "city": "กรุงเทพ"},
+
+    {"query": "escape room", "industry": "บันเทิง", "city": "กรุงเทพ"},
+    {"query": "bowling karaoke", "industry": "บันเทิง", "city": "กรุงเทพ"},
+
+    {"query": "สนามกอล์ฟ driving range", "industry": "กีฬา", "city": "กรุงเทพ"},
+    {"query": "สระว่ายน้ำ swimming school", "industry": "กีฬา", "city": "กรุงเทพ"},
+    {"query": "badminton court สนามแบดมินตัน", "industry": "กีฬา", "city": "กรุงเทพ"},
+
+    {"query": "ร้านแว่นตา optician", "industry": "สุขภาพ", "city": "กรุงเทพ"},
+    {"query": "hearing aid เครื่องช่วยฟัง", "industry": "สุขภาพ", "city": "กรุงเทพ"},
+
+    {"query": "เช่ารถ rent a car", "industry": "รถเช่า", "city": "กรุงเทพ"},
+    {"query": "เช่ารถ", "industry": "รถเช่า", "city": "เชียงใหม่"},
+    {"query": "เช่ารถ", "industry": "รถเช่า", "city": "ภูเก็ต"},
+
+    {"query": "dance studio สอนเต้น", "industry": "สุขภาพ", "city": "กรุงเทพ"},
+    {"query": "cooking class สอนทำอาหาร", "industry": "การศึกษา", "city": "กรุงเทพ"},
+    {"query": "cooking class", "industry": "การศึกษา", "city": "เชียงใหม่"},
+
+    {"query": "florist ร้านจัดดอกไม้", "industry": "ดอกไม้", "city": "เชียงใหม่"},
+    {"query": "ร้านขนมหวาน dessert", "industry": "เบเกอรี่", "city": "กรุงเทพ"}
   ],
+  "locations": {
+    "กรุงเทพ": {"lat": 13.7563, "lng": 100.5018},
+    "เชียงใหม่": {"lat": 18.7883, "lng": 98.9853},
+    "ภูเก็ต": {"lat": 7.8804, "lng": 98.3923},
+    "พัทยา": {"lat": 12.9236, "lng": 100.8825},
+    "หัวหิน": {"lat": 12.5684, "lng": 99.9577},
+    "ขอนแก่น": {"lat": 16.4322, "lng": 102.8236},
+    "เชียงราย": {"lat": 19.9105, "lng": 99.8406},
+    "หาดใหญ่": {"lat": 7.0042, "lng": 100.4747},
+    "นครราชสีมา": {"lat": 14.9799, "lng": 102.0978},
+    "อุดรธานี": {"lat": 17.4156, "lng": 102.7872},
+    "สมุย": {"lat": 9.5120, "lng": 100.0136},
+    "กาญจนบุรี": {"lat": 14.0227, "lng": 99.5328}
+  },
   "manualDomains": [],
   "excludeDomains": [
     "facebook.com", "instagram.com", "line.me", "google.com",
     "youtube.com", "tiktok.com", "twitter.com", "linkedin.com",
     "wongnai.com", "tripadvisor.com", "agoda.com", "booking.com",
     "shopee.co.th", "lazada.co.th", "pantip.com", "sanook.com",
-    "visionxbrain.com", "wikipedia.org", "yellowpages.co.th"
+    "visionxbrain.com", "wikipedia.org", "yellowpages.co.th",
+    "yelp.com", "foursquare.com", "maps.google.com"
   ],
   "emailTemplate": {
     "subject": "เว็บไซต์ {businessName} — มี 3 จุดที่ปรับแล้วลูกค้าจะเพิ่มขึ้น",
@@ -53,9 +229,9 @@
     "cx": "736a09b2ba019487e"
   },
   "settings": {
-    "maxLeadsPerDay": 30,
-    "maxEmailsPerDay": 10,
-    "searchesPerRun": 5,
-    "delayBetweenFetchMs": 3000
+    "maxLeadsPerDay": 500,
+    "maxEmailsPerDay": 20,
+    "searchesPerRun": 25,
+    "delayBetweenFetchMs": 2000
   }
 }

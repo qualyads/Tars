@@ -115,18 +115,29 @@ async function sendLong(channel, chatId, message) {
 
 /**
  * Notify hotel team (owner + subscribers) via Telegram
- * Used for hotel reports, daily summaries, heartbeat alerts
+ * Filters by topic: members with topics=["all"] get everything,
+ * members with topics=["hotel"] only get hotel-related messages.
  * @param {string} message - Message to send
+ * @param {string} topic - Message topic: "hotel", "digest", "system", etc. (default: "hotel")
  */
-async function notifyHotelTeam(message) {
+async function notifyHotelTeam(message, topic = 'hotel') {
   const team = config.telegram?.hotel_team || [];
   const results = [];
 
   for (const member of team) {
+    // Topic filtering: "all" receives everything, otherwise must match
+    const memberTopics = member.topics || ['all'];
+    const shouldReceive = memberTopics.includes('all') || memberTopics.includes(topic);
+
+    if (!shouldReceive) {
+      console.log(`[GATEWAY] Skipped ${member.name} (topic "${topic}" not in [${memberTopics}])`);
+      continue;
+    }
+
     try {
       await telegram.sendLong(member.chat_id, message);
       results.push({ name: member.name, success: true });
-      console.log(`[GATEWAY] Hotel report sent to ${member.name}`);
+      console.log(`[GATEWAY] ${topic} report sent to ${member.name}`);
     } catch (error) {
       console.error(`[GATEWAY] Failed to notify ${member.name}:`, error.message);
       results.push({ name: member.name, success: false, error: error.message });

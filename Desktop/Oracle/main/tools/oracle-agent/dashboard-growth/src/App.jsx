@@ -1,91 +1,115 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Badge, Button } from '@relume_io/relume-ui';
+import {
+  BiCheckCircle,
+  BiDownArrowAlt,
+  BiPlay,
+  BiRocket,
+  BiTargetLock,
+  BiUpArrowAlt,
+} from '@oracle/shared/components/Icons';
+import {
+  AppSidebar,
+  Topbar,
+  StatCard,
+  StatCardProgress,
+  LoadingScreen,
+  timeAgo,
+} from '@oracle/shared';
 
 const API_BASE = window.location.origin;
 
-function timeAgo(dateStr) {
-  if (!dateStr) return '-';
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins} นาทีที่แล้ว`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs} ชม.ที่แล้ว`;
-  return `${Math.floor(hrs / 24)} วันที่แล้ว`;
+// ============ Phase 1 Progress (Stat3 pattern) ============
+function PhaseProgress({ ideas }) {
+  const retainerPlans = ideas.filter(i => i.type === 'retainer-sales' || (i.name || '').toLowerCase().includes('retainer'));
+  const doNowCount = ideas.filter(i => i.score?.recommendation === 'DO NOW').length;
+
+  const stats = [
+    {
+      title: 'แผน Retainer',
+      value: `${retainerPlans.length}`,
+      icon: <BiTargetLock />,
+      badge: 'เป้า: 5 ราย',
+      progress: Math.min((retainerPlans.length / 5) * 100, 100),
+    },
+    {
+      title: 'DO NOW',
+      value: `${doNowCount}`,
+      icon: <BiUpArrowAlt />,
+      badge: 'ทำได้เลย',
+      progress: doNowCount > 0 ? Math.min(doNowCount * 20, 100) : 0,
+    },
+    {
+      title: 'แผนทั้งหมด',
+      value: `${ideas.length}`,
+      icon: <BiRocket />,
+      badge: 'Oracle คิดให้',
+      progress: Math.min(ideas.length * 10, 100),
+    },
+  ];
+
+  const checklist = [
+    'หน้า /services/seo-services',
+    'หน้า /services/monthly-growth-packages',
+    'หน้า /services/content-marketing',
+    'หน้า /services/digital-growth-partner',
+    'Case study มี ROI ตัวเลข',
+    'ลูกค้า retainer ราย 1',
+  ];
+
+  return (
+    <section className="mb-8">
+      <div className="mb-5 grid auto-cols-fr grid-cols-1 items-end gap-4 md:mb-6 md:grid-cols-[1fr_max-content] md:gap-6">
+        <div className="w-full max-w-lg">
+          <h1 className="text-xl font-bold md:text-2xl">Phase 1 — เป้า 500K/เดือน</h1>
+          <p className="mt-2 text-text-secondary">เดือน 1-3</p>
+        </div>
+      </div>
+      <div className="grid auto-cols-fr grid-cols-1 gap-4 md:grid-flow-col md:gap-6">
+        {stats.map((stat, i) => (
+          <StatCardProgress key={i} {...stat} />
+        ))}
+      </div>
+      <div className="mt-4 overflow-hidden rounded-[15px] border border-border-primary bg-white shadow-xxs">
+        <div className="p-6">
+          <p className="mb-3 text-sm font-semibold">Checklist สิ่งที่ยังขาด</p>
+          <div className="flex flex-col gap-2">
+            {checklist.map((item, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm">
+                <span className="size-4 shrink-0 text-brand-primary">&#9675;</span>
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
+// ============ Score Bar ============
 function ScoreBar({ label, value, color }) {
   return (
-    <div className="score-row">
-      <span className="score-label">{label}</span>
-      <div className="score-bar-bg">
+    <div className="flex items-center gap-2">
+      <span className="w-20 shrink-0 text-xs text-text-secondary">{label}</span>
+      <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-background-secondary">
         <div
-          className="score-bar-fill"
-          style={{ width: `${value || 0}%`, background: color || 'var(--purple)' }}
+          className="absolute left-0 top-0 h-full rounded-full transition-all duration-300"
+          style={{ width: `${value || 0}%`, background: color || '#1b1c1b' }}
         />
       </div>
-      <span className="score-value">{value || 0}</span>
+      <span className="w-6 text-right text-xs font-semibold">{value || 0}</span>
     </div>
   );
 }
 
-function Toggle({ checked, onChange, disabled }) {
-  return (
-    <label className="toggle-switch">
-      <input type="checkbox" checked={checked} onChange={onChange} disabled={disabled} />
-      <span className="toggle-slider" />
-    </label>
-  );
-}
-
-// Phase 1 Progress Card
-function PhaseProgress({ ideas }) {
-  const phase1Target = { retainer: 5, projects: 5, revenue: 500000 };
-
-  // Count by type
-  const retainerPlans = ideas.filter(i => i.type === 'retainer-sales' || (i.name || '').toLowerCase().includes('retainer'));
-  const projectPlans = ideas.filter(i => i.type === 'project-closing');
-  const doNowCount = ideas.filter(i => (i.score?.recommendation === 'DO NOW')).length;
-
-  return (
-    <div className="phase-card">
-      <div className="phase-header">
-        <h2>Phase 1 — เป้า 500K/เดือน</h2>
-        <span className="phase-timeline">เดือน 1-3</span>
-      </div>
-      <div className="phase-targets">
-        <div className="target-item">
-          <div className="target-number">{retainerPlans.length}</div>
-          <div className="target-label">แผน Retainer</div>
-          <div className="target-goal">เป้า: {phase1Target.retainer} ราย</div>
-        </div>
-        <div className="target-item">
-          <div className="target-number">{doNowCount}</div>
-          <div className="target-label">DO NOW</div>
-          <div className="target-goal">ทำได้เลย</div>
-        </div>
-        <div className="target-item">
-          <div className="target-number">{ideas.length}</div>
-          <div className="target-label">แผนทั้งหมด</div>
-          <div className="target-goal">Oracle คิดให้</div>
-        </div>
-      </div>
-      <div className="phase-checklist">
-        <h4>Checklist สิ่งที่ยังขาด</h4>
-        <div className="checklist-item pending">หน้า /services/seo-services</div>
-        <div className="checklist-item pending">หน้า /services/monthly-growth-packages</div>
-        <div className="checklist-item pending">หน้า /services/content-marketing</div>
-        <div className="checklist-item pending">หน้า /services/digital-growth-partner</div>
-        <div className="checklist-item pending">Case study มี ROI ตัวเลข</div>
-        <div className="checklist-item pending">ลูกค้า retainer ราย 1</div>
-      </div>
-    </div>
-  );
-}
-
+// ============ Action Card (Relume border style) ============
 function ActionCard({ idea, toggleState, onToggle, onExecute, executing }) {
   const score = idea.score || {};
   const s = score.scores || {};
   const rec = score.recommendation || 'PLAN';
-  const badgeClass = rec === 'DO NOW' ? 'badge-go' : rec === 'SKIP' ? 'badge-skip' : 'badge-maybe';
+
+  const badgeVariant = rec === 'DO NOW' ? 'default' : 'secondary';
   const ideaKey = (idea.name || '').toLowerCase().replace(/\s+/g, '-');
 
   const typeLabels = {
@@ -98,23 +122,22 @@ function ActionCard({ idea, toggleState, onToggle, onExecute, executing }) {
   const typeLabel = typeLabels[idea.type] || idea.type || 'Action';
 
   return (
-    <div className="idea-card">
-      <div className="idea-header">
-        <div>
-          <span className="type-tag">{typeLabel}</span>
-          <span className="idea-name">{idea.name}</span>
+    <div className="overflow-hidden rounded-[15px] border border-border-primary bg-white shadow-xxs">
+      <div className="p-6">
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs">{typeLabel}</Badge>
+            <span className="font-bold">{idea.name}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant={badgeVariant}>{rec}</Badge>
+            <span className="text-sm font-bold">{score.totalScore || 0}</span>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span className={`idea-badge ${badgeClass}`}>{rec}</span>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--purple)' }}>
-            {score.totalScore || 0}
-          </span>
-        </div>
-      </div>
 
-      {idea.tagline && <p className="idea-tagline">{idea.tagline}</p>}
+        {idea.tagline && <p className="mb-3 text-sm italic text-text-secondary">{idea.tagline}</p>}
 
-      <div className="idea-details">
+      <div className="mb-4 space-y-1 text-sm">
         {idea.problem && <p><strong>Pain:</strong> {idea.problem}</p>}
         {idea.solution && <p><strong>ขายอะไร:</strong> {idea.solution}</p>}
         {idea.targetClient && <p><strong>ขายใคร:</strong> {idea.targetClient}</p>}
@@ -122,28 +145,26 @@ function ActionCard({ idea, toggleState, onToggle, onExecute, executing }) {
         {idea.timeToRevenue && <p><strong>เห็นเงินใน:</strong> {idea.timeToRevenue}</p>}
       </div>
 
-      {/* Steps */}
       {idea.steps && idea.steps.length > 0 && (
-        <div className="steps-list">
+        <div className="mb-4 space-y-2">
           {idea.steps.map((step, i) => (
-            <div key={i} className="step-item">
-              <span className="step-num">{i + 1}</span>
+            <div key={i} className="flex items-start gap-2 text-sm">
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-brand-primary text-xs font-bold text-white">{i + 1}</span>
               <span>{step}</span>
             </div>
           ))}
         </div>
       )}
 
-      {/* Who does what */}
       {(idea.oracleCanDo || idea.tarMustDo) && (
-        <div className="who-does">
+        <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2">
           {idea.oracleCanDo && (
-            <div className="who-item oracle">
+            <div className="rounded bg-system-success-green-light p-3 text-sm">
               <strong>Oracle:</strong> {idea.oracleCanDo}
             </div>
           )}
           {idea.tarMustDo && (
-            <div className="who-item tar">
+            <div className="rounded bg-brand-primary/5 p-3 text-sm">
               <strong>Tar:</strong> {idea.tarMustDo}
             </div>
           )}
@@ -151,40 +172,41 @@ function ActionCard({ idea, toggleState, onToggle, onExecute, executing }) {
       )}
 
       {/* Score bars */}
-      <div className="score-bars">
-        <ScoreBar label="Speed" value={s.speedToRevenue} color="#f44336" />
-        <ScoreBar label="Feasibility" value={s.feasibility} color="#4caf50" />
-        <ScoreBar label="Revenue" value={s.revenuePotential} color="#ff9800" />
-        <ScoreBar label="Demand" value={s.marketDemand} color="#2196f3" />
-        <ScoreBar label="VXB Fit" value={s.vxbFit} color="var(--purple)" />
+      <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
+        <ScoreBar label="Speed" value={s.speedToRevenue} color="#b42318" />
+        <ScoreBar label="Feasibility" value={s.feasibility} color="#027a48" />
+        <ScoreBar label="Revenue" value={s.revenuePotential} color="#eb3f43" />
+        <ScoreBar label="Demand" value={s.marketDemand} color="#df6c68" />
+        <ScoreBar label="VXB Fit" value={s.vxbFit} color="#eb3f43" />
       </div>
 
       {score.nextStep && (
-        <div className="next-step">
+        <div className="mb-4 rounded bg-brand-primary/5 p-3 text-sm font-semibold text-brand-primary">
           Next: {score.nextStep}
         </div>
       )}
 
-      <div className="idea-actions">
-        <div className="master-toggle">
-          <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Auto-execute</span>
-          <Toggle
-            checked={toggleState !== false}
-            onChange={() => onToggle(ideaKey, toggleState === false)}
-          />
+        <div className="flex items-center justify-between border-t border-border-primary pt-4">
+          <label className="flex items-center gap-2 text-sm text-text-secondary">
+            <span>Auto-execute</span>
+            <input
+              type="checkbox"
+              className="size-4 accent-[#eb3f43]"
+              checked={toggleState !== false}
+              onChange={() => onToggle(ideaKey, toggleState === false)}
+            />
+          </label>
+          <Button size="sm" onClick={() => onExecute(idea.name)} disabled={executing}>
+            <BiPlay className="mr-1 size-4" />
+            {executing ? 'Running...' : 'Execute'}
+          </Button>
         </div>
-        <button
-          className="btn btn-primary btn-sm"
-          onClick={() => onExecute(idea.name)}
-          disabled={executing}
-        >
-          {executing ? 'Running...' : 'Execute'}
-        </button>
       </div>
     </div>
   );
 }
 
+// ============ MAIN APP ============
 export default function App() {
   const [ideas, setIdeas] = useState([]);
   const [toggles, setToggles] = useState({});
@@ -297,127 +319,134 @@ export default function App() {
   };
 
   if (loading) {
-    return (
-      <div className="loader-wrap">
-        <div className="loader" />
-        <p style={{ marginTop: 16, color: 'var(--text-secondary)' }}>Loading Growth Tracker...</p>
-      </div>
-    );
+    return <LoadingScreen message="Loading Growth Tracker..." />;
   }
 
   if (error) {
     return (
-      <div className="error-wrap">
-        <h3>Error</h3>
-        <p>{error}</p>
-        <button className="btn btn-primary" onClick={fetchData}>Retry</button>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4">
+        <h3 className="text-lg font-bold text-system-error-red">Error</h3>
+        <p className="text-sm">{error}</p>
+        <Button onClick={fetchData}>Retry</Button>
       </div>
     );
   }
 
-  // Separate DO NOW vs PLAN
   const doNow = ideas.filter(i => i.score?.recommendation === 'DO NOW')
     .sort((a, b) => (b.score?.totalScore || 0) - (a.score?.totalScore || 0));
   const planLater = ideas.filter(i => i.score?.recommendation !== 'DO NOW')
     .sort((a, b) => (b.score?.totalScore || 0) - (a.score?.totalScore || 0));
 
   return (
-    <div className="app-shell">
-      {/* Navbar */}
-      <nav className="navbar">
-        <div className="navbar-inner">
-          <div className="navbar-title">
-            <span>VXB</span> Growth Tracker
-          </div>
-          <div className="navbar-actions">
-            <div className="master-toggle">
-              <span>Auto-Execute</span>
-              <Toggle checked={masterSwitch} onChange={handleMasterToggle} />
+    <AppSidebar activePath="/vision/growthstrategy/">
+      <div className="relative flex-1 bg-background-secondary">
+        <Topbar title="VXB Growth Tracker" onRefresh={fetchData} refreshing={false}>
+          <label className="flex items-center gap-2 text-sm">
+            <span>Auto-Execute</span>
+            <input
+              type="checkbox"
+              className="size-4 accent-[#eb3f43]"
+              checked={masterSwitch}
+              onChange={handleMasterToggle}
+            />
+          </label>
+        </Topbar>
+        <div className="h-[calc(100vh-4.5rem)] overflow-auto">
+          <div className="container px-6 py-8 md:px-8 md:py-10 lg:py-12">
+
+            {/* Stats bar */}
+            <section className="mb-8">
+              <div className="grid auto-cols-fr grid-cols-1 gap-4 md:grid-flow-col md:gap-6">
+                <StatCard
+                  title="Last Scan"
+                  value={timeAgo(status?.lastThinking)}
+                  badge="Auto"
+                />
+                <StatCard
+                  title="Actions"
+                  value={`${status?.total || 0}`}
+                  badge={`${doNow.length} DO NOW`}
+                />
+                <StatCard
+                  title="Auto-Execute"
+                  value={masterSwitch ? 'ON' : 'OFF'}
+                  icon={masterSwitch ? <BiUpArrowAlt /> : <BiDownArrowAlt />}
+                  badge={masterSwitch ? 'Active' : 'Inactive'}
+                />
+              </div>
+            </section>
+
+            {/* Phase 1 Progress */}
+            <PhaseProgress ideas={ideas} />
+
+            {/* DO NOW section */}
+            {doNow.length > 0 && (
+              <section className="mb-8">
+                <div className="mb-4 flex items-center gap-2 border-b-2 border-system-success-green pb-2">
+                  <BiCheckCircle className="size-5 text-system-success-green" />
+                  <h2 className="font-bold text-system-success-green">DO NOW — ทำได้เลยวันนี้</h2>
+                </div>
+                <div className="flex flex-col gap-4">
+                  {doNow.map((idea, i) => {
+                    const ideaKey = (idea.name || '').toLowerCase().replace(/\s+/g, '-');
+                    return (
+                      <ActionCard
+                        key={ideaKey + i}
+                        idea={idea}
+                        toggleState={toggles[ideaKey]}
+                        onToggle={handleIdeaToggle}
+                        onExecute={handleExecute}
+                        executing={executing === idea.name}
+                      />
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* PLAN section */}
+            {planLater.length > 0 && (
+              <section className="mb-8">
+                <div className="mb-4 border-b-2 border-border-primary pb-2">
+                  <h2 className="font-bold text-text-secondary">PLAN — วางแผนก่อน</h2>
+                </div>
+                <div className="flex flex-col gap-4">
+                  {planLater.map((idea, i) => {
+                    const ideaKey = (idea.name || '').toLowerCase().replace(/\s+/g, '-');
+                    return (
+                      <ActionCard
+                        key={ideaKey + i}
+                        idea={idea}
+                        toggleState={toggles[ideaKey]}
+                        onToggle={handleIdeaToggle}
+                        onExecute={handleExecute}
+                        executing={executing === idea.name}
+                      />
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {ideas.length === 0 && (
+              <div className="py-16 text-center">
+                <h3 className="mb-2 text-lg font-bold">ยังไม่มีแผน</h3>
+                <p className="text-sm text-text-secondary">กด "Scan Now" ให้ Oracle คิดแผนหาเงินให้</p>
+              </div>
+            )}
+
+            {/* Force think */}
+            <div className="flex justify-center py-6">
+              <Button onClick={handleForceThink} disabled={thinking}>
+                <BiRocket className="mr-2 size-4" />
+                {thinking ? 'กำลังคิด...' : 'Scan Now — หาโอกาสใหม่'}
+              </Button>
             </div>
           </div>
-        </div>
-      </nav>
-
-      {/* Stats bar */}
-      <div className="stats-bar">
-        <div className="stats-inner">
-          <span>Last scan: <strong>{timeAgo(status?.lastThinking)}</strong></span>
-          <span>Actions: <strong>{status?.total || 0}</strong></span>
-          <span>DO NOW: <strong style={{ color: '#2e7d32' }}>{doNow.length}</strong></span>
-          <span>Auto: <strong style={{ color: masterSwitch ? '#4caf50' : '#f44336' }}>
-            {masterSwitch ? 'ON' : 'OFF'}
-          </strong></span>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="content">
-        {/* Phase 1 Progress */}
-        <PhaseProgress ideas={ideas} />
-
-        {/* DO NOW section */}
-        {doNow.length > 0 && (
-          <>
-            <h3 className="section-title do-now-title">DO NOW — ทำได้เลยวันนี้</h3>
-            <div className="idea-grid">
-              {doNow.map((idea, i) => {
-                const ideaKey = (idea.name || '').toLowerCase().replace(/\s+/g, '-');
-                return (
-                  <ActionCard
-                    key={ideaKey + i}
-                    idea={idea}
-                    toggleState={toggles[ideaKey]}
-                    onToggle={handleIdeaToggle}
-                    onExecute={handleExecute}
-                    executing={executing === idea.name}
-                  />
-                );
-              })}
-            </div>
-          </>
-        )}
-
-        {/* PLAN section */}
-        {planLater.length > 0 && (
-          <>
-            <h3 className="section-title">PLAN — วางแผนก่อน</h3>
-            <div className="idea-grid">
-              {planLater.map((idea, i) => {
-                const ideaKey = (idea.name || '').toLowerCase().replace(/\s+/g, '-');
-                return (
-                  <ActionCard
-                    key={ideaKey + i}
-                    idea={idea}
-                    toggleState={toggles[ideaKey]}
-                    onToggle={handleIdeaToggle}
-                    onExecute={handleExecute}
-                    executing={executing === idea.name}
-                  />
-                );
-              })}
-            </div>
-          </>
-        )}
-
-        {ideas.length === 0 && (
-          <div className="empty-state">
-            <h3>ยังไม่มีแผน</h3>
-            <p>กด "Scan Now" ให้ Oracle คิดแผนหาเงินให้</p>
-          </div>
-        )}
-
-        <div className="force-think-bar">
-          <button
-            className="btn btn-primary"
-            onClick={handleForceThink}
-            disabled={thinking}
-          >
-            {thinking ? 'กำลังคิด...' : 'Scan Now — หาโอกาสใหม่'}
-          </button>
-        </div>
-      </div>
-
-      {toast && <div className="toast">{toast}</div>}
-    </div>
+      {toast && <div className="toast-notification">{toast}</div>}
+    </AppSidebar>
   );
 }

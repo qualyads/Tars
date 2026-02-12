@@ -331,6 +331,32 @@ class SearchConsole {
   }
 
   /**
+   * Delete a sitemap from Search Console
+   */
+  async deleteSitemap(siteUrl, sitemapUrl) {
+    const encodedSiteUrl = encodeURIComponent(siteUrl);
+    const encodedSitemapUrl = encodeURIComponent(sitemapUrl);
+    const token = await this.getAccessToken();
+
+    const response = await fetch(
+      `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodedSiteUrl}/sitemaps/${encodedSitemapUrl}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Sitemap delete error (${response.status}): ${error}`);
+    }
+
+    return { success: true, deleted: sitemapUrl };
+  }
+
+  /**
    * Site summary - overview ของเว็บ 28 วัน
    */
   async getSummary(siteUrl) {

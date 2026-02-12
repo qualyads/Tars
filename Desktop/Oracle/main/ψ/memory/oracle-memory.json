@@ -2,7 +2,7 @@
   "_meta": {
     "version": "2.0.0",
     "created": "2026-02-03T08:59:55.915Z",
-    "lastModified": "2026-02-04T17:34:02.221Z",
+    "lastModified": "2026-02-11T10:17:35.412Z",
     "source": "terminal"
   },
   "identity": {
@@ -458,15 +458,17 @@
     "market_alerts": [],
     "hotel_status": {
       "check_ins": {
-        "count": 0,
-        "guests": []
+        "count": 1,
+        "guests": [
+          "Guest"
+        ]
       },
       "check_outs": {
-        "count": 6
+        "count": 5
       },
-      "occupancy": 0
+      "occupancy": 7
     },
-    "last_monitor": "2026-02-04T17:34:02.221Z",
+    "last_monitor": "2026-02-11T10:17:35.412Z",
     "last_briefing": {
       "timestamp": "2026-02-03T09:20:06.744Z",
       "data": {

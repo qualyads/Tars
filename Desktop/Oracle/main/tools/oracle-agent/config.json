@@ -28,12 +28,14 @@
       {
         "chat_id": "5305207553",
         "name": "Tars",
-        "role": "owner"
+        "role": "owner",
+        "topics": ["all"]
       },
       {
         "chat_id": "8534538790",
         "name": "Natiya",
-        "role": "partner"
+        "role": "partner",
+        "topics": ["hotel"]
       }
     ]
   },

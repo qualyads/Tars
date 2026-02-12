@@ -35,6 +35,49 @@ try {
 const LINE_TOKEN = config.line?.channel_token || sharedConfig.line?.channel_token;
 const OWNER_ID = config.line?.owner_id || sharedConfig.line?.owner_id || 'Uba2ae89ff15d0ca1ea673058844f287c';
 
+// Import Telegram for fallback when LINE fails
+let telegramFallback = null;
+try {
+  const telegramModule = await import('./telegram.js');
+  telegramFallback = telegramModule.default;
+} catch (e) {
+  console.log('[SCHEDULER] Telegram fallback not available');
+}
+
+/**
+ * Send message via Telegram as fallback when LINE fails
+ */
+async function sendTelegramFallback(message, targetChatId = null) {
+  if (!telegramFallback || !config.telegram?.enabled) return false;
+  try {
+    const chatId = targetChatId || config.telegram?.owner_id;
+    if (!chatId) return false;
+    await telegramFallback.sendLong(chatId, message);
+    console.log(`[SCHEDULER] Telegram fallback sent to ${chatId}:`, message.substring(0, 40) + '...');
+    return true;
+  } catch (e) {
+    console.error('[SCHEDULER] Telegram fallback failed:', e.message);
+    return false;
+  }
+}
+
+/**
+ * Map LINE userId to Telegram chatId for fallback
+ */
+function getTelegramChatIdForUser(lineUserId) {
+  const team = config.telegram?.hotel_team || [];
+  // NIW_USER_ID = U2ce788802c5a339d8805ad37a42bc833
+  if (lineUserId === 'U2ce788802c5a339d8805ad37a42bc833') {
+    const niw = team.find(m => m.name === 'Natiya');
+    return niw?.chat_id || null;
+  }
+  // Owner
+  if (lineUserId === OWNER_ID) {
+    return config.telegram?.owner_id || null;
+  }
+  return null;
+}
+
 // =============================================================================
 // HEARTBEAT TOKEN (จาก OpenClaw)
 // AI ตอบ HEARTBEAT_OK เมื่อไม่มีอะไรต้องรายงาน → ไม่ส่งข้อความ
@@ -311,7 +354,7 @@ function sendLine(message, options = {}) {
       return;
     }
 
-    // 5. Actually send
+    // 5. Actually send (LINE first, Telegram fallback if LINE fails)
     const data = JSON.stringify({
       to: OWNER_ID,
       messages: [{ type: 'text', text: message.substring(0, 4500) }]
@@ -326,16 +369,25 @@ function sendLine(message, options = {}) {
         'Authorization': `Bearer ${LINE_TOKEN}`,
         'Content-Length': Buffer.byteLength(data)
       }
-    }, (res) => {
+    }, async (res) => {
       if (res.statusCode === 200) {
-        // Record for dedup
         recordSentMessage(message);
-        console.log('[SCHEDULER] Message sent:', message.substring(0, 40) + '...');
+        console.log('[SCHEDULER] Message sent via LINE:', message.substring(0, 40) + '...');
+        resolve(true);
+      } else {
+        // LINE failed → Telegram fallback
+        console.log(`[SCHEDULER] LINE failed (${res.statusCode}), trying Telegram fallback...`);
+        const sent = await sendTelegramFallback(message);
+        if (sent) recordSentMessage(message);
+        resolve(sent);
       }
-      resolve(res.statusCode === 200);
     });
 
-    req.on('error', () => resolve(false));
+    req.on('error', async () => {
+      console.log('[SCHEDULER] LINE error, trying Telegram fallback...');
+      const sent = await sendTelegramFallback(message);
+      resolve(sent);
+    });
     req.write(data);
     req.end();
   });
@@ -354,8 +406,10 @@ function sendLineCritical(message) {
 function sendLineToUser(userId, message) {
   return new Promise((resolve) => {
     if (!LINE_TOKEN || !userId) {
-      console.log('[SCHEDULER] No LINE config or userId, skipping');
-      resolve(false);
+      // No LINE config → try Telegram fallback directly
+      console.log('[SCHEDULER] No LINE config, trying Telegram fallback...');
+      const tgChatId = getTelegramChatIdForUser(userId);
+      sendTelegramFallback(message, tgChatId).then(resolve);
       return;
     }
 
@@ -373,24 +427,36 @@ function sendLineToUser(userId, message) {
         'Authorization': `Bearer ${LINE_TOKEN}`,
         'Content-Length': Buffer.byteLength(data)
       }
-    }, (res) => {
+    }, async (res) => {
       if (res.statusCode === 200) {
-        console.log(`[SCHEDULER] Message sent to ${userId}:`, message.substring(0, 40) + '...');
+        console.log(`[SCHEDULER] Message sent to ${userId} via LINE:`, message.substring(0, 40) + '...');
+        resolve(true);
+      } else {
+        // LINE failed → Telegram fallback
+        console.log(`[SCHEDULER] LINE failed for ${userId} (${res.statusCode}), trying Telegram fallback...`);
+        const tgChatId = getTelegramChatIdForUser(userId);
+        const sent = await sendTelegramFallback(message, tgChatId);
+        resolve(sent);
       }
-      resolve(res.statusCode === 200);
     });
 
-    req.on('error', () => resolve(false));
+    req.on('error', async () => {
+      const tgChatId = getTelegramChatIdForUser(userId);
+      const sent = await sendTelegramFallback(message, tgChatId);
+      resolve(sent);
+    });
     req.write(data);
     req.end();
   });
 }
 
-// Quick reply with options
+// Quick reply with options (LINE quick reply, Telegram fallback as plain text)
 function sendLineWithOptions(message, options) {
   return new Promise((resolve) => {
     if (!LINE_TOKEN || !OWNER_ID) {
-      resolve(false);
+      // No LINE → Telegram fallback (plain text with options listed)
+      const optText = options.map(o => `• ${o.label}`).join('\n');
+      sendTelegramFallback(`${message}\n\nตัวเลือก:\n${optText}`).then(resolve);
       return;
     }
 
@@ -423,11 +489,22 @@ function sendLineWithOptions(message, options) {
         'Authorization': `Bearer ${LINE_TOKEN}`,
         'Content-Length': Buffer.byteLength(data)
       }
-    }, (res) => {
-      resolve(res.statusCode === 200);
+    }, async (res) => {
+      if (res.statusCode === 200) {
+        resolve(true);
+      } else {
+        // LINE failed → Telegram fallback (plain text)
+        const optText = options.map(o => `• ${o.label}`).join('\n');
+        const sent = await sendTelegramFallback(`${message}\n\nตัวเลือก:\n${optText}`);
+        resolve(sent);
+      }
     });
 
-    req.on('error', () => resolve(false));
+    req.on('error', async () => {
+      const optText = options.map(o => `• ${o.label}`).join('\n');
+      const sent = await sendTelegramFallback(`${message}\n\nตัวเลือก:\n${optText}`);
+      resolve(sent);
+    });
     req.write(data);
     req.end();
   });

@@ -24,18 +24,38 @@
 | **Cloudflare Bypass** | Cloudflare, bypass, CapSolver, proxy, scrape | `cloudflare-bypass.md` |
 | **Relume + React** | react, เขียนเว็บ, relume, component | `relume-react.md` |
 | **Shopify Theme** | shopify, theme, liquid, e-commerce | `shopify-theme.md` |
-| **Webflow** | webflow, website, export webflow | `webflow.md` |
+| **Webflow** | webflow, website, export webflow, relume | `webflow.md` |
+| **Webflow API** ⭐ | แก้ SEO, meta desc, OG, publish เว็บ, audit pages | `webflow-api.md` |
+| **Webflow 404 Redirects** ⭐⭐ | แก้ 404, GSC audit, slug matching, CSV redirect import | `webflow-404-redirects.md` |
+| **Webflow MCP** ⭐⭐ | แก้ body text primary locale, Designer API, set_text, element | `webflow-mcp.md` |
+| **CRO Copywriting** ⭐ | เขียน copy ที่ขาย, meta desc, title, ad, landing page, email | `cro-copywriting.md` |
 | **LINE Bot** | LINE, messaging, notify | `line-bot.md` |
 | **Memory Search** | หาข้อมูลเก่า, เคยคุย, semantic | `memory-search.md` |
 | **Heartbeat** | AI ตื่นเอง, proactive alerts | `heartbeat.md` |
 | **Sub-Agent** | spawn ลูกน้อง, parallel tasks | `subagent.md` |
 | **Multi-Channel** | LINE, Telegram, WhatsApp | `multi-channel.md` |
-| **Railway Debug** | deploy, railway, logs, build error | `railway-debug.md` |
+| **Railway Deploy** | พุต railway, deploy ใหม่, สร้าง project, railway init | `railway-deploy.md` |
+| **Railway Debug** | railway logs, build error, deploy failed | `railway-debug.md` |
 | **n8n Automation** | n8n, workflow, automation, ลูกค้า | `n8n.md` |
 | **Knowledge Extraction** | ดูดวิชา 100%, analyze codebase, เรียนรู้ระบบ | `knowledge-extraction.md` |
 | **AI Article Writing** | เขียนบทความ, SEO, Content Shifu, E-E-A-T, image gen | `ai-article-writing.md` |
 | **Smart Response** | typing indicator, กำลังคิด, message queue, chunking | `smart-response.md` |
 | **Quotation Writing** | ใบเสนอราคา, quote, pricing, proposal, ลูกค้า | `quotation.md` |
+| **E-commerce Pipeline** | taobao, lazada, shopee, alibaba, 1688, ขายของจีน, dropship | `ecommerce-pipeline.md` |
+| **Showcase Writing** ⭐ | เขียนผลงาน, showcase, case study, portfolio, ส่งมอบงาน | `showcase-writing.md` |
+| **VXB Blog Rewrite** ⭐⭐⭐ | ปรับปรุงบทความ SEO, rewrite blog, CMS content, publish Webflow | `vxb-blog-rewrite.md` |
+| **VXB Voice** ⭐⭐⭐⭐ | เสียงของ Tar/VXB, tone, ห้าม AI-ish, ห้ามตะโกน — โหลดก่อนเขียน content ทุกครั้ง! | `vxb-voice.md` |
+| **Service Page SEO** ⭐⭐⭐ | ปรับปรุง 126 service pages: Body CRO + Internal Links, ติดหน้าแรก Google | `service-page-seo.md` |
+| **Backlink Auto** ⭐⭐ | External backlink building อัตโนมัติ, outreach, directories, HARO, broken link | `backlink-auto.md` |
+| **Email Marketing** ⭐⭐⭐⭐ | Lead outreach email, Gmail API, template, 19 กฎเหล็ก, PDF attach, screenshot เว็บ | `email-marketing.md` |
+| **Smart Pricing** ⭐⭐⭐ | ปรับราคาโรงแรมอัตโนมัติ, AI + competitor data, Beds24, Telegram notify | `smart-pricing.md` |
+| **Booking.com API** | ราคาคู่แข่ง, searchHotels, dest_id, RapidAPI booking-com15 | `booking-com-api.md` |
+| **Growth Tracker** ⭐⭐ | dashboard growth strategy, autonomous ideas, toggle auto-execute, Phase 1 | `growth-tracker.md` |
+| **Auto Check-in** ⭐⭐ | auto-confirm mobile, QR scan = check-in, useEffect flow, kiosk vs mobile | `auto-checkin.md` |
+| **Checkin Status Sync** ⭐⭐ | apibooking ↔ checkin, batch API, badge 📱🖥️, server-to-server, timezone | `checkin-status-sync.md` |
+| **React → Webflow** ⭐⭐ | แปลง React/Next.js → Webflow, Relume JSON + MCP hybrid, paste + set_text | `react-to-webflow.md` |
+| **Parallel Agents** ⭐⭐⭐⭐ | Fan-Out/Fan-In, batch งานซ้ำๆ 5-23 agents พร้อมกัน, self-contained, retry, audit | `parallel-agents.md` |
+| **DGP Proposal** ⭐⭐⭐ | สร้าง proposal email DGP, pricing cards, CRO Landing Page + SEO Autopilot, VXB brand | `dgp-proposal.md` |
 
 ---
 
@@ -51,6 +71,26 @@
 **เขียนบทความ AI/SEO** → โหลด `ai-article-writing.md`
 **typing/กำลังคิด/chunking** → โหลด `smart-response.md`
 **เขียนใบเสนอราคา** → โหลด `quotation.md`
+**แก้ SEO/meta/OG/publish เว็บ** → โหลด `webflow-api.md` ⭐
+**แก้ 404/redirect/GSC errors** → โหลด `webflow-404-redirects.md` ⭐⭐
+**แก้ body text ภาษาไทย/primary locale** → โหลด `webflow-mcp.md` ⭐⭐
+**เขียน copy/meta/title/ad ที่ขาย** → โหลด `cro-copywriting.md` ⭐
+**เขียน content ให้ VXB (ทุกประเภท)** → โหลด `vxb-voice.md` ⭐⭐⭐⭐ ก่อนเสมอ!
+**พุต/deploy Railway** → โหลด `railway-deploy.md`
+**ขายของจีน/Taobao/Lazada/Shopee** → โหลด `ecommerce-pipeline.md`
+**เขียนผลงาน/showcase/case study** → โหลด `showcase-writing.md` ⭐
+**ปรับปรุงบทความ SEO/rewrite blog/CMS** → โหลด `vxb-blog-rewrite.md` ⭐⭐⭐
+**ปรับปรุง service pages ทั้งหมด (CRO+Links)** → โหลด `service-page-seo.md` ⭐⭐⭐
+**สร้าง backlinks อัตโนมัติ/outreach/directories** → โหลด `backlink-auto.md` ⭐⭐
+**Email Marketing/outreach/lead email/Gmail** → โหลด `email-marketing.md` ⭐⭐⭐⭐
+**Smart Pricing/ปรับราคาโรงแรม/competitor** → โหลด `smart-pricing.md` ⭐⭐⭐
+**Booking.com API/ราคาคู่แข่ง** → โหลด `booking-com-api.md`
+**Growth Tracker/dashboard/autonomous ideas** → โหลด `growth-tracker.md` ⭐⭐
+**Auto Check-in/QR scan/mobile confirm** → โหลด `auto-checkin.md` ⭐⭐
+**Checkin status badge/sync apibooking↔checkin** → โหลด `checkin-status-sync.md` ⭐⭐
+**แปลง React → Webflow/Relume+MCP** → โหลด `react-to-webflow.md` ⭐⭐
+**งาน batch ซ้ำๆ/parallel/fan-out** → โหลด `parallel-agents.md` ⭐⭐⭐⭐
+**สร้าง DGP proposal/ปิดการขาย/pricing** → โหลด `dgp-proposal.md` ⭐⭐⭐
 
 ---
 

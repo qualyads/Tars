@@ -305,18 +305,55 @@ async function checkUpcomingCheckins() {
 }
 
 /**
- * Generate check-in context string for Oracle
+ * Generate check-in/check-out context string for Oracle
+ * ALWAYS includes data so model can answer "ใครเช็คอินบ้าง" correctly
  */
 async function generateCheckinContextString() {
-  const alerts = await checkUpcomingCheckins();
+  let context = '';
 
-  if (alerts.length === 0) {
-    return '';
+  try {
+    // Get today's check-ins
+    const checkIns = await beds24.getCheckInsToday();
+    const checkInList = Array.isArray(checkIns) ? checkIns : [];
+
+    // Get today's check-outs
+    const checkOuts = await beds24.getCheckOutsToday();
+    const checkOutList = Array.isArray(checkOuts) ? checkOuts : [];
+
+    // ALWAYS show check-in info (even if 0) — include Booking ID for check-in link
+    if (checkInList.length > 0) {
+      context += `\n\n🛎️ **Check-in วันนี้: ${checkInList.length} ห้อง**`;
+      for (const b of checkInList.slice(0, 10)) {
+        const name = b.guestName || `${b.firstName || ''} ${b.lastName || ''}`.trim() || 'ไม่ระบุชื่อ';
+        const bookingId = b.id || '';
+        context += `\n  • ${b.roomSystemId || b.roomId}: ${name} (${b.numAdult || 0} ผู้ใหญ่)`;
+        if (bookingId) {
+          context += `\n    🔗 https://thearchcasa.com/booking/${bookingId}?lang=en`;
+        }
+      }
+    } else {
+      context += `\n\n🛎️ **Check-in วันนี้: ไม่มี (0 ห้อง)**`;
+    }
+
+    // ALWAYS show check-out info — include Booking ID
+    if (checkOutList.length > 0) {
+      context += `\n🚪 **Check-out วันนี้: ${checkOutList.length} ห้อง**`;
+      for (const b of checkOutList.slice(0, 10)) {
+        const name = b.guestName || `${b.firstName || ''} ${b.lastName || ''}`.trim() || 'ไม่ระบุชื่อ';
+        context += `\n  • ${b.roomSystemId || b.roomId}: ${name} (Booking: ${b.id || 'N/A'})`;
+      }
+    } else {
+      context += `\n🚪 **Check-out วันนี้: ไม่มี (0 ห้อง)**`;
+    }
+  } catch (e) {
+    console.error('[REALTIME] Checkin/checkout context error:', e.message);
+    context += `\n⚠️ ไม่สามารถดึงข้อมูล check-in/out ได้`;
   }
 
-  let context = '';
+  // Also include proximity alerts
+  const alerts = await checkUpcomingCheckins();
   for (const alert of alerts) {
-    context += `\n\n${alert.emoji} **${alert.message}**`;
+    context += `\n${alert.emoji} **${alert.message}**`;
     if (alert.guests && alert.guests.length <= 5) {
       for (const guest of alert.guests) {
         context += `\n  • ${guest.room}: ${guest.name}`;

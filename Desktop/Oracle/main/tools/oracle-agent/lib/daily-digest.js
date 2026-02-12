@@ -164,27 +164,36 @@ class DailyDigest {
           const dateStr = date.toISOString().split('T')[0];
           const dayName = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'][date.getDay()];
 
-          // Get occupancy for this date
-          let occupancy = 0;
+          // Get occupancy + pricing for this date
+          let occupancy = 50;
+          let avgPrice = 0;
+          let strategy = 'normal';
           try {
-            const occupancyData = await beds24.getRealOccupancy(dateStr);
-            occupancy = occupancyData.occupancyPercent || 0;
+            const pricingData = await pricing.getPricingForDate(dateStr);
+            occupancy = pricingData.occupancy?.rate || 50;
+            avgPrice = pricingData.summary?.averagePrice || 0;
+            // Determine strategy from occupancy
+            if (occupancy >= 80) strategy = 'premium';
+            else if (occupancy < 40) strategy = 'discount';
+            else strategy = 'normal';
           } catch (e) {
-            // Default to 50% if can't get data
-            occupancy = 50;
+            // Fallback: get occupancy only
+            try {
+              const occData = await beds24.getOccupancyForDate(dateStr);
+              occupancy = occData.occupancyRate || 50;
+            } catch (e2) {
+              occupancy = 50;
+            }
           }
-
-          // Get pricing recommendation
-          const priceRec = pricing.getDailyRecommendation(dateStr, occupancy);
 
           recommendations.push({
             date: dateStr,
             day: dayName,
             dayIndex: i,
             occupancy: Math.round(occupancy),
-            avgPrice: priceRec.avgRecommendedPrice,
-            strategy: priceRec.strategy,
-            modifier: priceRec.modifier
+            avgPrice: avgPrice,
+            strategy: strategy,
+            modifier: strategy === 'premium' ? 1.2 : strategy === 'discount' ? 0.8 : 1.0
           });
         }
 

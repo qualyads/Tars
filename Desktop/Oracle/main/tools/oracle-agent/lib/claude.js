@@ -46,16 +46,29 @@ function getProviderStatus() {
 }
 
 /**
+ * Sanitize text — remove broken Unicode surrogates + HTML entities
+ * Fixes: "no low surrogate in string" error from Anthropic API
+ */
+function sanitizeText(text) {
+  if (typeof text !== 'string') return text;
+  // Remove lone surrogates (broken Unicode)
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    .replace(/&#\d+;/g, m => { try { const c = String.fromCodePoint(parseInt(m.slice(2, -1))); return c; } catch { return ''; } });
+}
+
+/**
  * Send to Anthropic (Claude)
  */
 async function sendToAnthropic(messages, options) {
   const response = await anthropic.messages.create({
     model: options.model || config.claude.model,
     max_tokens: options.max_tokens || config.claude.max_tokens,
-    system: options.system || '',
+    system: sanitizeText(options.system || ''),
     messages: messages.map(m => ({
       role: m.role,
-      content: m.content
+      content: sanitizeText(m.content)
     }))
   });
 

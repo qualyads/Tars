@@ -2,55 +2,32 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Badge,
   Button,
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarTrigger,
+  Input,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-  Input,
 } from '@relume_io/relume-ui';
 import {
-  BiBarChartAlt2,
   BiCheck,
   BiCheckCircle,
   BiDownload,
   BiEdit,
-  BiEnvelope,
-  BiError,
-  BiErrorCircle,
-  BiLinkAlt,
   BiLinkExternal,
-  BiPieChartAlt2,
   BiRefresh,
   BiRocket,
   BiSearch,
-  BiSearchAlt,
   BiShield,
   BiTargetLock,
-  BiTime,
-  BiUpArrowAlt,
   BiX,
   BiXCircle,
-} from 'react-icons/bi';
+  BiErrorCircle,
+} from '@oracle/shared/components/Icons';
+import { AppSidebar, Topbar, LoadingScreen, fmtDateISO } from '@oracle/shared';
 
 const API = window.location.origin;
-
-// ============ SIDEBAR NAV ============
-const sidebarNav = [
-  { label: 'Email Pipeline', icon: BiEnvelope, href: '/vision/email/' },
-  { label: 'Analytics', icon: BiBarChartAlt2, href: '/vision/analytics/' },
-  { label: '404 Check', icon: BiErrorCircle, href: '/vision/404check/', active: true },
-];
 
 // ============ APP ============
 export default function App() {
@@ -65,7 +42,6 @@ export default function App() {
   const [validating, setValidating] = useState(false);
   const [siteUrl, setSiteUrl] = useState('sc-domain:visionxbrain.com');
 
-  // Fetch results
   const fetchResults = useCallback(async () => {
     try {
       const [resResults, resStatus] = await Promise.all([
@@ -92,7 +68,6 @@ export default function App() {
     return () => clearInterval(interval);
   }, [fetchResults]);
 
-  // Actions
   const startScan = async () => {
     try {
       await fetch(`${API}/api/404check/scan`, {
@@ -159,180 +134,133 @@ export default function App() {
 
   const isScanning = jobStatus.status === 'scanning' || jobStatus.status === 'checking';
 
-  // ============ RENDER ============
   if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="loader-spinner mx-auto mb-4" />
-          <p className="text-sm text-text-secondary">Loading 404 Check Dashboard...</p>
-        </div>
-      </div>
-    );
+    return <LoadingScreen message="Loading 404 Check Dashboard..." />;
   }
 
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen w-full">
-        {/* Sidebar — Relume pattern */}
-        <Sidebar>
-          <SidebarHeader className="p-4">
-            <div className="flex items-center gap-2">
-              <BiShield className="size-6" />
-              <span className="text-lg font-bold">VXB Vision</span>
+    <AppSidebar activePath="/vision/404check/">
+      <div className="relative flex-1 bg-background-secondary">
+        <Topbar title="404 Check Dashboard" onRefresh={fetchResults} refreshing={false}>
+          {isScanning && (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="inline-block size-2 rounded-full bg-brand-primary pulse-dot" />
+              <span>Scanning {jobStatus.progress || 0}/{jobStatus.total || '?'}</span>
             </div>
-          </SidebarHeader>
-          <SidebarContent>
-            <SidebarMenu>
-              {sidebarNav.map((item) => (
-                <SidebarMenuItem key={item.label}>
-                  <SidebarMenuButton asChild isActive={item.active}>
-                    <a href={item.href} className="flex items-center gap-3">
-                      <item.icon className="size-5" />
-                      <span>{item.label}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarContent>
-          <SidebarFooter className="p-4">
-            <p className="text-xs text-text-secondary">Oracle Agent v6</p>
-          </SidebarFooter>
-        </Sidebar>
-
-        {/* Main Content */}
-        <main className="flex-1 overflow-auto">
-          <div className="border-b border-border-primary px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <SidebarTrigger />
-                <div>
-                  <h1 className="text-xl font-bold md:text-2xl">404 Check Dashboard</h1>
-                  <p className="text-sm text-text-secondary">Scan GSC → Auto-Match Redirects → Download CSV</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                {isScanning && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="inline-block size-2 rounded-full bg-yellow-500 pulse-dot" />
-                    <span>Scanning {jobStatus.progress || 0}/{jobStatus.total || '?'}</span>
-                  </div>
-                )}
-                <Button variant="secondary" size="sm" onClick={fetchResults}>
-                  <BiRefresh className="mr-1 size-4" /> Refresh
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-6">
+          )}
+        </Topbar>
+        <div className="h-[calc(100vh-4.5rem)] overflow-auto">
+          <div className="container px-6 py-8 md:px-8 md:py-10 lg:py-12">
             {error && (
-              <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <div className="mb-4 rounded border border-system-error-red/20 bg-system-error-red-light p-3 text-sm text-system-error-red">
                 {error}
               </div>
             )}
 
-            {/* Section 1: Stat Cards — Relume Stat1 pattern */}
+            {/* Stat Cards */}
             <section className="mb-8">
               <div className="grid auto-cols-fr grid-cols-1 gap-4 md:grid-flow-col md:gap-6">
-                <StatCard
-                  icon={<BiErrorCircle className="size-6 text-red-500" />}
+                <StatCard404
+                  icon={<BiErrorCircle className="size-6 text-system-error-red" />}
                   label="404 Errors Found"
                   value={errors404.length}
-                  badge={results?.scannedAt ? `Last: ${fmtDate(results.scannedAt)}` : 'No scan yet'}
+                  badge={results?.scannedAt ? `Last: ${fmtDateISO(results.scannedAt)}` : 'No scan yet'}
                   color="red"
                 />
-                <StatCard
-                  icon={<BiCheckCircle className="size-6 text-green-600" />}
+                <StatCard404
+                  icon={<BiCheckCircle className="size-6 text-system-success-green" />}
                   label="Matched Redirects"
                   value={matched}
                   badge={totalRedirects > 0 ? `${Math.round(matched / totalRedirects * 100)}%` : '-'}
                   color="green"
                 />
-                <StatCard
-                  icon={<BiXCircle className="size-6 text-yellow-600" />}
+                <StatCard404
+                  icon={<BiXCircle className="size-6 text-brand-primary" />}
                   label="Need Manual Review"
                   value={unmatched + review}
                   badge={homepage > 0 ? `${homepage} → homepage` : '-'}
                   color="yellow"
                 />
-                <StatCard
-                  icon={<BiShield className="size-6 text-blue-600" />}
+                <StatCard404
+                  icon={<BiShield className="size-6 text-brand-primary" />}
                   label="Targets Validated"
                   value={results?.validated ? `${validCount}/${totalRedirects}` : 'Not yet'}
-                  badge={results?.validatedAt ? fmtDate(results.validatedAt) : 'Pending'}
+                  badge={results?.validatedAt ? fmtDateISO(results.validatedAt) : 'Pending'}
                   color="blue"
                 />
               </div>
             </section>
 
-            {/* Section 2: Scan Controls */}
+            {/* Scan Controls */}
             <section className="mb-8">
-              <div className="flex flex-col items-start justify-between gap-4 border border-border-primary p-6 sm:flex-row sm:items-center">
-                <div className="flex flex-1 items-center gap-3">
-                  <BiSearch className="size-5 text-text-secondary" />
-                  <div className="flex-1">
-                    <label className="mb-1 block text-sm font-medium">GSC Site URL</label>
-                    <Input
-                      value={siteUrl}
-                      onChange={(e) => setSiteUrl(e.target.value)}
-                      placeholder="sc-domain:visionxbrain.com"
-                      className="max-w-md"
-                    />
+              <div className="overflow-hidden rounded-[15px] border border-border-primary bg-white shadow-xxs">
+                <div className="flex flex-col items-start justify-between gap-4 p-6 sm:flex-row sm:items-center">
+                  <div className="flex flex-1 items-center gap-3">
+                    <BiSearch className="size-5 text-text-secondary" />
+                    <div className="flex-1">
+                      <label className="mb-1 block text-sm font-medium">GSC Site URL</label>
+                      <Input
+                        value={siteUrl}
+                        onChange={(e) => setSiteUrl(e.target.value)}
+                        placeholder="sc-domain:visionxbrain.com"
+                        className="max-w-md"
+                      />
+                    </div>
                   </div>
+                  <Button
+                    size="sm"
+                    onClick={startScan}
+                    disabled={isScanning}
+                  >
+                    <BiRocket className="mr-1 size-4" />
+                    {isScanning ? `Scanning... ${jobStatus.progress || 0}/${jobStatus.total || '?'}` : 'Scan GSC'}
+                  </Button>
                 </div>
-                <Button
-                  size="sm"
-                  onClick={startScan}
-                  disabled={isScanning}
-                >
-                  <BiRocket className="mr-1 size-4" />
-                  {isScanning ? `Scanning... ${jobStatus.progress || 0}/${jobStatus.total || '?'}` : 'Scan GSC'}
-                </Button>
+                {isScanning && jobStatus.total > 0 && (
+                  <div className="px-6 pb-6">
+                    <div className="h-2 overflow-hidden rounded-full bg-background-secondary">
+                      <div
+                        className="h-full rounded-full bg-brand-primary transition-all duration-500"
+                        style={{ width: `${(jobStatus.progress / jobStatus.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
-              {isScanning && jobStatus.total > 0 && (
-                <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
-                  <div
-                    className="h-full rounded-full bg-black transition-all duration-500"
-                    style={{ width: `${(jobStatus.progress / jobStatus.total) * 100}%` }}
-                  />
-                </div>
-              )}
             </section>
 
-            {/* Section 3: Redirect Table — Relume Table1 pattern */}
+            {/* Redirect Table */}
             {totalRedirects > 0 && (
               <section className="mb-8">
-                <div className="flex flex-col items-start justify-between gap-4 border border-b-0 border-border-primary p-6 sm:flex-row sm:items-center">
-                  <div>
-                    <h2 className="mb-1 text-md font-semibold md:text-lg">Redirect Mappings</h2>
-                    <p className="text-sm text-text-secondary">
-                      {matched} matched · {review} review · {unmatched} unmatched · {homepage} homepage
-                    </p>
+                <div className="overflow-hidden rounded-[15px] border border-border-primary bg-white shadow-xxs">
+                  <div className="flex flex-col items-start justify-between gap-4 p-6 sm:flex-row sm:items-center">
+                    <div>
+                      <h2 className="mb-1 text-md font-semibold md:text-lg">Redirect Mappings</h2>
+                      <p className="text-sm text-text-secondary">
+                        {matched} matched · {review} review · {unmatched} unmatched · {homepage} homepage
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {['all', 'matched', 'review', 'unmatched', 'homepage'].map(f => (
+                        <Button
+                          key={f}
+                          variant={filter === f ? 'primary' : 'secondary'}
+                          size="sm"
+                          onClick={() => setFilter(f)}
+                        >
+                          {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                          <span className="ml-1 rounded-full bg-brand-primary/10 px-1.5 text-xs">
+                            {f === 'all' ? totalRedirects :
+                             f === 'matched' ? matched :
+                             f === 'review' ? review :
+                             f === 'unmatched' ? unmatched :
+                             homepage}
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {['all', 'matched', 'review', 'unmatched', 'homepage'].map(f => (
-                      <Button
-                        key={f}
-                        variant={filter === f ? 'primary' : 'secondary'}
-                        size="sm"
-                        onClick={() => setFilter(f)}
-                      >
-                        {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
-                        <span className="ml-1 rounded-full bg-black/10 px-1.5 text-xs">
-                          {f === 'all' ? totalRedirects :
-                           f === 'matched' ? matched :
-                           f === 'review' ? review :
-                           f === 'unmatched' ? unmatched :
-                           homepage}
-                        </span>
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-                <div className="overflow-x-auto">
-                  <Table className="border-collapse">
+                  <Table className="border-collapse border-t border-border-primary">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-[80px]">Status</TableHead>
@@ -366,10 +294,10 @@ export default function App() {
                                     className="flex-1 text-sm"
                                     autoFocus
                                   />
-                                  <button onClick={() => saveEdit(realIdx)} className="text-green-600 hover:text-green-800">
+                                  <button onClick={() => saveEdit(realIdx)} className="text-system-success-green hover:text-system-success-green">
                                     <BiCheck className="size-5" />
                                   </button>
-                                  <button onClick={() => setEditIdx(null)} className="text-gray-400 hover:text-gray-600">
+                                  <button onClick={() => setEditIdx(null)} className="text-text-secondary hover:text-text-secondary">
                                     <BiX className="size-5" />
                                   </button>
                                 </div>
@@ -386,14 +314,14 @@ export default function App() {
                               )}
                             </TableCell>
                             <TableCell>
-                              {r.targetValid === true && <BiCheckCircle className="size-4 text-green-600" />}
-                              {r.targetValid === false && <BiXCircle className="size-4 text-red-500" />}
+                              {r.targetValid === true && <BiCheckCircle className="size-4 text-system-success-green" />}
+                              {r.targetValid === false && <BiXCircle className="size-4 text-system-error-red" />}
                               {r.targetValid === undefined && <span className="text-xs text-text-secondary">-</span>}
                             </TableCell>
                             <TableCell className="text-center">
                               <button
                                 onClick={() => { setEditIdx(realIdx); setEditTarget(r.target); }}
-                                className="rounded p-1 text-text-secondary hover:bg-gray-100 hover:text-black"
+                                className="rounded p-1 text-text-secondary hover:bg-background-secondary hover:text-brand-black"
                                 title="Edit target"
                               >
                                 <BiEdit className="size-4" />
@@ -402,7 +330,7 @@ export default function App() {
                                 href={r.source}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="ml-1 inline-block rounded p-1 text-text-secondary hover:bg-gray-100 hover:text-black"
+                                className="ml-1 inline-block rounded p-1 text-text-secondary hover:bg-background-secondary hover:text-brand-black"
                                 title="Open source URL"
                               >
                                 <BiLinkExternal className="size-4" />
@@ -417,9 +345,9 @@ export default function App() {
               </section>
             )}
 
-            {/* Section 4: Action Bar */}
+            {/* Action Bar */}
             <section>
-              <div className="flex flex-wrap items-center gap-3 border border-border-primary p-6">
+              <div className="flex flex-wrap items-center gap-3 rounded-[15px] border border-border-primary bg-white p-6 shadow-xxs">
                 <Button variant="secondary" size="sm" onClick={runMatch} disabled={matching || errors404.length === 0}>
                   <BiTargetLock className="mr-1 size-4" />
                   {matching ? 'Matching...' : 'Auto-Match'}
@@ -439,15 +367,15 @@ export default function App() {
               </div>
             </section>
           </div>
-        </main>
+        </div>
       </div>
-    </SidebarProvider>
+    </AppSidebar>
   );
 }
 
-// ============ COMPONENTS ============
+// ============ LOCAL COMPONENTS ============
 
-function StatCard({ icon, label, value, badge, color = 'gray' }) {
+function StatCard404({ icon, label, value, badge, color = 'gray' }) {
   const borderColors = {
     red: 'border-l-red-500',
     green: 'border-l-green-500',
@@ -457,7 +385,7 @@ function StatCard({ icon, label, value, badge, color = 'gray' }) {
   };
 
   return (
-    <div className={`flex flex-col justify-between border border-border-primary border-l-4 ${borderColors[color]} p-6`}>
+    <div className={`flex flex-col justify-between rounded-[15px] border border-border-primary border-l-4 ${borderColors[color]} bg-white p-6 shadow-xxs`}>
       <div className="mb-3 flex items-center justify-between gap-4">
         {icon}
       </div>
@@ -474,26 +402,18 @@ function StatCard({ icon, label, value, badge, color = 'gray' }) {
 
 function MatchBadge({ status, matchType }) {
   const styles = {
-    matched: matchType === 'exact' ? 'bg-green-100 text-green-800' :
-             matchType === 'manual' ? 'bg-purple-100 text-purple-800' :
-             'bg-blue-100 text-blue-800',
-    review: 'bg-yellow-100 text-yellow-800',
-    unmatched: 'bg-red-100 text-red-800',
+    matched: matchType === 'exact' ? 'bg-system-success-green-light text-system-success-green' :
+             matchType === 'manual' ? 'bg-brand-primary/10 text-brand-primary' :
+             'bg-brand-primary/10 text-brand-primary',
+    review: 'bg-brand-primary/10 text-brand-primary',
+    unmatched: 'bg-system-error-red-light text-system-error-red',
   };
 
   return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${styles[status] || 'bg-gray-100 text-gray-600'}`}>
+    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${styles[status] || 'bg-background-secondary text-text-secondary'}`}>
       {status}
     </span>
   );
-}
-
-// ============ HELPERS ============
-
-function fmtDate(isoStr) {
-  if (!isoStr) return '-';
-  const d = new Date(isoStr);
-  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 function shortUrl(url) {
