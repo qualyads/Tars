@@ -6127,6 +6127,330 @@ ${isHotel ? `F) **Hotel-Specific: ระบบ Automation สำหรับโ�
   }
 });
 
+// ============ DGP PROPOSAL SYSTEM ============
+
+// Fixed HTML sections from dgp-proposal-duke.html (ราคาคงที่ ห้ามเปลี่ยน)
+const DGP_PRICING_HTML = `
+  <p style="margin:0 0 4px;font-size:16px;font-weight:bold;color:#1b1c1b;text-align:center;">ราคาโปรโมชั่นลูกค้ากลุ่มแรก</p>
+  <p style="margin:0 0 20px;font-size:12px;color:#999;text-align:center;">ราคานี้จะไม่มีอีกหลังจากนี้</p>
+  <table style="width:100%;border-collapse:separate;border-spacing:8px 0;margin:0 0 24px;">
+    <tr>
+      <td style="width:33%;vertical-align:top;background:#fff;border:2px solid #e5e5e5;border-radius:10px;padding:0;text-align:center;">
+        <div style="background:#f8f7f5;padding:14px 10px;border-radius:8px 8px 0 0;">
+          <p style="margin:0;font-size:15px;font-weight:bold;color:#1b1c1b;">Basic</p>
+          <p style="margin:3px 0 0;font-size:12px;color:#888;">TH + EN</p>
+        </div>
+        <div style="padding:16px 10px 20px;">
+          <p style="margin:0;font-size:11px;color:#999;text-decoration:line-through;">33,000</p>
+          <p style="margin:2px 0 0;font-size:24px;font-weight:800;color:#eb3f43;">19,900</p>
+          <p style="margin:0 0 12px;font-size:11px;color:#888;">Setup ครั้งเดียว</p>
+          <div style="height:1px;background:#eee;margin:0 10px 12px;"></div>
+          <p style="margin:0;font-size:11px;color:#999;text-decoration:line-through;">20,000/ด.</p>
+          <p style="margin:2px 0 0;font-size:22px;font-weight:800;color:#1b1c1b;">9,900</p>
+          <p style="margin:0 0 10px;font-size:11px;color:#888;">บาท/เดือน</p>
+          <div style="background:#fef2f2;border-radius:4px;padding:4px 8px;display:inline-block;">
+            <span style="font-size:11px;color:#eb3f43;font-weight:bold;">ประหยัด 40%</span>
+          </div>
+        </div>
+      </td>
+      <td style="width:33%;vertical-align:top;background:#fff;border:2px solid #eb3f43;border-radius:10px;padding:0;text-align:center;">
+        <div style="background:#eb3f43;padding:14px 10px;border-radius:7px 7px 0 0;">
+          <p style="margin:0;font-size:15px;font-weight:bold;color:#fff;">Growth</p>
+          <p style="margin:3px 0 0;font-size:12px;color:#ffcdd2;">TH+EN+CN</p>
+        </div>
+        <div style="padding:16px 10px 20px;">
+          <p style="margin:0;font-size:11px;color:#999;text-decoration:line-through;">41,000</p>
+          <p style="margin:2px 0 0;font-size:24px;font-weight:800;color:#eb3f43;">25,900</p>
+          <p style="margin:0 0 12px;font-size:11px;color:#888;">Setup ครั้งเดียว</p>
+          <div style="height:1px;background:#eee;margin:0 10px 12px;"></div>
+          <p style="margin:0;font-size:11px;color:#999;text-decoration:line-through;">25,000/ด.</p>
+          <p style="margin:2px 0 0;font-size:22px;font-weight:800;color:#1b1c1b;">12,900</p>
+          <p style="margin:0 0 10px;font-size:11px;color:#888;">บาท/เดือน</p>
+          <div style="background:#fef2f2;border-radius:4px;padding:4px 8px;display:inline-block;">
+            <span style="font-size:11px;color:#eb3f43;font-weight:bold;">ประหยัด 37% + จีน</span>
+          </div>
+        </div>
+      </td>
+      <td style="width:33%;vertical-align:top;background:#fff;border:2px solid #e5e5e5;border-radius:10px;padding:0;text-align:center;">
+        <div style="background:#1b1c1b;padding:14px 10px;border-radius:7px 7px 0 0;">
+          <p style="margin:0;font-size:15px;font-weight:bold;color:#fff;">Full</p>
+          <p style="margin:3px 0 0;font-size:12px;color:#aaa;">TH+EN+CN+JP</p>
+        </div>
+        <div style="padding:16px 10px 20px;">
+          <p style="margin:0;font-size:11px;color:#999;text-decoration:line-through;">49,000</p>
+          <p style="margin:2px 0 0;font-size:24px;font-weight:800;color:#eb3f43;">29,900</p>
+          <p style="margin:0 0 12px;font-size:11px;color:#888;">Setup ครั้งเดียว</p>
+          <div style="height:1px;background:#eee;margin:0 10px 12px;"></div>
+          <p style="margin:0;font-size:11px;color:#999;text-decoration:line-through;">30,000/ด.</p>
+          <p style="margin:2px 0 0;font-size:22px;font-weight:800;color:#1b1c1b;">15,900</p>
+          <p style="margin:0 0 10px;font-size:11px;color:#888;">บาท/เดือน</p>
+          <div style="background:#fef2f2;border-radius:4px;padding:4px 8px;display:inline-block;">
+            <span style="font-size:11px;color:#eb3f43;font-weight:bold;">ประหยัด 39% + 4 ภาษา</span>
+          </div>
+        </div>
+      </td>
+    </tr>
+  </table>`;
+
+const DGP_PROMO_HTML = `
+  <p style="font-size:14px;color:#444;margin:0 0 8px;">ผมกำลังขยายบริการนี้ อยากได้ลูกค้ากลุ่มแรกที่ใช้งานจริง เลยให้ราคาต่ำสุดที่จะให้ได้ เงื่อนไขเดียว ถ้าผลงานออกมาดีตามเป้า ช่วยรีวิวให้ผมสั้นๆ แค่นั้น ไม่พอใจก็ไม่ต้องรีวิว ไม่มีข้อผูกมัด</p>
+  <p style="font-size:12px;color:#999;margin:0 0 24px;">* ค่า hosting จ่ายตรงกับ Webflow: ~700-800 บาท/เดือน | เว็บหลายภาษา ค่าระบบเพิ่ม 350 บาท/เดือน จ่ายตรงกับ Webflow</p>
+  <p style="font-size:14px;color:#444;margin:0 0 8px;"><strong>ไม่มีสัญญาผูกมัด</strong> ยกเลิกเมื่อไหร่ก็ได้ สิ่งที่ได้ไปแล้วไม่หายไปไหน Landing Page ยังใช้ต่อได้ บทความทั้งหมดยังดึง traffic ต่อ</p>
+  <p style="font-size:14px;color:#444;margin:0 0 24px;">ถ้าวันนึงยิง Ads ด้วย เว็บที่โหลดเร็วและ convert สูง Google ให้ Quality Score สูง ค่าคลิกถูกลง 20-30% แล้วเอา data จาก SEO ที่สะสมมาใช้ได้เลย</p>`;
+
+function buildDgpTemplate({ opening, problemROI, landingPageDesc, seoAutopilotDesc, recommendation, bizName, trackingId }) {
+  const clickBase = 'https://oracle-agent-production-546e.up.railway.app/api/email/click/' + (trackingId || 'dgp');
+  const trackedVxbHome = clickBase + '?url=' + encodeURIComponent('https://www.visionxbrain.com');
+  const trackedEmail = `mailto:info@visionxbrain.com?subject=สนใจ DGP — ${encodeURIComponent(bizName || '')}`;
+
+  return `<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:640px;margin:0 auto;color:#1b1c1b;line-height:1.8;background:#fff;padding:0 20px;">
+
+  <div style="height:3px;background:linear-gradient(90deg,#eb3f43,#6e49f3);border-radius:2px;margin-bottom:28px;"></div>
+
+  <p style="font-size:15px;margin:0 0 16px;">สวัสดีครับ</p>
+
+  ${opening}
+
+  ${problemROI}
+
+  <!-- Section 1 -->
+  <div style="background:#fafafa;border-left:4px solid #eb3f43;padding:16px 20px;margin:16px 0;border-radius:0 8px 8px 0;">
+    <strong style="color:#1b1c1b;font-size:15px;">1. Landing Page ที่ออกแบบมาให้คนซื้อ/สมัคร</strong>
+    <p style="margin:8px 0 4px;color:#eb3f43;font-weight:bold;font-size:14px;">ไม่ใช่แค่หน้าเว็บสวย แต่เป็นหน้าเว็บที่ปิดการขาย</p>
+    ${landingPageDesc}
+  </div>
+
+  <!-- Section 2 -->
+  <div style="background:#fafafa;border-left:4px solid #6e49f3;padding:16px 20px;margin:16px 0;border-radius:0 8px 8px 0;">
+    <strong style="color:#1b1c1b;font-size:15px;">2. VXB SEO Autopilot — ระบบที่ผมพัฒนาขึ้นมาเอง</strong>
+    <p style="margin:8px 0 4px;color:#6e49f3;font-weight:bold;font-size:14px;">ไม่ใช่จ้างคนมานั่งเขียนบทความ</p>
+    ${seoAutopilotDesc}
+  </div>
+
+  ${DGP_PRICING_HTML}
+
+  ${DGP_PROMO_HTML}
+
+  ${recommendation}
+
+  <!-- CTA -->
+  <div style="text-align:center;margin:28px 0;">
+    <a href="${trackedEmail}" style="display:inline-block;background:linear-gradient(135deg,#eb3f43,#d63337);color:#fff;padding:14px 36px;border-radius:100px;text-decoration:none;font-size:15px;font-weight:bold;letter-spacing:0.3px;">สนใจแจ้งได้เลยครับ</a>
+    <span style="display:inline-block;width:12px;"></span>
+    <a href="tel:0971536565" style="display:inline-block;background:#fff;color:#eb3f43;padding:14px 36px;border-radius:100px;text-decoration:none;font-size:15px;font-weight:bold;letter-spacing:0.3px;border:2px solid #eb3f43;">โทรปรึกษาฟรี</a>
+    <p style="color:#999;font-size:13px;margin-top:10px;">เริ่มได้ภายใน 1 สัปดาห์ หรือตอบกลับ email นี้ได้เลยครับ</p>
+  </div>
+
+  <!-- Signature -->
+  <table style="margin-top:36px;border-top:1px solid #eee;padding-top:20px;width:100%;">
+    <tr>
+      <td style="padding-right:16px;vertical-align:top;">
+        <div style="width:4px;height:52px;background:linear-gradient(180deg,#eb3f43,#6e49f3);border-radius:2px;"></div>
+      </td>
+      <td style="font-size:13px;color:#666;line-height:1.7;">
+        <strong style="color:#1b1c1b;font-size:15px;">Tanakit Chaithip (ต้าร์)</strong><br>
+        Founder & Creative Director — <span style="color:#eb3f43;font-weight:bold;">บริษัท วิสัยทัศน์ เอ็กซ์ เบรน จำกัด</span><br>
+        80+ ลูกค้า 6 ประเทศ | Clutch 5.0 | ทะเบียน: 0585564000175<br>
+        <span style="font-size:14px;"><a href="tel:0971536565" style="color:#1b1c1b;text-decoration:none;font-weight:bold;">097-153-6565</a> — โทรปรึกษาฟรีครับ</span><br>
+        <a href="${trackedVxbHome}" style="color:#eb3f43;text-decoration:none;">www.visionxbrain.com</a>
+      </td>
+    </tr>
+  </table>
+
+</div>`;
+}
+
+// DGP Generate — AI สร้าง proposal parts
+app.post('/api/leads/dgp-generate', async (req, res) => {
+  try {
+    const { place_id, domain, email } = req.body;
+    if (!place_id && !domain && !email) return res.status(400).json({ error: 'place_id, domain, or email required' });
+
+    const leads = leadFinder.getLeads();
+    const lead = leads.find(l =>
+      (place_id && l.place_id === place_id) ||
+      (domain && l.domain === domain) ||
+      (email && l.email === email)
+    );
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+
+    const rawName = lead.businessName || '';
+    const isPlaceholder = !rawName || /ชื่อธุรกิจ|ใส่ชื่อ|ภาษาไทย ถ้า|English name/i.test(rawName);
+    const bizName = isPlaceholder ? (lead.businessNameEn || lead.name || lead.domain || '-') : rawName;
+    const bizType = lead.type || lead.industry || '';
+    const issues = lead.websiteIssues || [];
+
+    const prompt = `คุณคือ ต้าร์ — Founder ของ VisionXBrain เขียน DGP Proposal email ถึงเจ้าของ "${bizName}" (${bizType})
+
+=== ตัวตนของต้าร์ ===
+- ทำเว็บ Webflow + Digital Marketing มา 80+ ราย 6 ประเทศ Clutch 5.0
+- พูดตรง มั่นใจ ไม่อ้อมค้อม ไม่เป็นทางการ ไม่ขาย
+- เป็น "ครีเอทีฟบัดดี้เพื่อนคู่คิด" — ผู้ให้ก่อนเสมอ
+
+=== ข้อมูลธุรกิจ ===
+- ชื่อ: ${bizName}
+- ประเภท: ${bizType}
+- เว็บ: ${lead.domain || '-'}
+- ปัญหาที่เจอ: ${issues.length > 0 ? issues.join(', ') : 'ยังไม่วิเคราะห์ลึก'}
+
+=== สิ่งที่ต้อง generate (5 ส่วน) ===
+
+ผมต้องการ 5 ส่วนที่จะใส่ใน DGP proposal template:
+
+1. **subject** — หัวข้อ email ต้องมีชื่อ "${bizName}" + สื่อว่ามีแผนเพิ่มลูกค้าให้ ห้ามหัวข้อทั่วไป ห้าม emoji
+
+2. **opening** — 1-2 paragraph เปิดเรื่อง:
+   - อ้างอิงว่าตามที่คุยกันและ Audit ที่ส่งไป
+   - สรุปแผนที่จะช่วยเพิ่มลูกค้าให้
+   - ใส่ใน <p> tags, inline style, font-size:15px
+
+3. **problemROI** — 1-2 paragraph:
+   - ปัญหาเฉพาะ industry ของ ${bizType} (เว็บมีอะไร ขาดอะไร)
+   - ROI calculation จริง: ลูกค้า 1 คน = ? บาท, ได้เพิ่มแค่ X คน/เดือนก็คุ้ม
+   - ใส่ใน <p> tags, ข้อ ROI ใช้ color:#666 font-size:14px
+
+4. **landingPageDesc** — 2 paragraph อธิบาย Landing Page CRO:
+   - ใช้หลัก CRO ปัญหา→วิธีแก้→หลักฐาน→CTA
+   - ตัวเลข conversion: ปกติ 1-2% → CRO แล้ว 3-5%
+   - ปรับ wording ให้เหมาะ industry ${bizType}
+   - ใส่ใน <p> tags, font-size:14px, color:#444, line-height:1.7
+
+5. **seoAutopilotDesc** — 2 paragraph อธิบาย SEO Autopilot:
+   - ระบบ auto สร้างบทความจาก keyword จริง + FAQ Schema
+   - social proof: 80+ องค์กร 6 ประเทศ, 380+ บทความ
+   - 6 เดือน = 180 บทความ เหมือนพนักงานขาย 180 คน
+   - ปรับ keyword ตัวอย่างให้เหมาะ ${bizType}
+   - ใส่ใน <p> tags เหมือนข้อ 4
+
+6. **recommendation** — 1 paragraph แนะนำแพ็คไหน + เหตุผล:
+   - Basic (TH+EN) / Growth (TH+EN+CN) / Full (TH+EN+CN+JP)
+   - เลือกตามลูกค้าเป้าหมายของธุรกิจ
+   - ใส่ใน <p> tags, font-size:15px, color:#1b1c1b
+
+=== กฎเหล็ก ===
+- ภาษาไทย เหมือน Tar คุยกับลูกค้า ไม่ใช่ AI
+- ห้ามตะโกน ห้ามคำว่า "ด่วน" "ก่อนสาย"
+- ห้ามภาษาทางการ ใช้ "ผม" "คุณ" "ครับ"
+- ตอบ JSON เท่านั้น
+
+ตอบ JSON:
+{
+  "subject": "...",
+  "opening": "<p style=\\"...\\">...</p>",
+  "problemROI": "<p style=\\"...\\">...</p><p style=\\"...\\">...</p>",
+  "landingPageDesc": "<p style=\\"...\\">...</p><p style=\\"...\\">...</p>",
+  "seoAutopilotDesc": "<p style=\\"...\\">...</p><p style=\\"...\\">...</p>",
+  "recommendation": "<p style=\\"...\\">...</p>"
+}`;
+
+    const aiRes = await claude.chat(
+      [{ role: 'user', content: prompt }],
+      {
+        system: 'คุณคือ ต้าร์ เจ้าของ VisionXBrain เขียน DGP Proposal เหมือนคนจริง ไม่ใช่ AI ตอบ JSON เท่านั้น',
+        max_tokens: 4000,
+        skipAutoRecall: true
+      }
+    );
+
+    const jsonMatch = aiRes.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.status(500).json({ error: 'AI failed to generate proposal', raw: aiRes });
+
+    const customParts = JSON.parse(jsonMatch[0]);
+    const subject = customParts.subject.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1FA00}-\u{1FA9F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/gu, '').trim();
+
+    const trackingId = (lead.place_id || lead.domain || 'dgp') + '_dgp_' + Date.now();
+    const htmlPreview = buildDgpTemplate({ ...customParts, bizName, trackingId });
+
+    res.json({
+      subject,
+      htmlPreview,
+      customParts,
+      trackingId,
+      lead: { place_id: lead.place_id, bizName, domain: lead.domain, email: lead.email, industry: bizType }
+    });
+  } catch (e) {
+    console.error('[DGP-GENERATE] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DGP Send — ส่ง proposal email จริง
+app.post('/api/leads/dgp-send', async (req, res) => {
+  try {
+    const { place_id, email, subject, htmlBody, customParts } = req.body;
+    if (!email || !subject) return res.status(400).json({ error: 'email and subject required' });
+
+    const leads = leadFinder.getLeads();
+    const lead = leads.find(l => (place_id && l.place_id === place_id) || (l.email === email));
+    const rawName = lead?.businessName || lead?.businessNameEn || lead?.domain || '-';
+    const isPlaceholder = !rawName || /ชื่อธุรกิจ|ใส่ชื่อ|ภาษาไทย ถ้า|English name/i.test(rawName);
+    const bizName = isPlaceholder ? (lead?.businessNameEn || lead?.name || lead?.domain || '-') : rawName;
+
+    const trackingId = (place_id || lead?.domain || 'dgp') + '_dgp_' + Date.now();
+
+    // ถ้ามี customParts → rebuild template, ไม่งั้นใช้ htmlBody ที่ส่งมา
+    let finalBody;
+    if (customParts) {
+      finalBody = buildDgpTemplate({ ...customParts, bizName, trackingId });
+    } else {
+      finalBody = htmlBody;
+    }
+
+    // Add tracking pixel
+    const trackingPixel = `<img src="https://oracle-agent-production-546e.up.railway.app/api/email/track/${trackingId}.png" width="1" height="1" style="display:block;width:1px;height:1px;border:0;opacity:0;" alt="">`;
+    const bodyWithTracking = finalBody.replace(/<\/div>\s*$/, trackingPixel + '\n</div>');
+
+    // Attach PDF
+    const attachments = [];
+    if (leadFinder.pdfBuffer) {
+      attachments.push({
+        filename: leadFinder.pdfFilename || 'VisionXBrain Portfolio.pdf',
+        content: leadFinder.pdfBuffer,
+        mimeType: 'application/pdf'
+      });
+    }
+
+    const result = await gmailClient.send({
+      to: email,
+      subject,
+      body: bodyWithTracking,
+      attachments: attachments.length ? attachments : undefined
+    });
+
+    // Update lead status
+    if (lead) {
+      const sentAt = new Date().toISOString();
+      const id = lead.place_id || lead.domain || lead.email;
+      leadFinder.updateLead(id, {
+        status: 'proposal_sent',
+        dgpSentAt: sentAt,
+        dgpTrackingId: trackingId,
+        emailSentTo: email
+      });
+      console.log(`[DGP-SEND] Sent to ${bizName} (${email}), trackingId: ${trackingId}`);
+    }
+
+    // Notify Tar
+    try {
+      await gateway.notifyOwner(`[DGP Proposal ส่งแล้ว]\n${bizName} → ${email}\nSubject: ${subject}`);
+    } catch (notifyErr) {
+      console.log('[DGP-SEND] Notify error:', notifyErr.message);
+    }
+
+    res.json({
+      success: true,
+      to: email,
+      subject,
+      trackingId,
+      lead: { bizName, domain: lead?.domain },
+      attachment: attachments.length ? 'VisionXBrain Portfolio.pdf' : 'none'
+    });
+  } catch (e) {
+    console.error('[DGP-SEND] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Email Open Tracking Pixel
 app.get('/api/email/track/:trackingId.png', (req, res) => {
   const { trackingId } = req.params;
