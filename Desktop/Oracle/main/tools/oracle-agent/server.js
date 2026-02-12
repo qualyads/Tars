@@ -6392,8 +6392,10 @@ app.post('/api/leads/dgp-send', async (req, res) => {
     let finalBody;
     if (customParts) {
       finalBody = buildDgpTemplate({ ...customParts, bizName, trackingId });
-    } else {
+    } else if (htmlBody) {
       finalBody = htmlBody;
+    } else {
+      return res.status(400).json({ error: 'customParts or htmlBody required' });
     }
 
     // Add tracking pixel
