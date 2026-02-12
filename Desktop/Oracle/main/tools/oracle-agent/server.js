@@ -176,6 +176,7 @@ import {
 
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { readFileSync, writeFileSync } from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -6261,10 +6262,33 @@ function buildDgpTemplate({ opening, problemROI, landingPageDesc, seoAutopilotDe
 }
 
 // DGP Generate — AI สร้าง proposal (standalone, ไม่ผูก lead finder)
+// --- DGP Sent Tracking ---
+const DGP_SENT_PATH = join(__dirname, 'data', 'dgp-sent.json');
+function loadDgpSent() {
+  try { return JSON.parse(readFileSync(DGP_SENT_PATH, 'utf8')); } catch { return []; }
+}
+function saveDgpSent(records) {
+  writeFileSync(DGP_SENT_PATH, JSON.stringify(records, null, 2), 'utf8');
+}
+function isDgpAlreadySent(email, bizName) {
+  const records = loadDgpSent();
+  return records.some(r => r.email === email && r.bizName === bizName);
+}
+
+// GET /api/dgp/sent — ดูรายการที่ส่งแล้ว
+app.get('/api/dgp/sent', (req, res) => {
+  res.json(loadDgpSent());
+});
+
 app.post('/api/dgp/generate', async (req, res) => {
   try {
     const { bizName, industry, domain, email, context } = req.body;
     if (!bizName) return res.status(400).json({ error: 'bizName required' });
+
+    // Check if already sent
+    if (email && isDgpAlreadySent(email, bizName)) {
+      return res.status(409).json({ error: `DGP proposal already sent to ${bizName} (${email}) — ห้ามส่งซ้ำ`, alreadySent: true });
+    }
 
     const bizType = industry || '';
     const webDomain = domain || '-';
@@ -6398,9 +6422,14 @@ ${extraContext ? `- บริบทจากที่โทรคุย: ${extra
 // DGP Send — ส่ง proposal email (standalone, ไม่ผูก lead finder)
 app.post('/api/dgp/send', async (req, res) => {
   try {
-    const { bizName, email, subject, customParts, htmlBody } = req.body;
+    const { bizName, email, subject, customParts, htmlBody, industry, domain } = req.body;
     if (!email || !subject) return res.status(400).json({ error: 'email and subject required' });
     if (!bizName) return res.status(400).json({ error: 'bizName required' });
+
+    // Block duplicate sends
+    if (isDgpAlreadySent(email, bizName)) {
+      return res.status(409).json({ error: `DGP proposal already sent to ${bizName} (${email}) — ห้ามส่งซ้ำ`, alreadySent: true });
+    }
 
     const trackingId = bizName.replace(/[^a-zA-Z0-9]/g, '') + '_dgp_' + Date.now();
 
@@ -6435,6 +6464,19 @@ app.post('/api/dgp/send', async (req, res) => {
     });
 
     console.log(`[DGP-SEND] Sent to ${bizName} (${email}), trackingId: ${trackingId}`);
+
+    // Record to dgp-sent.json (ห้ามส่งซ้ำ)
+    const records = loadDgpSent();
+    records.push({
+      bizName,
+      email,
+      subject,
+      trackingId,
+      sentAt: new Date().toISOString(),
+      industry: industry || '',
+      domain: domain || ''
+    });
+    saveDgpSent(records);
 
     // Notify Tar
     try {
