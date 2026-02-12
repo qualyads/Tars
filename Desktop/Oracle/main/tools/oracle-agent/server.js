@@ -6260,25 +6260,15 @@ function buildDgpTemplate({ opening, problemROI, landingPageDesc, seoAutopilotDe
 </div>`;
 }
 
-// DGP Generate — AI สร้าง proposal parts
-app.post('/api/leads/dgp-generate', async (req, res) => {
+// DGP Generate — AI สร้าง proposal (standalone, ไม่ผูก lead finder)
+app.post('/api/dgp/generate', async (req, res) => {
   try {
-    const { place_id, domain, email } = req.body;
-    if (!place_id && !domain && !email) return res.status(400).json({ error: 'place_id, domain, or email required' });
+    const { bizName, industry, domain, email, context } = req.body;
+    if (!bizName) return res.status(400).json({ error: 'bizName required' });
 
-    const leads = leadFinder.getLeads();
-    const lead = leads.find(l =>
-      (place_id && l.place_id === place_id) ||
-      (domain && l.domain === domain) ||
-      (email && l.email === email)
-    );
-    if (!lead) return res.status(404).json({ error: 'Lead not found' });
-
-    const rawName = lead.businessName || '';
-    const isPlaceholder = !rawName || /ชื่อธุรกิจ|ใส่ชื่อ|ภาษาไทย ถ้า|English name/i.test(rawName);
-    const bizName = isPlaceholder ? (lead.businessNameEn || lead.name || lead.domain || '-') : rawName;
-    const bizType = lead.type || lead.industry || '';
-    const issues = lead.websiteIssues || [];
+    const bizType = industry || '';
+    const webDomain = domain || '-';
+    const extraContext = context || '';
 
     const prompt = `คุณคือ ต้าร์ — Founder ของ VisionXBrain เขียน DGP Proposal email ถึงเจ้าของ "${bizName}" (${bizType})
 
@@ -6290,8 +6280,8 @@ app.post('/api/leads/dgp-generate', async (req, res) => {
 === ข้อมูลธุรกิจ ===
 - ชื่อ: ${bizName}
 - ประเภท: ${bizType}
-- เว็บ: ${lead.domain || '-'}
-- ปัญหาที่เจอ: ${issues.length > 0 ? issues.join(', ') : 'ยังไม่วิเคราะห์ลึก'}
+- เว็บ: ${webDomain}
+${extraContext ? `- บริบทเพิ่มเติม (จากที่โทรคุย): ${extraContext}` : ''}
 
 === สิ่งที่ต้อง generate (5 ส่วน) ===
 
@@ -6358,37 +6348,25 @@ app.post('/api/leads/dgp-generate', async (req, res) => {
     const customParts = JSON.parse(jsonMatch[0]);
     const subject = customParts.subject.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1FA00}-\u{1FA9F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/gu, '').trim();
 
-    const trackingId = (lead.place_id || lead.domain || 'dgp') + '_dgp_' + Date.now();
+    const trackingId = (domain || bizName).replace(/[^a-zA-Z0-9]/g, '') + '_dgp_' + Date.now();
     const htmlPreview = buildDgpTemplate({ ...customParts, bizName, trackingId });
 
-    res.json({
-      subject,
-      htmlPreview,
-      customParts,
-      trackingId,
-      lead: { place_id: lead.place_id, bizName, domain: lead.domain, email: lead.email, industry: bizType }
-    });
+    res.json({ subject, htmlPreview, customParts, trackingId });
   } catch (e) {
     console.error('[DGP-GENERATE] Error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
-// DGP Send — ส่ง proposal email จริง
-app.post('/api/leads/dgp-send', async (req, res) => {
+// DGP Send — ส่ง proposal email (standalone, ไม่ผูก lead finder)
+app.post('/api/dgp/send', async (req, res) => {
   try {
-    const { place_id, email, subject, htmlBody, customParts } = req.body;
+    const { bizName, email, subject, customParts, htmlBody } = req.body;
     if (!email || !subject) return res.status(400).json({ error: 'email and subject required' });
+    if (!bizName) return res.status(400).json({ error: 'bizName required' });
 
-    const leads = leadFinder.getLeads();
-    const lead = leads.find(l => (place_id && l.place_id === place_id) || (l.email === email));
-    const rawName = lead?.businessName || lead?.businessNameEn || lead?.domain || '-';
-    const isPlaceholder = !rawName || /ชื่อธุรกิจ|ใส่ชื่อ|ภาษาไทย ถ้า|English name/i.test(rawName);
-    const bizName = isPlaceholder ? (lead?.businessNameEn || lead?.name || lead?.domain || '-') : rawName;
+    const trackingId = bizName.replace(/[^a-zA-Z0-9]/g, '') + '_dgp_' + Date.now();
 
-    const trackingId = (place_id || lead?.domain || 'dgp') + '_dgp_' + Date.now();
-
-    // ถ้ามี customParts → rebuild template, ไม่งั้นใช้ htmlBody ที่ส่งมา
     let finalBody;
     if (customParts) {
       finalBody = buildDgpTemplate({ ...customParts, bizName, trackingId });
@@ -6419,18 +6397,7 @@ app.post('/api/leads/dgp-send', async (req, res) => {
       attachments: attachments.length ? attachments : undefined
     });
 
-    // Update lead status
-    if (lead) {
-      const sentAt = new Date().toISOString();
-      const id = lead.place_id || lead.domain || lead.email;
-      leadFinder.updateLead(id, {
-        status: 'proposal_sent',
-        dgpSentAt: sentAt,
-        dgpTrackingId: trackingId,
-        emailSentTo: email
-      });
-      console.log(`[DGP-SEND] Sent to ${bizName} (${email}), trackingId: ${trackingId}`);
-    }
+    console.log(`[DGP-SEND] Sent to ${bizName} (${email}), trackingId: ${trackingId}`);
 
     // Notify Tar
     try {
@@ -6444,7 +6411,7 @@ app.post('/api/leads/dgp-send', async (req, res) => {
       to: email,
       subject,
       trackingId,
-      lead: { bizName, domain: lead?.domain },
+      bizName,
       attachment: attachments.length ? 'VisionXBrain Portfolio.pdf' : 'none'
     });
   } catch (e) {

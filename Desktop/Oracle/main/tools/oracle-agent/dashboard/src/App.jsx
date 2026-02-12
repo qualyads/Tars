@@ -1,94 +1,58 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  Badge,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose,
-  Input,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-  Textarea,
-} from '@relume_io/relume-ui';
-import {
-  BiCheckCircle,
-  BiEnvelope,
-  BiGroup,
-  BiLinkAlt,
-  BiMailSend,
-  BiPlay,
-  BiRefresh,
-  BiUpArrowAlt,
-} from '@oracle/shared/components/Icons';
-import {
-  AppSidebar,
-  Topbar,
-  StatCardProgress,
-  LoadingScreen,
-  fmtDateISO,
-} from '@oracle/shared';
 
 const API_BASE = window.location.origin;
 
-// ============ MAIN APP ============
+function formatDate(dateStr) {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function StatusBadge({ status }) {
+  const colors = {
+    new: { bg: '#e8f5e9', color: '#2e7d32' },
+    emailed: { bg: '#e3f2fd', color: '#1565c0' },
+    replied: { bg: '#fce4ec', color: '#c62828' },
+    qualified: { bg: '#f3e5f5', color: '#6a1b9a' },
+  };
+  const c = colors[status] || { bg: '#f5f5f5', color: '#616161' };
+  return (
+    <span style={{ background: c.bg, color: c.color, padding: '2px 10px', borderRadius: '12px', fontSize: '13px', fontWeight: 500 }}>
+      {status || 'unknown'}
+    </span>
+  );
+}
+
+function BoolIcon({ value }) {
+  return value ? <span style={{ color: '#2e7d32', fontSize: '18px' }}>&#10003;</span> : <span style={{ color: '#bdbdbd' }}>-</span>;
+}
+
 export default function App() {
   const [emailStats, setEmailStats] = useState(null);
   const [leadStats, setLeadStats] = useState(null);
   const [leads, setLeads] = useState([]);
-  const [finderStatus, setFinderStatus] = useState(null);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
-  const [runningManual, setRunningManual] = useState(false);
-  const [runResult, setRunResult] = useState(null);
-
-  // DGP Modal state
-  const [dgpModalOpen, setDgpModalOpen] = useState(false);
-  const [dgpLead, setDgpLead] = useState(null);
-  const [dgpGenerating, setDgpGenerating] = useState(false);
-  const [dgpPreview, setDgpPreview] = useState('');
-  const [dgpSending, setDgpSending] = useState(false);
-  const [dgpError, setDgpError] = useState(null);
-  const [dgpSuccess, setDgpSuccess] = useState(null);
-  const [dgpSubject, setDgpSubject] = useState('');
-  const [dgpTab, setDgpTab] = useState('preview');
-  const [dgpEditParts, setDgpEditParts] = useState(null);
-  const [dgpTrackingId, setDgpTrackingId] = useState('');
-  const [dgpEmail, setDgpEmail] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
-      const [emailRes, leadStatsRes, leadsRes, statusRes] = await Promise.all([
+      const [emailRes, leadStatsRes, leadsRes] = await Promise.all([
         fetch(`${API_BASE}/api/email/stats`),
         fetch(`${API_BASE}/api/leads/stats`),
         fetch(`${API_BASE}/api/leads`),
-        fetch(`${API_BASE}/api/leads/status`),
       ]);
-      const [emailData, leadStatsData, leadsData, statusData] = await Promise.all([
+      const [emailData, leadStatsData, leadsData] = await Promise.all([
         emailRes.json(),
         leadStatsRes.json(),
         leadsRes.json(),
-        statusRes.json(),
       ]);
       setEmailStats(emailData);
       setLeadStats(leadStatsData);
       setLeads(Array.isArray(leadsData) ? leadsData : leadsData.leads || []);
-      setFinderStatus(statusData);
       setLastRefresh(new Date());
       setError(null);
     } catch (e) {
@@ -119,470 +83,225 @@ export default function App() {
     }
   };
 
-  const runLeadFinder = async () => {
-    setRunningManual(true);
-    setRunResult(null);
-    try {
-      const res = await fetch(`${API_BASE}/api/leads/run`, { method: 'POST' });
-      const data = await res.json();
-      setRunResult(data);
-      const poll = setInterval(async () => {
-        const s = await fetch(`${API_BASE}/api/leads/status`).then(r => r.json());
-        setFinderStatus(s);
-        if (!s.running) {
-          clearInterval(poll);
-          setRunningManual(false);
-          fetchData();
-        }
-      }, 10000);
-    } catch (e) {
-      setRunResult({ error: e.message });
-      setRunningManual(false);
-    }
-  };
-
-  // DGP Handlers
-  const handleDgpClick = async (lead) => {
-    setDgpLead(lead);
-    setDgpModalOpen(true);
-    setDgpGenerating(true);
-    setDgpPreview('');
-    setDgpSubject('');
-    setDgpEditParts(null);
-    setDgpError(null);
-    setDgpSuccess(null);
-    setDgpTab('preview');
-    setDgpTrackingId('');
-    setDgpEmail(lead.email || '');
-
-    try {
-      const res = await fetch(`${API_BASE}/api/leads/dgp-generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ place_id: lead.place_id, domain: lead.domain, email: lead.email }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        setDgpError(data.error);
-      } else {
-        setDgpSubject(data.subject);
-        setDgpPreview(data.htmlPreview);
-        setDgpEditParts(data.customParts);
-        setDgpTrackingId(data.trackingId);
-      }
-    } catch (e) {
-      setDgpError(e.message);
-    } finally {
-      setDgpGenerating(false);
-    }
-  };
-
-  const handleDgpSend = async () => {
-    if (!dgpEmail || !dgpSubject) return;
-    setDgpSending(true);
-    setDgpError(null);
-    setDgpSuccess(null);
-
-    try {
-      const res = await fetch(`${API_BASE}/api/leads/dgp-send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          place_id: dgpLead.place_id,
-          email: dgpEmail,
-          subject: dgpSubject,
-          htmlBody: dgpPreview,
-          customParts: dgpEditParts,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        setDgpError(data.error);
-      } else {
-        setDgpSuccess(`Sent to ${dgpEmail}`);
-        fetchData();
-      }
-    } catch (e) {
-      setDgpError(e.message);
-    } finally {
-      setDgpSending(false);
-    }
-  };
-
-  const filteredLeads = (filter === 'all' ? leads : leads.filter(l => l.status === filter))
-    .sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0));
+  const filteredLeads = filter === 'all' ? leads : leads.filter(l => l.status === filter);
 
   const totalLeads = leadStats?.total || leads.length;
-  const goodTargets = leadStats?.goodTargets || 0;
   const totalEmailed = emailStats?.totalEmailed || 0;
   const totalClicked = emailStats?.totalClicked || 0;
   const clickRate = emailStats?.clickRate || '0%';
   const replied = leads.filter(l => l.status === 'replied').length;
 
-  const counts = {
-    all: leads.length,
-    new: leads.filter(l => l.status === 'new').length,
-    emailed: leads.filter(l => l.status === 'emailed').length,
-    replied: leads.filter(l => l.status === 'replied').length,
-    proposal_sent: leads.filter(l => l.status === 'proposal_sent').length,
-  };
-
   if (loading) {
-    return <LoadingScreen message="Loading Email Dashboard..." />;
+    return (
+      <div className="loader-wrap">
+        <div className="loader" />
+        <p style={{ marginTop: '16px', color: '#999' }}>Loading dashboard...</p>
+      </div>
+    );
   }
 
-  const isRunning = finderStatus?.running || runningManual;
-
   return (
-    <AppSidebar activePath="/vision/email/">
-      <div className="relative flex-1 bg-background-secondary">
-        <Topbar title="Email Campaign Report" onRefresh={fetchData} refreshing={false}>
-          <Button variant="secondary" size="sm" onClick={runLeadFinder} disabled={isRunning}>
-            <BiPlay className="mr-1 size-4" />
-            {isRunning ? 'Running...' : 'Run Now'}
-          </Button>
-          <Button variant="secondary" size="sm" onClick={syncGmailHistory} disabled={syncing}>
-            <BiMailSend className="mr-1 size-4" />
-            {syncing ? 'Syncing...' : 'Sync Gmail'}
-          </Button>
-        </Topbar>
-        <div className="h-[calc(100vh-4.5rem)] overflow-auto">
-          <div className="container px-6 py-8 md:px-8 md:py-10 lg:py-12">
-
-            {error && (
-              <div className="mb-4 rounded border border-system-error-red/20 bg-system-error-red-light p-3 text-sm text-system-error-red">
-                API Error: {error}
-              </div>
+    <div className="app-shell">
+      {/* Navbar - Relume Application Shell pattern */}
+      <header className="navbar">
+        <div className="navbar-inner">
+          <div className="navbar-brand">
+            <span className="logo-icon">&#x1F4CA;</span>
+            <span className="logo-text">Oracle Dashboard</span>
+          </div>
+          <div className="navbar-right">
+            {lastRefresh && (
+              <span className="refresh-info">
+                Updated: {lastRefresh.toLocaleTimeString('th-TH')}
+              </span>
             )}
-
-            {/* Sync/Run Results */}
-            {(syncResult || runResult) && (
-              <div className="mb-4 flex flex-wrap gap-3 text-sm">
-                {syncResult && (
-                  <span className={syncResult.error ? 'text-system-error-red' : 'text-system-success-green'}>
-                    {syncResult.error ? `Error: ${syncResult.error}` : `Synced ${syncResult.synced} leads`}
-                  </span>
-                )}
-                {runResult && (
-                  <span className={runResult.error ? 'text-system-error-red' : 'text-system-success-green'}>
-                    {runResult.error ? `Error: ${runResult.error}` : runResult.message}
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* System Status Bar */}
-            {finderStatus && (
-              <section className="mb-8">
-                <div className="flex flex-wrap items-center gap-4 rounded-[15px] border border-border-primary bg-white p-4 text-sm shadow-xxs">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block size-2 rounded-full bg-system-success-green" />
-                    <span>Server: {finderStatus.serverTime}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-block size-2 rounded-full ${finderStatus.lastRun ? 'bg-system-success-green' : 'bg-brand-primary'}`} />
-                    <span>Last Run: {finderStatus.lastRun ? fmtDateISO(finderStatus.lastRun) : 'Never'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block size-2 rounded-full bg-brand-primary" />
-                    <span>Next: {finderStatus.nextCron}</span>
-                  </div>
-                  {isRunning && (
-                    <div className="flex items-center gap-2">
-                      <span className="inline-block size-2 rounded-full bg-system-error-red pulse-dot" />
-                      <span className="font-semibold text-system-error-red">Running...</span>
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
-
-            {/* Stat Cards (Stat3 pattern — with progress bar) */}
-            <section className="mb-8">
-              <div className="grid auto-cols-fr grid-cols-1 gap-4 md:grid-flow-col md:gap-6">
-                <StatCardProgress
-                  title="Total Leads"
-                  value={`${totalLeads}`}
-                  icon={<BiGroup className="size-4" />}
-                  badge={`${goodTargets} targets`}
-                  progress={100}
-                />
-                <StatCardProgress
-                  title="Emails Sent"
-                  value={`${totalEmailed}`}
-                  icon={<BiEnvelope className="size-4" />}
-                  badge={`${totalLeads ? Math.round((totalEmailed / totalLeads) * 100) : 0}%`}
-                  progress={totalLeads ? (totalEmailed / totalLeads) * 100 : 0}
-                />
-                <StatCardProgress
-                  title="Link Clicks"
-                  value={`${totalClicked}`}
-                  icon={<BiLinkAlt className="size-4" />}
-                  badge={clickRate}
-                  progress={totalEmailed ? (totalClicked / totalEmailed) * 100 : 0}
-                />
-                <StatCardProgress
-                  title="Replies"
-                  value={`${replied}`}
-                  icon={<BiCheckCircle className="size-4" />}
-                  badge={`${totalEmailed ? Math.round((replied / totalEmailed) * 100) : 0}%`}
-                  progress={totalEmailed ? (replied / totalEmailed) * 100 : 0}
-                />
-              </div>
-            </section>
-
-            {/* Lead Table (Table1 pattern) */}
-            <section className="mb-8">
-              <div className="overflow-hidden rounded-[15px] border border-border-primary bg-white shadow-xxs">
-                <div className="flex flex-col items-start justify-between gap-4 p-6 sm:flex-row sm:items-center">
-                  <div>
-                    <h2 className="mb-1 text-md font-semibold md:text-lg">Lead Tracking</h2>
-                    <p className="text-sm text-text-secondary">{filteredLeads.length} leads</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {['all', 'new', 'emailed', 'replied', 'proposal_sent'].map(f => (
-                      <Button
-                        key={f}
-                        variant={filter === f ? 'primary' : 'secondary'}
-                        size="sm"
-                        onClick={() => setFilter(f)}
-                      >
-                        {f === 'all' ? 'All' : f === 'proposal_sent' ? 'Proposal Sent' : f.charAt(0).toUpperCase() + f.slice(1)}
-                        <span className="ml-1 rounded-full bg-brand-primary/10 px-1.5 text-xs">{counts[f] || 0}</span>
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-                <Table className="border-collapse border-t border-border-primary">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[220px]">Business</TableHead>
-                      <TableHead className="w-[100px]">Industry</TableHead>
-                      <TableHead className="w-[180px]">Email</TableHead>
-                      <TableHead className="w-[70px] text-center">Priority</TableHead>
-                      <TableHead className="w-[80px]">LINE</TableHead>
-                      <TableHead className="w-[90px]">Status</TableHead>
-                      <TableHead className="w-[130px]">Sent At</TableHead>
-                      <TableHead className="w-[60px] text-center">Clicked</TableHead>
-                      <TableHead className="w-[60px] text-center">Clicks</TableHead>
-                      <TableHead className="w-[70px] text-center">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredLeads.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={10} className="py-8 text-center text-sm text-neutral">
-                          No leads found
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredLeads.map((lead, i) => {
-                        const emailLead = emailStats?.leads?.find(l =>
-                          (l.domain && lead.domain && l.domain === lead.domain) ||
-                          (lead.email && l.name && l.name.includes(lead.businessName?.substring(0, 10)))
-                        );
-                        const domain = lead.domain && lead.domain.length < 40 ? lead.domain : null;
-                        const canDgp = lead.email && lead.status !== 'proposal_sent';
-                        return (
-                          <TableRow key={lead.place_id || lead.email || i}>
-                            <TableCell>
-                              <div className="font-medium">{lead.businessName || lead.businessNameEn || '-'}</div>
-                              {domain && <div className="text-xs text-brand-primary">{domain}</div>}
-                            </TableCell>
-                            <TableCell className="text-sm text-text-secondary">{lead.industry || '-'}</TableCell>
-                            <TableCell className="max-w-[180px] truncate text-sm text-text-secondary">{lead.email || '-'}</TableCell>
-                            <TableCell className="text-center">
-                              {lead.priorityScore > 0 ? (
-                                <Badge
-                                  variant={lead.priorityScore >= 60 ? 'default' : 'secondary'}
-                                  title={`Web: ${lead.websiteScore || 0}/10`}
-                                >
-                                  {lead.priorityScore}
-                                </Badge>
-                              ) : (lead.websiteScore > 0 ? (
-                                <Badge variant="secondary">{lead.websiteScore}</Badge>
-                              ) : '-')}
-                            </TableCell>
-                            <TableCell>
-                              {lead.lineId ? (
-                                <span className="text-xs font-medium text-system-success-green">{lead.lineId}</span>
-                              ) : <span className="text-text-secondary">-</span>}
-                            </TableCell>
-                            <TableCell>
-                              <StatusBadge status={lead.status} />
-                            </TableCell>
-                            <TableCell className="text-sm">{fmtDateISO(lead.dgpSentAt || lead.emailSentAt || emailLead?.sentAt)}</TableCell>
-                            <TableCell className="text-center">
-                              {(lead.emailClicked || emailLead?.clicked) ? (
-                                <BiCheckCircle className="mx-auto size-4 text-system-success-green" />
-                              ) : <span className="text-text-secondary">-</span>}
-                            </TableCell>
-                            <TableCell className="text-center text-sm">{lead.emailClickCount || emailLead?.clickCount || 0}</TableCell>
-                            <TableCell className="text-center">
-                              {canDgp ? (
-                                <Button variant="secondary" size="sm" onClick={() => handleDgpClick(lead)}>
-                                  DGP
-                                </Button>
-                              ) : lead.status === 'proposal_sent' ? (
-                                <span className="inline-block rounded-full bg-[#6e49f3]/10 px-2 py-0.5 text-xs font-medium text-[#6e49f3]">Sent</span>
-                              ) : null}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </section>
+            <button className="btn-refresh" onClick={fetchData}>Refresh</button>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* DGP Proposal Dialog */}
-      <Dialog open={dgpModalOpen} onOpenChange={setDgpModalOpen}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>
-              DGP Proposal — {dgpLead?.businessName || dgpLead?.businessNameEn || '-'}
-            </DialogTitle>
-            <DialogDescription>
-              {dgpLead?.industry || '-'} | {dgpLead?.email || '-'}
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* To + Subject Inputs */}
-          <div className="grid grid-cols-1 gap-3 px-1 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium">To</label>
-              <Input
-                type="email"
-                value={dgpEmail}
-                onChange={(e) => setDgpEmail(e.target.value)}
-                placeholder="email@example.com"
-              />
+      {/* Main content */}
+      <main className="main-content">
+        <div className="container">
+          {error && (
+            <div className="error-banner">
+              API Error: {error}
             </div>
+          )}
+
+          {/* Page header */}
+          <div className="page-header">
             <div>
-              <label className="mb-1 block text-sm font-medium">Subject</label>
-              <Input
-                value={dgpSubject}
-                onChange={(e) => setDgpSubject(e.target.value)}
-                placeholder={dgpGenerating ? 'AI generating...' : 'Email subject'}
-                disabled={dgpGenerating}
-              />
+              <h1 className="page-title">Email Campaign Report</h1>
+              <p className="page-desc">Auto-send outreach tracking &mdash; refreshes every 30s</p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <button
+                className="btn-sync"
+                onClick={syncGmailHistory}
+                disabled={syncing}
+              >
+                {syncing ? 'Syncing...' : 'Sync Gmail History'}
+              </button>
+              {syncResult && (
+                <span style={{ fontSize: '13px', color: syncResult.error ? '#c62828' : '#2e7d32' }}>
+                  {syncResult.error ? `Error: ${syncResult.error}` : `Synced ${syncResult.synced} leads (${syncResult.gmailFound} found in Gmail)`}
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Tabs: Preview / Edit */}
-          <Tabs value={dgpTab} onValueChange={setDgpTab} className="mt-2">
-            <TabsList>
-              <TabsTrigger value="preview">Preview</TabsTrigger>
-              <TabsTrigger value="edit">Edit</TabsTrigger>
-            </TabsList>
-            <TabsContent value="preview" className="max-h-[50vh] overflow-auto rounded border border-border-primary bg-white p-4">
-              {dgpGenerating ? (
-                <div className="flex items-center justify-center py-20 text-sm text-text-secondary">
-                  <span className="mr-2 inline-block size-4 animate-spin rounded-full border-2 border-brand-primary border-t-transparent" />
-                  AI generating proposal...
+          {/* Stat Cards - Relume Stat Card pattern: grid auto-cols-fr */}
+          <div className="stat-grid">
+            <div className="stat-card">
+              <p className="stat-label">Total Leads</p>
+              <div className="stat-row">
+                <h2 className="stat-value">{totalLeads}</h2>
+              </div>
+              <div className="stat-bar">
+                <div className="stat-bar-fill" style={{ width: '100%', background: '#6e49f3' }} />
+              </div>
+            </div>
+            <div className="stat-card">
+              <p className="stat-label">Emails Sent</p>
+              <div className="stat-row">
+                <h2 className="stat-value">{totalEmailed}</h2>
+                <span className="stat-badge">{totalLeads ? Math.round((totalEmailed / totalLeads) * 100) : 0}%</span>
+              </div>
+              <div className="stat-bar">
+                <div className="stat-bar-fill" style={{ width: `${totalLeads ? (totalEmailed / totalLeads) * 100 : 0}%`, background: '#1565c0' }} />
+              </div>
+            </div>
+            <div className="stat-card">
+              <p className="stat-label">Link Clicks</p>
+              <div className="stat-row">
+                <h2 className="stat-value">{totalClicked}</h2>
+                <span className="stat-badge">{clickRate}</span>
+              </div>
+              <div className="stat-bar">
+                <div className="stat-bar-fill" style={{ width: `${totalEmailed ? (totalClicked / totalEmailed) * 100 : 0}%`, background: '#eb3f43' }} />
+              </div>
+            </div>
+            <div className="stat-card">
+              <p className="stat-label">Replies</p>
+              <div className="stat-row">
+                <h2 className="stat-value">{replied}</h2>
+                <span className="stat-badge">{totalEmailed ? Math.round((replied / totalEmailed) * 100) : 0}%</span>
+              </div>
+              <div className="stat-bar">
+                <div className="stat-bar-fill" style={{ width: `${totalEmailed ? (replied / totalEmailed) * 100 : 0}%`, background: '#2e7d32' }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Lead Table - Relume Table pattern */}
+          <div className="table-section">
+            <div className="table-header">
+              <div>
+                <h2 className="table-title">Lead Tracking</h2>
+                <p className="table-desc">{filteredLeads.length} leads</p>
+              </div>
+              <div className="filter-group">
+                {['all', 'new', 'emailed', 'replied'].map(f => (
+                  <button
+                    key={f}
+                    className={`filter-btn ${filter === f ? 'active' : ''}`}
+                    onClick={() => setFilter(f)}
+                  >
+                    {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Business</th>
+                    <th>Domain</th>
+                    <th>Email</th>
+                    <th>Status</th>
+                    <th>Sent At</th>
+                    <th style={{ textAlign: 'center' }}>Opened</th>
+                    <th style={{ textAlign: 'center' }}>Clicked</th>
+                    <th style={{ textAlign: 'center' }}>Clicks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredLeads.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+                        No leads found
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredLeads.map((lead, i) => {
+                      const emailLead = emailStats?.leads?.find(l => l.domain === lead.domain);
+                      return (
+                        <tr key={lead.domain || i}>
+                          <td className="cell-name">{lead.businessName || lead.businessNameEn || '-'}</td>
+                          <td className="cell-domain">{lead.domain || '-'}</td>
+                          <td className="cell-email">{lead.email || '-'}</td>
+                          <td><StatusBadge status={lead.status} /></td>
+                          <td>{formatDate(lead.emailSentAt || emailLead?.sentAt)}</td>
+                          <td style={{ textAlign: 'center' }}><BoolIcon value={lead.emailOpened || emailLead?.pixelOpen} /></td>
+                          <td style={{ textAlign: 'center' }}><BoolIcon value={lead.emailClicked || emailLead?.clicked} /></td>
+                          <td style={{ textAlign: 'center' }}>{lead.emailClickCount || emailLead?.clickCount || 0}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Email tracking detail (from /api/email/stats) */}
+          {emailStats?.leads?.length > 0 && (
+            <div className="table-section" style={{ marginTop: '32px' }}>
+              <div className="table-header">
+                <div>
+                  <h2 className="table-title">Email Tracking Detail</h2>
+                  <p className="table-desc">{emailStats.leads.length} tracked &mdash; {emailStats.pixelOpenNote}</p>
                 </div>
-              ) : dgpPreview ? (
-                <div dangerouslySetInnerHTML={{ __html: dgpPreview }} />
-              ) : (
-                <p className="py-10 text-center text-sm text-text-secondary">No preview available</p>
-              )}
-            </TabsContent>
-            <TabsContent value="edit" className="max-h-[50vh] space-y-3 overflow-auto">
-              {dgpEditParts ? (
-                <>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-text-secondary">Opening</label>
-                    <Textarea
-                      rows={3}
-                      value={dgpEditParts.opening || ''}
-                      onChange={(e) => setDgpEditParts({ ...dgpEditParts, opening: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-text-secondary">Problem & ROI</label>
-                    <Textarea
-                      rows={3}
-                      value={dgpEditParts.problemROI || ''}
-                      onChange={(e) => setDgpEditParts({ ...dgpEditParts, problemROI: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-text-secondary">Landing Page Description</label>
-                    <Textarea
-                      rows={3}
-                      value={dgpEditParts.landingPageDesc || ''}
-                      onChange={(e) => setDgpEditParts({ ...dgpEditParts, landingPageDesc: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-text-secondary">SEO Autopilot Description</label>
-                    <Textarea
-                      rows={3}
-                      value={dgpEditParts.seoAutopilotDesc || ''}
-                      onChange={(e) => setDgpEditParts({ ...dgpEditParts, seoAutopilotDesc: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-text-secondary">Recommendation</label>
-                    <Textarea
-                      rows={2}
-                      value={dgpEditParts.recommendation || ''}
-                      onChange={(e) => setDgpEditParts({ ...dgpEditParts, recommendation: e.target.value })}
-                    />
-                  </div>
-                </>
-              ) : (
-                <p className="py-10 text-center text-sm text-text-secondary">
-                  {dgpGenerating ? 'Generating...' : 'No editable parts available'}
-                </p>
-              )}
-            </TabsContent>
-          </Tabs>
-
-          {/* Footer */}
-          <DialogFooter className="flex items-center justify-between gap-3">
-            <div className="flex-1 text-sm">
-              {dgpError && <span className="text-system-error-red">{dgpError}</span>}
-              {dgpSuccess && <span className="text-system-success-green">{dgpSuccess}</span>}
+              </div>
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Business</th>
+                      <th>Domain</th>
+                      <th>Status</th>
+                      <th>Sent At</th>
+                      <th style={{ textAlign: 'center' }}>Pixel Open</th>
+                      <th style={{ textAlign: 'center' }}>Clicked</th>
+                      <th style={{ textAlign: 'center' }}>Click Count</th>
+                      <th>First Click</th>
+                      <th>Last Click</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {emailStats.leads.map((lead, i) => (
+                      <tr key={lead.domain || i}>
+                        <td className="cell-name">{lead.name}</td>
+                        <td className="cell-domain">{lead.domain}</td>
+                        <td><StatusBadge status={lead.status} /></td>
+                        <td>{formatDate(lead.sentAt)}</td>
+                        <td style={{ textAlign: 'center' }}><BoolIcon value={lead.pixelOpen} /></td>
+                        <td style={{ textAlign: 'center' }}><BoolIcon value={lead.clicked} /></td>
+                        <td style={{ textAlign: 'center' }}>{lead.clickCount || 0}</td>
+                        <td>{formatDate(lead.firstClick)}</td>
+                        <td>{formatDate(lead.lastClick)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <DialogClose asChild>
-                <Button variant="secondary" size="sm">Close</Button>
-              </DialogClose>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleDgpSend}
-                disabled={dgpGenerating || dgpSending || !dgpSubject || !dgpEmail || dgpSuccess}
-              >
-                <BiMailSend className="mr-1 size-4" />
-                {dgpSending ? 'Sending...' : 'Send Proposal'}
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </AppSidebar>
-  );
-}
-
-// ============ STATUS BADGE ============
-function StatusBadge({ status }) {
-  const styles = {
-    new: 'bg-system-success-green-light text-system-success-green',
-    emailed: 'bg-brand-primary/10 text-brand-primary',
-    followed_up: 'bg-brand-primary/10 text-brand-primary',
-    replied: 'bg-system-error-red-light text-system-error-red',
-    proposal_sent: 'bg-[#6e49f3]/10 text-[#6e49f3]',
-    closed: 'bg-brand-primary/10 text-brand-primary',
-  };
-  return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${styles[status] || 'bg-background-secondary text-text-secondary'}`}>
-      {status === 'proposal_sent' ? 'Proposal Sent' : status || 'unknown'}
-    </span>
+          )}
+        </div>
+      </main>
+    </div>
   );
 }
