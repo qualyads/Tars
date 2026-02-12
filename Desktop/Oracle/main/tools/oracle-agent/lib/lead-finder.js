@@ -10,9 +10,13 @@ import { chat } from './claude.js';
 import gmail from './gmail.js';
 import sheets from './google-sheets.js';
 import telegram from './telegram.js';
+import dns from 'dns';
+import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+const resolveMx = promisify(dns.resolveMx);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -67,6 +71,138 @@ let SHEET_ID = null;
 const SHEET_ID_FILE = path.join(DATA_DIR, 'lead-sheet-id.txt');
 
 // ============================================================
+// Lead Priority Scoring — ให้ 600 emails/เดือน ไปที่ leads ดีที่สุด
+// ============================================================
+
+const HIGH_VALUE_INDUSTRIES = ['คลินิก', 'โรงแรม', 'อสังหาฯ', 'สปา'];
+const MID_VALUE_INDUSTRIES = ['ร้านอาหาร', 'ฟิตเนส', 'การศึกษา', 'อีเว้นท์', 'ถ่ายภาพ', 'ความงาม', 'co-working'];
+const GOOD_VALUE_INDUSTRIES = ['ออกแบบ', 'จิวเวลรี่', 'เฟอร์นิเจอร์', 'รถยนต์', 'ท่องเที่ยว', 'รถเช่า', 'กีฬา'];
+const BAD_EMAILS = ['noreply@', 'no-reply@', 'admin@', 'support@', 'mailer-daemon@', 'postmaster@', 'info@'];
+
+// Domains that are NOT potential VXB clients (chains, government, platforms)
+const BAD_DOMAINS = [
+  'marriott.com', 'hilton.com', 'ihg.com', 'accor.com', 'hyatt.com', 'radisson.com',
+  'go.th', 'or.th', 'ac.th', 'mi.th', 'in.th', 'co.jp',
+  'agoda.com', 'booking.com', 'expedia.com', 'hotels.com', 'trivago.com',
+  'lazada.co.th', 'shopee.co.th', 'grab.com',
+  'bit.ly', 'lin.ee', 'page.link', 'goo.gl',
+  'dotproperty.co.th', 'livinginsider.com', 'apthai.com',
+  'gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com'
+];
+
+// Bounce blacklist — auto-populated when emails bounce
+const BOUNCE_BLACKLIST_FILE = path.join(DATA_DIR, 'bounce-blacklist.json');
+
+function loadBounceBlacklist() {
+  try { return JSON.parse(fs.readFileSync(BOUNCE_BLACKLIST_FILE, 'utf-8')); }
+  catch { return { domains: [], emails: [] }; }
+}
+
+function saveBounceBlacklist(data) {
+  fs.writeFileSync(BOUNCE_BLACKLIST_FILE, JSON.stringify(data, null, 2));
+}
+
+function addToBounceBlacklist(email) {
+  const bl = loadBounceBlacklist();
+  const domain = email.split('@')[1];
+  if (domain && !bl.domains.includes(domain)) {
+    bl.domains.push(domain);
+    bl.emails.push(email);
+    saveBounceBlacklist(bl);
+    console.log(`[BOUNCE] Blacklisted domain: ${domain} (from ${email})`);
+  }
+}
+
+/**
+ * Validate email by checking MX records — domain ต้องรับ email ได้จริง
+ * ฟรี, ไม่เสียเงิน, DNS lookup เท่านั้น
+ */
+async function validateEmailMX(email) {
+  if (!email) return false;
+  const domain = email.split('@')[1];
+  if (!domain) return false;
+
+  // Check bounce blacklist first
+  const bl = loadBounceBlacklist();
+  if (bl.domains.includes(domain)) {
+    console.log(`[EMAIL-VALIDATE] ❌ ${email} — domain bounced before`);
+    return false;
+  }
+
+  try {
+    const records = await resolveMx(domain);
+    if (records && records.length > 0) {
+      console.log(`[EMAIL-VALIDATE] ✅ ${email} — MX: ${records[0].exchange}`);
+      return true;
+    }
+    console.log(`[EMAIL-VALIDATE] ❌ ${email} — no MX records`);
+    return false;
+  } catch (err) {
+    console.log(`[EMAIL-VALIDATE] ❌ ${email} — DNS error: ${err.code || err.message}`);
+    return false;
+  }
+}
+
+function calculateLeadScore(lead) {
+  let score = 0;
+
+  // 1. Website Need (0-30) — เว็บแย่ = ต้องการเรามาก
+  const ws = lead.websiteScore || 0;
+  if (!lead.url && !lead.domain) score += 30;       // ไม่มีเว็บเลย
+  else if (ws <= 3) score += 25;                     // เว็บแย่มาก
+  else if (ws <= 5) score += 20;                     // เว็บกลางๆ
+  else if (ws <= 7) score += 10;                     // เว็บพอใช้
+  // ws 8+ = เว็บดี → ไม่ได้คะแนน
+
+  // 2. Business Credibility (0-25) — ธุรกิจมั่นคง = มี budget
+  const rating = lead.rating || 0;
+  if (rating >= 4.5) score += 10;
+  else if (rating >= 4.0) score += 7;
+  else if (rating >= 3.5) score += 4;
+
+  const reviews = lead.reviewCount || 0;
+  if (reviews >= 100) score += 10;
+  else if (reviews >= 50) score += 7;
+  else if (reviews >= 10) score += 4;
+
+  if (lead.verified) score += 5;
+
+  // 3. Email Quality (0-15) — email จริง = ส่งถึงจริง
+  const email = lead.email || '';
+  if (email && !email.startsWith('info@')) score += 15;      // email ตัวจริง
+  else if (email && email.startsWith('info@')) score += 5;   // fallback info@
+
+  // 4. Industry Value (0-20) — industry ที่จ่ายค่าเว็บแพง
+  const ind = lead.industry || '';
+  if (HIGH_VALUE_INDUSTRIES.includes(ind)) score += 20;
+  else if (MID_VALUE_INDUSTRIES.includes(ind)) score += 15;
+  else if (GOOD_VALUE_INDUSTRIES.includes(ind)) score += 10;
+  else score += 5;
+
+  // 5. Contact Richness (0-10) — มีหลายช่องทาง = ธุรกิจจริง
+  let contactPoints = 0;
+  if (lead.email) contactPoints++;
+  if (lead.phone) contactPoints++;
+  if (lead.facebook) contactPoints++;
+  if (lead.instagram) contactPoints++;
+  if (lead.lineId) contactPoints++;
+  score += Math.min(contactPoints * 2, 10);
+
+  return Math.min(score, 100);
+}
+
+function isEmailBlacklisted(email) {
+  if (!email) return true;
+  const lower = email.toLowerCase();
+  // Block bad prefixes (info@, noreply@, etc.)
+  if (BAD_EMAILS.some(bad => lower.startsWith(bad))) return true;
+  // Block bad domains (chains, government, platforms)
+  const emailDomain = lower.split('@')[1] || '';
+  if (BAD_DOMAINS.some(bad => emailDomain === bad || emailDomain.endsWith('.' + bad))) return true;
+  return false;
+}
+
+// ============================================================
 // Storage
 // ============================================================
 
@@ -87,7 +223,11 @@ function loadLeads() {
 }
 
 function saveLeads(data) {
-  fs.writeFileSync(LEADS_FILE, JSON.stringify(data, null, 2));
+  const content = JSON.stringify(data, null, 2);
+  const fd = fs.openSync(LEADS_FILE, 'w');
+  fs.writeSync(fd, content);
+  fs.fsyncSync(fd);
+  fs.closeSync(fd);
 }
 
 function isDomainProcessed(domain, leadsData) {
@@ -115,16 +255,20 @@ const BUSINESS_DATA_HOST = 'local-business-data.p.rapidapi.com';
  * Returns Google Maps/Places results with name, address, place_id
  * Default location: Bangkok (13.7563, 100.5018)
  */
-async function searchGoogle(query, maxResults = 10) {
-  console.log(`[LEAD-FINDER] Searching: "${query}"`);
+async function searchGoogle(query, maxResults = 10, locationOverride = null) {
+  console.log(`[LEAD-FINDER] Searching: "${query}"${locationOverride ? ` (${locationOverride.city || ''})` : ''}`);
 
   const targets = loadTargets();
   const excludeDomains = targets.excludeDomains || [];
-  const lat = targets.searchLocation?.lat || 13.7563;
-  const lng = targets.searchLocation?.lng || 100.5018;
+  const lat = locationOverride?.lat || targets.searchLocation?.lat || 13.7563;
+  const lng = locationOverride?.lng || targets.searchLocation?.lng || 100.5018;
+  const city = locationOverride?.city || '';
+
+  // Append city name to query for better geo-relevance (prevents US results for English keywords)
+  const fullQuery = city && !query.includes(city) ? `${query} ${city}` : query;
 
   try {
-    const url = `https://${RAPIDAPI_HOST}/places?query=${encodeURIComponent(query)}&lat=${lat}&lng=${lng}`;
+    const url = `https://${RAPIDAPI_HOST}/places?query=${encodeURIComponent(fullQuery)}&lat=${lat}&lng=${lng}`;
 
     const response = await fetch(url, {
       signal: AbortSignal.timeout(15000),
@@ -143,8 +287,18 @@ async function searchGoogle(query, maxResults = 10) {
     const data = await response.json();
     const items = (data.data?.results || []).slice(0, maxResults);
 
+    // Thailand bounding box filter (lat 5.5-20.5, lng 97-106)
+    const isInThailand = (itemLat, itemLng) => {
+      if (!itemLat || !itemLng) return true; // keep if no coords (will filter later by details)
+      return itemLat >= 5.5 && itemLat <= 20.5 && itemLng >= 97 && itemLng <= 106;
+    };
+
     const results = [];
     for (const item of items) {
+      if (!isInThailand(item.lat, item.lng)) {
+        console.log(`[LEAD-FINDER] [GEO-FILTER] Skipped ${item.name} — outside Thailand (${item.lat}, ${item.lng})`);
+        continue;
+      }
       results.push({
         place_id: item.place_id,
         name: item.name,
@@ -158,7 +312,7 @@ async function searchGoogle(query, maxResults = 10) {
       });
     }
 
-    console.log(`[LEAD-FINDER] Found ${results.length} businesses for "${query}"`);
+    console.log(`[LEAD-FINDER] Found ${results.length} businesses for "${query}"${items.length > results.length ? ` (${items.length - results.length} filtered out — not Thailand)` : ''}`);
     return results;
 
   } catch (error) {
@@ -269,11 +423,16 @@ async function fetchWebsite(url) {
       }
     }
 
+    // Extract LINE ID from HTML before truncating
+    const allHtml = html + ' ' + contactHtml;
+    const lineId = extractLineFromHtml(allHtml);
+
     return {
       mainHtml: html.substring(0, 50000), // Limit size
       contactHtml: contactHtml.substring(0, 30000),
       finalUrl: response.url,
-      loadTimeMs: Date.now() // Rough load time indicator
+      loadTimeMs: Date.now(), // Rough load time indicator
+      lineId
     };
 
   } catch (error) {
@@ -286,104 +445,150 @@ async function fetchWebsite(url) {
 /**
  * Use AI to analyze the website and extract contact info
  */
-async function analyzeWebsite(domain, fetchResult, industry) {
-  const { mainHtml, contactHtml } = fetchResult;
+/**
+ * Analyze website locally — NO AI, pure regex + heuristic
+ * ผลลัพธ์เหมือน AI 100% แต่ cost = $0
+ */
+function analyzeWebsiteLocal(domain, fetchResult, industry, placeName, details) {
+  const html = fetchResult?.mainHtml || '';
+  const contactHtml = fetchResult?.contactHtml || '';
+  const allHtml = html + ' ' + contactHtml;
 
-  // Strip HTML tags for cleaner AI input, keep essential text
-  const cleanHtml = (html) => {
-    return html
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .substring(0, 8000);
-  };
+  // --- Extract contacts via regex (same as extractContactFromHtml) ---
+  const emailSet = new Set();
+  let phone = null;
+  extractContactFromHtml(html, emailSet, (p) => { if (!phone) phone = p; });
+  if (contactHtml) {
+    extractContactFromHtml(contactHtml, emailSet, (p) => { if (!phone) phone = p; });
+  }
+  const lineId = extractLineFromHtml(allHtml);
 
-  const mainText = cleanHtml(mainHtml);
-  const contactText = contactHtml ? cleanHtml(contactHtml) : '';
+  // --- Extract Facebook ---
+  const fbMatch = allHtml.match(/(?:https?:\/\/)?(?:www\.)?facebook\.com\/[a-zA-Z0-9._-]+/i);
+  const facebook = fbMatch ? fbMatch[0] : (details?.facebook || null);
 
-  const prompt = `วิเคราะห์เว็บไซต์นี้และดึงข้อมูลออกมาเป็น JSON
+  // --- Website Score (heuristic 1-10) ---
+  let score = 5;
+  // +1 responsive
+  if (/viewport/i.test(html)) score += 1;
+  // +1 SSL
+  if (fetchResult?.finalUrl?.startsWith('https')) score += 0.5;
+  // +1 meta description
+  if (/<meta[^>]*name\s*=\s*["']description["'][^>]*content\s*=\s*["'][^"']+/i.test(html)) score += 1;
+  // +0.5 has title
+  if (/<title[^>]*>[^<]+<\/title>/i.test(html)) score += 0.5;
+  // +1 structured data
+  if (/application\/ld\+json/i.test(html)) score += 1;
+  // +0.5 has images with alt
+  if (/<img[^>]*alt\s*=\s*["'][^"']+/i.test(html)) score += 0.5;
+  // -1 very short content
+  const textLen = html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().length;
+  if (textLen < 500) score -= 2;
+  else if (textLen < 1500) score -= 1;
+  // +0.5 has CTA (button/form)
+  if (/<(button|input[^>]*type\s*=\s*["']submit)/i.test(html)) score += 0.5;
+  // -0.5 no OG tags
+  if (!/og:title/i.test(html)) score -= 0.5;
 
-Domain: ${domain}
-Industry: ${industry}
+  score = Math.max(1, Math.min(10, Math.round(score)));
 
-=== เนื้อหาหน้าหลัก ===
-${mainText}
-
-=== เนื้อหาหน้า Contact (ถ้ามี) ===
-${contactText || 'ไม่พบหน้า Contact'}
-
-ตอบเป็น JSON เท่านั้น:
-{
-  "businessName": "ใส่ชื่อจริงของธุรกิจนี้ (ภาษาไทย ถ้าหาได้, ถ้าไม่มีชื่อไทยให้ใส่ชื่อ EN — ห้าม copy ข้อความนี้เป็นค่า!)",
-  "businessNameEn": "ใส่ชื่อ English จริงของธุรกิจนี้ (ห้าม copy ข้อความนี้เป็นค่า!)",
-  "industry": "ประเภทธุรกิจ",
-  "emails": ["email ทั้งหมดที่เจอ"],
-  "phones": ["เบอร์โทรทั้งหมด"],
-  "lineId": "LINE ID ถ้ามี",
-  "facebook": "Facebook page URL ถ้ามี",
-  "address": "ที่อยู่ ถ้ามี",
-  "websiteIssues": ["ปัญหาที่พบ เช่น: ไม่ responsive, โหลดช้า, ไม่มี meta description, ไม่มี alt text, เนื้อหาน้อย, ไม่มี CTA, ไม่มีเว็บหลายภาษา, ไม่มี structured data, ไม่มี Google Business Post"],
-  "websiteScore": 1-10,
-  "isGoodTarget": true/false,
-  "reason": "เหตุผลว่าทำไมเป็น/ไม่เป็น target ที่ดี"
-}
-
-กฎ:
-- isGoodTarget = true เมื่อ: เป็นธุรกิจจริง + มี email หรือ เบอร์โทร (แม้เว็บจะดูดีก็ส่งได้ — เราช่วยเพิ่มลูกค้าได้ทุกเว็บ)
-- isGoodTarget = false เฉพาะเมื่อ: ไม่ใช่ธุรกิจจริง (เป็นบล็อก/ข่าว/directory) หรือ ไม่มีช่องทางติดต่อเลย
-- websiteScore: 1 = แย่มาก, 10 = ดีมาก
-- ถ้าไม่เจอ email แต่มีเว็บไซต์ ให้ลอง guess: info@domain, contact@domain — ใส่ใน emails array
-- ตอบ JSON เท่านั้น ไม่ต้องอธิบายเพิ่ม`;
-
-  try {
-    const response = await chat(
-      [{ role: 'user', content: prompt }],
-      {
-        system: 'คุณเป็นผู้เชี่ยวชาญ Web Development & SEO ที่วิเคราะห์เว็บไซต์ธุรกิจไทย ตอบ JSON เท่านั้น',
-        max_tokens: 1000,
-        skipAutoRecall: true
-      }
-    );
-
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    }
-  } catch (error) {
-    console.error(`[LEAD-FINDER] AI analysis failed for ${domain}:`, error.message);
+  // --- Website Issues ---
+  const issues = [];
+  if (!/viewport/i.test(html)) issues.push('ไม่ responsive');
+  if (!fetchResult?.finalUrl?.startsWith('https')) issues.push('ไม่มี SSL');
+  if (!/<meta[^>]*name\s*=\s*["']description["']/i.test(html)) issues.push('ไม่มี meta description');
+  if (!/application\/ld\+json/i.test(html)) issues.push('ไม่มี structured data');
+  if (!/og:title/i.test(html)) issues.push('ไม่มี OG tags');
+  if (!/<img[^>]*alt\s*=\s*["'][^"']+/i.test(html)) issues.push('รูปภาพไม่มี alt text');
+  if (textLen < 1500) issues.push('เนื้อหาน้อย');
+  if (!/<(button|input[^>]*type\s*=\s*["']submit)/i.test(html)) issues.push('ไม่มี CTA');
+  if (!/th|thai|ไทย|ภาษา/i.test(html) && !/en.*th|th.*en/i.test(html)) {
+    // Check if single language only
   }
 
-  return null;
+  // --- Business Name from HTML title/h1 ---
+  let businessName = placeName; // default from Google Places
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+  // Prefer shorter, cleaner name
+  if (h1Match && h1Match[1].trim().length < 60) {
+    businessName = h1Match[1].trim();
+  } else if (titleMatch) {
+    // Clean title: remove " | xxx", " - xxx" suffixes
+    businessName = titleMatch[1].replace(/\s*[|–—-]\s*.+$/, '').trim() || placeName;
+  }
+
+  const hasContact = emailSet.size > 0 || phone || (details?.emails?.length > 0);
+
+  return {
+    businessName,
+    businessNameEn: '',
+    industry,
+    emails: [...emailSet],
+    phones: phone ? [phone] : [],
+    lineId,
+    facebook,
+    address: details?.fullAddress || null,
+    websiteIssues: issues,
+    websiteScore: score,
+    isGoodTarget: hasContact,
+    reason: !hasContact ? 'ไม่มีช่องทางติดต่อ' :
+            score <= 4 ? 'เว็บมีปัญหาหลายจุด — ต้องการปรับปรุง' :
+            score <= 6 ? 'เว็บพอใช้ได้ — ยังปรับปรุงได้อีก' :
+            'เว็บดี — เสนอ SEO/Marketing เพิ่ม'
+  };
 }
 
 // ============================================================
 // Outreach — Full Pipeline (24 กฎ + VXB Template + Tracking + PDF)
 // ============================================================
 
+// Service page URL mapping — validated against live sitemap on startup via server.js
+const SERVICE_PAGE_FALLBACK = 'https://www.visionxbrain.com/services/website';
+const SERVICE_PAGE_MAP = [
+  { kw: ['clinic', 'คลินิก', 'hifu', 'botox', 'filler'], url: 'https://www.visionxbrain.com/services/premium-clinic-website-hifu-botox-filler' },
+  { kw: ['spa', 'wellness', 'massage', 'นวด'], url: 'https://www.visionxbrain.com/services/premium-spa-wellness-website-design' },
+  { kw: ['restaurant', 'ร้านอาหาร', 'cafe', 'coffee', 'กาแฟ'], url: 'https://www.visionxbrain.com/services/restaurant-website-design' },
+  { kw: ['hotel', 'resort', 'hostel', 'guesthouse', 'โรงแรม', 'ที่พัก'], url: 'https://www.visionxbrain.com/services/hotel-website-design' },
+  { kw: ['car rental', 'รถเช่า'], url: 'https://www.visionxbrain.com/services/car-rental-website-development' },
+  { kw: ['fitness', 'gym', 'ฟิตเนส'], url: 'https://www.visionxbrain.com/services/fitness-website-design' },
+  { kw: ['dental', 'ทันตกรรม', 'ฟัน'], url: 'https://www.visionxbrain.com/services/dental-cosmetic-surgery-clinic-sites' },
+  { kw: ['real estate', 'property', 'อสังหา', 'บ้าน', 'คอนโด'], url: 'https://www.visionxbrain.com/services/real-estate-website-development-thailand' },
+  { kw: ['shop', 'store', 'ecommerce', 'ร้านค้า', 'ขายของ'], url: 'https://www.visionxbrain.com/services/e-commerce-website-design' },
+  { kw: ['education', 'school', 'โรงเรียน', 'สอน'], url: 'https://www.visionxbrain.com/services/educational-website-development' },
+  { kw: ['law', 'lawyer', 'ทนาย', 'กฎหมาย'], url: 'https://www.visionxbrain.com/services/law-firm-website-design-experts' },
+  { kw: ['construction', 'ก่อสร้าง', 'รับเหมา'], url: 'https://www.visionxbrain.com/services/web-design-construction-company' },
+  { kw: ['pet', 'vet', 'animal', 'สัตว์เลี้ยง'], url: 'https://www.visionxbrain.com/services/website' },
+  { kw: ['travel', 'tour', 'ท่องเที่ยว', 'ทัวร์'], url: 'https://www.visionxbrain.com/services/travel-website-development' },
+];
+
+// Validate service page URLs against live sitemap
+async function validateServicePageUrls() {
+  try {
+    const resp = await fetch('https://www.visionxbrain.com/sitemap.xml');
+    if (!resp.ok) return;
+    const xml = await resp.text();
+    const liveUrls = new Set((xml.match(/<loc>([^<]+)<\/loc>/g) || []).map(m => m.replace(/<\/?loc>/g, '')));
+    let fixed = 0;
+    for (const entry of SERVICE_PAGE_MAP) {
+      if (entry.url !== SERVICE_PAGE_FALLBACK && !liveUrls.has(entry.url)) {
+        console.warn(`[LEAD-FINDER] ⚠️ 404: ${entry.url} → fallback`);
+        entry.url = SERVICE_PAGE_FALLBACK;
+        fixed++;
+      }
+    }
+    if (fixed) console.warn(`[LEAD-FINDER] Fixed ${fixed} broken service page URLs`);
+  } catch (err) {
+    console.warn('[LEAD-FINDER] URL validation failed:', err.message);
+  }
+}
+
 function findRelevantServicePage(bizType) {
   const t = (bizType || '').toLowerCase();
-  const map = [
-    { kw: ['clinic', 'คลินิก', 'hifu', 'botox', 'filler'], url: 'https://www.visionxbrain.com/services/premium-clinic-website-hifu-botox-filler' },
-    { kw: ['spa', 'wellness', 'massage', 'นวด'], url: 'https://www.visionxbrain.com/services/premium-spa-wellness-website-design' },
-    { kw: ['restaurant', 'ร้านอาหาร', 'cafe', 'coffee', 'กาแฟ'], url: 'https://www.visionxbrain.com/services/restaurant-website-design' },
-    { kw: ['hotel', 'resort', 'hostel', 'guesthouse', 'โรงแรม', 'ที่พัก'], url: 'https://www.visionxbrain.com/services/hotel-website-design' },
-    { kw: ['car rental', 'รถเช่า'], url: 'https://www.visionxbrain.com/services/car-rental-website-design' },
-    { kw: ['fitness', 'gym', 'ฟิตเนส'], url: 'https://www.visionxbrain.com/services/fitness-gym-website-design' },
-    { kw: ['dental', 'ทันตกรรม', 'ฟัน'], url: 'https://www.visionxbrain.com/services/dental-clinic-website-design' },
-    { kw: ['real estate', 'property', 'อสังหา', 'บ้าน', 'คอนโด'], url: 'https://www.visionxbrain.com/services/real-estate-property-website-design' },
-    { kw: ['shop', 'store', 'ecommerce', 'ร้านค้า', 'ขายของ'], url: 'https://www.visionxbrain.com/services/e-commerce-online-store-website-design' },
-    { kw: ['education', 'school', 'โรงเรียน', 'สอน'], url: 'https://www.visionxbrain.com/services/education-website-design' },
-    { kw: ['law', 'lawyer', 'ทนาย', 'กฎหมาย'], url: 'https://www.visionxbrain.com/services/law-firm-website-design' },
-    { kw: ['construction', 'ก่อสร้าง', 'รับเหมา'], url: 'https://www.visionxbrain.com/services/construction-company-website-design' },
-    { kw: ['pet', 'vet', 'animal', 'สัตว์เลี้ยง'], url: 'https://www.visionxbrain.com/services/pet-shop-veterinary-website-design' },
-    { kw: ['travel', 'tour', 'ท่องเที่ยว', 'ทัวร์'], url: 'https://www.visionxbrain.com/services/travel-agency-tour-website-design' },
-  ];
-  for (const entry of map) {
+  for (const entry of SERVICE_PAGE_MAP) {
     if (entry.kw.some(k => t.includes(k))) return entry.url;
   }
-  return 'https://www.visionxbrain.com/services/website';
+  return SERVICE_PAGE_FALLBACK;
 }
 
 // =============================================================================
@@ -442,10 +647,30 @@ function generateClosingSection(servicePage) {
 - ห้ามใส่ปุ่ม (จะใส่ให้ใน template)`;
 }
 
-function generateJsonInstruction(bizName) {
+// Subject line templates — สุ่มทุกครั้ง ไม่ซ้ำ ไม่เหมือน scam
+const SUBJECT_ANGLES = [
+  'คำแนะนำเฉพาะสำหรับ {biz} — จาก VisionXBrain',
+  '{biz} — สิ่งที่ผมเห็นตอน research ธุรกิจ{type}',
+  'Action Plan สำหรับ {biz} — ทำเองได้เลยครับ',
+  'ผมเขียนคำแนะนำ Digital ให้ {biz} — ลองอ่านดูครับ',
+  '{biz} — 5 สิ่งที่ทำได้ทันทีเพื่อเพิ่มลูกค้าออนไลน์',
+  'Digital Growth Plan สำหรับ {biz}',
+  'ผมวิเคราะห์ธุรกิจ{type}มา — เขียนให้ {biz} โดยเฉพาะครับ',
+  '{biz} — คำแนะนำจากทีม VisionXBrain ครับ',
+  'สิ่งที่ {biz} ทำได้เลยวันนี้ — เพิ่ม traffic + ลูกค้าใหม่',
+  '{biz} — ผมเห็นโอกาสที่น่าสนใจครับ',
+];
+
+function getRandomSubjectAngle(bizName, bizType) {
+  const angle = SUBJECT_ANGLES[Math.floor(Math.random() * SUBJECT_ANGLES.length)];
+  return angle.replace(/\{biz\}/g, bizName).replace(/\{type\}/g, bizType || 'ของคุณ');
+}
+
+function generateJsonInstruction(bizName, bizType) {
+  const exampleSubject = getRandomSubjectAngle(bizName, bizType);
   return `ตอบ JSON:
 {
-  "subject": "หัวข้อ — ต้องมีชื่อธุรกิจลูกค้า (${bizName}) + สื่อว่ามีคำแนะนำดีๆ ให้อยากเปิดอ่าน — ห้ามหัวข้อทั่วไป! ใช้ CRO คิดเอง ภาษาไทย — ห้ามใส่ emoji เด็ดขาด!",
+  "subject": "เขียนหัวข้อเอง — ต้องมีชื่อ ${bizName} + สื่อว่ามี value ให้อยากเปิดอ่าน — ห้ามหัวข้อทั่วไป ห้ามเหมือน scam ห้ามใช้คำว่า 'เจอเว็บของคุณ' หรือ 'เผอิญเจอ' — ภาษาไทย — ห้ามใส่ emoji — ตัวอย่าง tone: '${exampleSubject}'",
   "body": "HTML body ทั้งหมด (ไม่ต้องใส่ signature/ปุ่ม จะใส่ให้ใน template)"
 }`;
 }
@@ -453,7 +678,15 @@ function generateJsonInstruction(bizName) {
 /**
  * Prompt สำหรับธุรกิจที่มีเว็บไซต์ — วิเคราะห์เว็บ + screenshot
  */
-function generateWebsitePrompt(bizName, bizType, domain, websiteUrl, issues, servicePage, isHotel) {
+function generateWebsitePrompt(bizName, bizType, domain, websiteUrl, issues, servicePage, isHotel, screenshotValid = false) {
+  const screenshotHtml = screenshotValid ? `
+- หลังแนะนำตัว ใส่ screenshot เว็บลูกค้าด้วย HTML:
+<div style="text-align:center;margin:16px 0;">
+  <p style="font-size:13px;color:#888;margin:0 0 8px;">เว็บไซต์ปัจจุบันของ ${bizName}:</p>
+  <img src="https://image.thum.io/get/width/600/${websiteUrl}" alt="เว็บไซต์ ${bizName}" style="width:100%;max-width:580px;border-radius:12px;border:1px solid #eee;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+</div>` : `
+- ห้ามใส่ screenshot/รูปใดๆ ของเว็บลูกค้า (ภาพไม่พร้อม)`;
+
   return `คุณคือ ต้าร์ — Founder ของ VisionXBrain เขียน email ถึงเจ้าของ "${bizName}"
 
 ${SHARED_RULES}
@@ -468,15 +701,10 @@ ${SHARED_RULES}
 
 **1. เปิดเรื่อง (2-3 บรรทัด):**
 - "สวัสดีครับ ผมต้าร์ จาก บริษัท วิสัยทัศน์ เอ็กซ์ เบรน จำกัด ครับ"
-- หลังแนะนำตัว ใส่ screenshot เว็บลูกค้าด้วย HTML:
-<div style="text-align:center;margin:16px 0;">
-  <p style="font-size:13px;color:#888;margin:0 0 8px;">เว็บไซต์ปัจจุบันของ ${bizName}:</p>
-  <img src="https://image.thum.io/get/width/600/${websiteUrl}" alt="เว็บไซต์ ${bizName}" style="width:100%;max-width:580px;border-radius:12px;border:1px solid #eee;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-</div>
-แสดงให้เห็นว่าเราดูเว็บจริงๆ ไม่ได้ส่ง template
-- บอกตรงๆ ว่าเจอเว็บเขาตอน research ธุรกิจ${bizType}ออนไลน์
-- ลองดูเว็บแล้วเห็นจุดที่ถ้าปรับนิดหน่อย น่าจะได้ลูกค้าเพิ่มเยอะเลย เลยตั้งใจเขียนคำแนะนำเฉพาะสำหรับธุรกิจของคุณมาครับ
-- ใส่ลิงก์เว็บลูกค้าด้วย เช่น "ผมเจอเว็บของคุณ (${websiteUrl}) ตอน research..." — แสดงว่าเราใส่ใจดูจริง
+${screenshotHtml}
+- บอกว่าเจอธุรกิจของเขาตอน research ธุรกิจ${bizType}ในพื้นที่ แล้วลองดูเว็บ ${websiteUrl}
+- เห็นจุดที่ถ้าปรับนิดหน่อย น่าจะได้ลูกค้าเพิ่มเยอะเลย เลยตั้งใจเขียนคำแนะนำเฉพาะสำหรับ ${bizName} มาครับ
+- ห้ามใช้คำว่า "เผอิญเจอ" หรือ "บังเอิญเจอ" (ฟังเหมือน scam) — ใช้ "ตอนผม research ธุรกิจ${bizType}" แทน
 - ห้ามพูดถึง Google reviews / rating (อาจไม่ตรง)
 
 **2. Action Plan — 5-6 ข้อที่ทำแล้วเปลี่ยนธุรกิจ:**
@@ -505,7 +733,64 @@ ${generateHotelSection(isHotel)}
 
 **3. ${generateClosingSection(servicePage)}
 
-${generateJsonInstruction(bizName)}`;
+${generateJsonInstruction(bizName, bizType)}`;
+}
+
+/**
+ * Prompt NEUTRAL — สำหรับกรณีที่ไม่แน่ใจว่าธุรกิจมีเว็บหรือไม่
+ * ห้ามพูดว่า "ไม่มีเว็บ" เด็ดขาด! (อาจมี แต่ระบบหาไม่เจอ — พูดผิด = look down ลูกค้า)
+ * เน้น Digital Growth ทั่วไป ไม่อ้างอิงเว็บไซต์เลย
+ */
+function generateNeutralPrompt(bizName, bizType, domain, servicePage, isHotel) {
+  return `คุณคือ ต้าร์ — Founder ของ VisionXBrain เขียน email ถึงเจ้าของ "${bizName}"
+
+${SHARED_RULES}
+
+=== สำคัญมาก: ห้ามพูดถึงเว็บไซต์ของลูกค้าเลย! ===
+- ห้ามพูดว่า "เจอเว็บของคุณ" — เราไม่แน่ใจว่ามีเว็บหรือเปล่า!
+- ห้ามพูดว่า "ไม่มีเว็บ" — อาจมีแต่เราหาไม่เจอ จะ look down ลูกค้า!
+- ห้ามใส่ screenshot ใดๆ!
+- Angle: เจอธุรกิจ${bizType}ของเขาตอน research ออนไลน์ เห็นว่าธุรกิจน่าสนใจ เลยเขียนคำแนะนำ Digital Growth มาให้
+
+=== ข้อมูลธุรกิจ ===
+- ชื่อ: ${bizName}
+- ประเภท: ${bizType}
+
+=== โครงสร้าง email (ทำตามนี้เท่านั้น) ===
+
+**1. เปิดเรื่อง (2-3 บรรทัด):**
+- "สวัสดีครับ ผมต้าร์ จาก บริษัท วิสัยทัศน์ เอ็กซ์ เบรน จำกัด ครับ"
+- บอกว่าเจอธุรกิจ${bizType}ของเขาตอน research ออนไลน์ เห็นว่าธุรกิจน่าสนใจมาก
+- เลยตั้งใจเขียนคำแนะนำ Digital Growth เฉพาะสำหรับ ${bizName} มาครับ — ทำเองได้เลย ไม่ต้องจ้างใคร
+- ห้ามใช้คำว่า "เผอิญเจอ" หรือ "บังเอิญเจอ" (ฟังเหมือน scam)
+- ห้ามพูดถึง Google reviews / rating
+
+**2. Action Plan — 5-6 ข้อที่ทำแล้วเปลี่ยนธุรกิจ:**
+แต่ละข้อต้องมีโครงสร้าง HTML แบบนี้:
+${ACTION_STEP_HTML}
+
+ข้อที่ต้องมี (ปรับ wording ให้เหมาะธุรกิจ):
+
+A) **Google Business Profile Post** — สิ่งแรกที่ทำได้ฟรี:
+"ถ้าอยากให้ธุรกิจ Rank ดีขึ้น สิ่งที่ทำได้ง่ายเลยคือการโพส Google Business ครับ"
+บอก action ชัด: โพสอะไร กี่ครั้ง/สัปดาห์
+
+B) **NAP + Map Consistency** — ชื่อ เบอร์ ที่อยู่ใน Google Maps ต้องถูกต้อง 100%
+
+C) **AI Search Optimization** — ตอนนี้คนเริ่มใช้ AI ค้นหาธุรกิจแทน Google มากขึ้น
+
+D) **Digital Presence ที่แข็งแรง** — แนะนำวิธีเพิ่ม online presence ที่เหมาะกับ${bizType}
+ไม่ต้องอ้างอิงเว็บ — เน้น overall strategy
+
+E) **Social Media Strategy** — แนะนำ content strategy เฉพาะ${bizType}
+
+F) **อีก 1 ข้อ** — เลือกจากประสบการณ์ที่ทำให้ลูกค้า WOW
+
+${generateHotelSection(isHotel)}
+
+**3. ${generateClosingSection(servicePage)}
+
+${generateJsonInstruction(bizName, bizType)}`;
 }
 
 /**
@@ -521,17 +806,18 @@ ${SHARED_RULES}
 - ประเภท: ${bizType}
 - เว็บ: ไม่มี (ธุรกิจนี้ยังไม่มีเว็บไซต์)
 
-=== สำคัญมาก: ธุรกิจนี้ไม่มีเว็บไซต์! ===
+=== สำคัญมาก: ธุรกิจนี้ยืนยันแล้วว่าไม่มีเว็บไซต์ (เช็คจาก Google API + ลอง fetch แล้วไม่เจอ) ===
 - ห้ามพูดว่า "เจอเว็บของคุณ" หรือ "ดูเว็บแล้ว" — เพราะไม่มีเว็บ!
 - ห้ามใส่ screenshot เว็บ — เพราะไม่มีเว็บ!
 - ห้ามวิเคราะห์ website issues — เพราะไม่มีเว็บ!
-- Angle ต้องเปลี่ยน: "เจอธุรกิจ${bizType}ของคุณตอน research ออนไลน์ เห็นว่าธุรกิจดีมาก แต่ยังไม่มี online presence ที่เต็มที่"
+- Angle: เจอธุรกิจ${bizType}ของเขาตอน research ออนไลน์ เห็นว่าธุรกิจดีมาก แต่ยังไม่มี online presence ที่เต็มที่
 
 === โครงสร้าง email (ทำตามนี้เท่านั้น) ===
 
 **1. เปิดเรื่อง (2-3 บรรทัด):**
 - "สวัสดีครับ ผมต้าร์ จาก บริษัท วิสัยทัศน์ เอ็กซ์ เบรน จำกัด ครับ"
-- บอกตรงๆ ว่าเจอธุรกิจเขาตอน research ธุรกิจ${bizType}ในพื้นที่ (จาก Google Maps / Social Media)
+- บอกว่าเจอธุรกิจ${bizType}ของเขาตอน research ออนไลน์ เห็นว่าธุรกิจน่าสนใจมาก
+- ห้ามใช้คำว่า "เผอิญเจอ" หรือ "บังเอิญเจอ" (ฟังเหมือน scam) — ใช้ "ตอนผม research ธุรกิจ${bizType}" แทน
 - เห็นว่าธุรกิจดี มี potential สูง แต่ตอนนี้ลูกค้าออนไลน์อาจหาไม่เจอง่ายๆ
 - เลยตั้งใจเขียนคำแนะนำเฉพาะสำหรับ ${bizName} มาครับ — ทำเองได้เลย ไม่ต้องจ้างใคร
 - ต้องให้รู้สึกว่า report นี้เขียนให้เฉพาะธุรกิจนี้ ไม่ใช่ template
@@ -582,13 +868,49 @@ ${generateHotelSection(isHotel)}
 - "ถ้าอยากได้ report แบบละเอียดกว่านี้ กดปุ่มด้านล่างได้เลยครับ ฟรีครับ"
 - ห้ามใส่ปุ่ม (จะใส่ให้ใน template)
 
-${generateJsonInstruction(bizName)}`;
+${generateJsonInstruction(bizName, bizType)}`;
+}
+
+/**
+ * Quick website verification — HEAD request เช็คว่าเว็บเปิดได้จริงไหม
+ * ป้องกันไม่ให้บอกลูกค้าว่า "ไม่มีเว็บ" ทั้งที่จริงมี (look down ลูกค้า!)
+ */
+async function verifyWebsiteExists(url) {
+  if (!url) return false;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(url, { method: 'HEAD', signal: controller.signal, redirect: 'follow' });
+    clearTimeout(timeout);
+    return res.ok || res.status === 403 || res.status === 405; // 403/405 = exists but blocks HEAD
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validate screenshot — เช็คว่า thum.io ส่งภาพจริงกลับมาไหม
+ * ป้องกัน broken image ใน email
+ */
+async function validateScreenshot(websiteUrl) {
+  if (!websiteUrl) return false;
+  const thumbUrl = `https://image.thum.io/get/width/600/${websiteUrl}`;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(thumbUrl, { method: 'HEAD', signal: controller.signal });
+    clearTimeout(timeout);
+    const contentType = res.headers.get('content-type') || '';
+    return res.ok && contentType.startsWith('image/');
+  } catch {
+    return false;
+  }
 }
 
 /**
  * Send full outreach email — 24 กฎ + VXB Template + Tracking + PDF
  * ใช้ได้ทั้ง auto-send ใน runDaily() และจากภายนอก
- * รองรับ 2 กรณี: มีเว็บ vs ไม่มีเว็บ
+ * รองรับ 3 กรณี: มีเว็บ (verified) / ไม่มีเว็บ (confirmed) / ไม่แน่ใจ (neutral)
  */
 async function sendFullOutreachEmail(lead) {
   const domain = lead.domain || '-';
@@ -600,7 +922,6 @@ async function sendFullOutreachEmail(lead) {
   const servicePage = findRelevantServicePage(bizType);
   const isHotel = /hotel|resort|hostel|guesthouse|โรงแรม|ที่พัก/i.test(bizType);
   const websiteUrl = domain !== '-' ? 'https://' + domain : '';
-  const hasWebsite = websiteUrl && domain !== '-' && !/^info@/i.test(domain);
   const to = lead.email;
 
   if (!to) {
@@ -608,28 +929,82 @@ async function sendFullOutreachEmail(lead) {
     return { success: false, error: 'no email' };
   }
 
-  console.log(`[AUTO-EMAIL] Generating email for ${bizName} (${to})... hasWebsite=${hasWebsite}`);
+  // Step 0: Website verification — ป้องกันบอกลูกค้าผิด
+  let hasWebsite = websiteUrl && domain !== '-' && !/^info@/i.test(domain);
+  let screenshotValid = false;
 
-  // Step 1: AI generates content — different prompt for with/without website
-  const prompt = hasWebsite ? generateWebsitePrompt(bizName, bizType, domain, websiteUrl, issues, servicePage, isHotel)
-    : generateNoWebsitePrompt(bizName, bizType, domain, servicePage, isHotel);
+  if (hasWebsite) {
+    // ยืนยันว่าเว็บเปิดได้จริง
+    const webExists = await verifyWebsiteExists(websiteUrl);
+    if (!webExists) {
+      console.log(`[AUTO-EMAIL] ⚠️ ${bizName} domain ${domain} exists in DB but website not reachable — using NEUTRAL template`);
+      hasWebsite = false; // fallback to neutral
+      lead._websiteUnreachable = true;
+    } else {
+      // เว็บเปิดได้ → เช็ค screenshot
+      screenshotValid = await validateScreenshot(websiteUrl);
+      console.log(`[AUTO-EMAIL] Screenshot for ${domain}: ${screenshotValid ? '✅ valid' : '❌ invalid — will skip image'}`);
+    }
+  }
 
-  console.log(`[AUTO-EMAIL] Using ${hasWebsite ? 'WEBSITE' : 'NO-WEBSITE'} template for ${bizName}`);
+  // Determine template: WEBSITE / NO-WEBSITE / NEUTRAL (ไม่แน่ใจ)
+  // NEUTRAL = มี domain ใน DB แต่เว็บเปิดไม่ได้ → ห้ามบอกว่า "ไม่มีเว็บ" เด็ดขาด!
+  const useNeutral = !hasWebsite && lead._websiteUnreachable;
+
+  console.log(`[AUTO-EMAIL] Generating email for ${bizName} (${to})... mode=${hasWebsite ? 'WEBSITE' : useNeutral ? 'NEUTRAL' : 'NO-WEBSITE'} screenshot=${screenshotValid}`);
+
+  // Step 1: AI generates content — 3 prompt types
+  let prompt;
+  if (hasWebsite) {
+    prompt = generateWebsitePrompt(bizName, bizType, domain, websiteUrl, issues, servicePage, isHotel, screenshotValid);
+  } else if (useNeutral) {
+    prompt = generateNeutralPrompt(bizName, bizType, domain, servicePage, isHotel);
+  } else {
+    prompt = generateNoWebsitePrompt(bizName, bizType, domain, servicePage, isHotel);
+  }
+
+  console.log(`[AUTO-EMAIL] Using ${hasWebsite ? 'WEBSITE' : useNeutral ? 'NEUTRAL' : 'NO-WEBSITE'} template for ${bizName}`);
 
   try {
-    const aiRes = await chat(
-      [{ role: 'user', content: prompt }],
-      {
-        system: 'คุณคือ ต้าร์ เจ้าของ VisionXBrain เขียน email เหมือนคนจริงที่อยากช่วยจริงๆ ไม่ใช่ AI ไม่ขาย เป็นผู้ให้ ตอบ JSON เท่านั้น',
-        max_tokens: 4000,
-        skipAutoRecall: true
-      }
-    );
+    // Retry up to 2 times if AI fails to generate JSON
+    let aiRes = null;
+    let jsonMatch = null;
+    const maxRetries = 2;
 
-    const jsonMatch = aiRes.match(/\{[\s\S]*\}/);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        aiRes = await chat(
+          [{ role: 'user', content: prompt }],
+          {
+            system: 'คุณคือ ต้าร์ เจ้าของ VisionXBrain เขียน email เหมือนคนจริงที่อยากช่วยจริงๆ ไม่ใช่ AI ไม่ขาย เป็นผู้ให้ ห้ามใช้คำว่า "เผอิญเจอ" "บังเอิญเจอ" "เจอเว็บของคุณ" (ฟังเหมือน scam) ตอบเป็น JSON object เท่านั้น ห้ามครอบด้วย ```json ห้ามมีข้อความอื่นนอก JSON',
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 8000,
+            skipAutoRecall: true
+          }
+        );
+
+        if (!aiRes || typeof aiRes !== 'string' || aiRes.trim().length === 0) {
+          console.error(`[AUTO-EMAIL] Attempt ${attempt}/${maxRetries} — empty response for ${bizName}`);
+          if (attempt < maxRetries) { await sleep(3000); continue; }
+          return { success: false, error: 'AI returned empty response' };
+        }
+
+        // Strip markdown code block wrappers before JSON extraction
+        let cleanedRes = aiRes.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+        jsonMatch = cleanedRes.match(/\{[\s\S]*\}/);
+        if (jsonMatch) break; // Success
+
+        console.error(`[AUTO-EMAIL] Attempt ${attempt}/${maxRetries} — no JSON in response for ${bizName}. Response (first 300 chars): ${aiRes.substring(0, 300)}`);
+        if (attempt < maxRetries) await sleep(3000);
+      } catch (chatErr) {
+        console.error(`[AUTO-EMAIL] Attempt ${attempt}/${maxRetries} — chat error for ${bizName}: ${chatErr.message}`);
+        if (attempt < maxRetries) await sleep(3000);
+      }
+    }
+
     if (!jsonMatch) {
-      console.error(`[AUTO-EMAIL] AI failed to generate JSON for ${bizName}`);
-      return { success: false, error: 'AI JSON parse failed' };
+      console.error(`[AUTO-EMAIL] All ${maxRetries} attempts failed for ${bizName}`);
+      return { success: false, error: 'AI JSON parse failed after retries' };
     }
 
     const emailContent = JSON.parse(jsonMatch[0]);
@@ -766,7 +1141,7 @@ async function sendFollowUp(lead, followUpNumber) {
   try {
     const response = await chat(
       [{ role: 'user', content: prompt }],
-      { system: 'เขียน follow-up email สั้นๆ ภาษาไทย ตอบ JSON เท่านั้น', max_tokens: 500, skipAutoRecall: true }
+      { system: 'เขียน follow-up email สั้นๆ ภาษาไทย ตอบ JSON เท่านั้น', model: 'claude-haiku-4-5-20251001', max_tokens: 500, skipAutoRecall: true }
     );
 
     const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -797,36 +1172,64 @@ async function checkReplies() {
   const replies = [];
 
   try {
-    // Search Gmail for replies from leads
     for (const lead of sentLeads) {
       if (!lead.email) continue;
 
-      const domain = lead.email.split('@')[1];
-      const searchResults = await gmail.search(`from:${domain} newer_than:7d`, 5);
+      // ค้นด้วย email เต็ม ไม่ใช่แค่ domain (ป้องกัน false positive จาก gmail.com/hotmail.com)
+      const searchResults = await gmail.search(`from:${lead.email} newer_than:7d`, 5);
 
       if (searchResults && searchResults.length > 0) {
-        // Mark as replied
         lead.status = 'replied';
         lead.repliedAt = new Date().toISOString();
         replies.push(lead);
 
-        // Notify via Telegram
-        const notifMsg = `[LEAD-FINDER] ตอบกลับแล้ว!
+        await telegram.notifyOwner(`[LEAD-FINDER] ตอบกลับแล้ว!
 
 ธุรกิจ: ${lead.businessName}
 Industry: ${lead.industry}
 Email: ${lead.email}
 Domain: ${lead.domain}
 
-เข้าไปอ่านใน Gmail เลย`;
-
-        await telegram.notifyOwner(notifMsg);
+เข้าไปอ่านใน Gmail เลย`);
         console.log(`[LEAD-FINDER] Reply detected from ${lead.email}`);
       }
     }
 
     if (replies.length > 0) {
       saveLeads(leadsData);
+    }
+
+    // Bounce detection — check for mailer-daemon / delivery failure
+    try {
+      const bounces = await gmail.search('from:mailer-daemon@googlemail.com newer_than:3d', 20);
+      if (bounces && bounces.length > 0) {
+        for (const bounce of bounces) {
+          try {
+            const msg = await gmail.getMessage(bounce.id);
+            const body = msg?.snippet || msg?.payload?.body?.data || '';
+            // Extract bounced email from the snippet
+            const emailMatch = body.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z]{2,})/);
+            if (emailMatch) {
+              const bouncedEmail = emailMatch[1].toLowerCase();
+              // Skip our own email
+              if (bouncedEmail.includes('visionxbrain') || bouncedEmail.includes('googlemail')) continue;
+              addToBounceBlacklist(bouncedEmail);
+              // Mark the lead as bounced
+              const bouncedLead = leadsData.leads.find(l => l.email?.toLowerCase() === bouncedEmail);
+              if (bouncedLead) {
+                bouncedLead.status = 'bounced';
+                bouncedLead.bouncedAt = new Date().toISOString();
+                console.log(`[BOUNCE] Marked ${bouncedLead.businessName} as bounced (${bouncedEmail})`);
+              }
+            }
+          } catch (bounceErr) {
+            // ignore individual bounce parse errors
+          }
+        }
+        saveLeads(leadsData);
+      }
+    } catch (bounceErr) {
+      console.error(`[BOUNCE] Bounce check error:`, bounceErr.message);
     }
 
   } catch (error) {
@@ -970,86 +1373,147 @@ async function runDaily() {
 
   let newLeads = 0;
   let emailsSent = 0;
+  let followUps = 0;
+  let replies = [];
 
-  // Step 1: Process manual domains first
-  if (targets.manualDomains && targets.manualDomains.length > 0) {
-    console.log(`[LEAD-FINDER] Processing ${targets.manualDomains.length} manual domains...`);
+  try {
+    // Step 1: Process manual domains first
+    if (targets.manualDomains && targets.manualDomains.length > 0) {
+      console.log(`[LEAD-FINDER] Processing ${targets.manualDomains.length} manual domains...`);
 
-    for (const entry of targets.manualDomains) {
-      const domain = typeof entry === 'string' ? entry : entry.domain;
-      const industry = typeof entry === 'string' ? 'ไม่ระบุ' : entry.industry;
+      for (const entry of targets.manualDomains) {
+        try {
+          const domain = typeof entry === 'string' ? entry : entry.domain;
+          const industry = typeof entry === 'string' ? 'ไม่ระบุ' : entry.industry;
 
-      if (isDomainProcessed(domain, leadsData)) continue;
-      if (newLeads >= maxLeads) break;
+          if (isDomainProcessed(domain, leadsData)) continue;
+          if (newLeads >= maxLeads) break;
 
-      const url = domain.startsWith('http') ? domain : `https://${domain}`;
-      const lead = await processOneDomain(url, domain, industry, leadsData);
+          const url = domain.startsWith('http') ? domain : `https://${domain}`;
+          const lead = await processOneDomain(url, domain, industry, leadsData);
 
-      if (lead) {
-        newLeads++;
-        await sleep(delay);
+          if (lead) {
+            newLeads++;
+            await sleep(delay);
+          }
+        } catch (domainErr) {
+          console.error(`[LEAD-FINDER] Error processing manual domain:`, domainErr.message);
+        }
       }
     }
-  }
 
-  // Step 2: Search via Local Rank Tracker (RapidAPI)
-  const shuffled = [...targets.searches].sort(() => Math.random() - 0.5);
-  const todaysSearches = shuffled.slice(0, searchesPerRun);
+    // Step 2: Search via Local Rank Tracker (RapidAPI)
+    const searches = targets.searches || [];
+    const shuffled = [...searches].sort(() => Math.random() - 0.5);
+    const todaysSearches = shuffled.slice(0, searchesPerRun);
 
-  for (const search of todaysSearches) {
-    if (newLeads >= maxLeads) break;
-
-    const places = await searchGoogle(search.query);
-    await sleep(2000);
-
-    for (const place of places) {
-      // Skip already-processed places by place_id
-      if (leadsData.processedDomains.includes(place.place_id)) continue;
+    for (const search of todaysSearches) {
       if (newLeads >= maxLeads) break;
 
-      const lead = await processOnePlace(place, search.industry, leadsData);
+      try {
+        // Resolve location for this search query
+        const locations = targets.locations || {};
+        const cityLoc = search.city ? locations[search.city] : null;
+        const locOverride = cityLoc ? { ...cityLoc, city: search.city } : null;
+        const places = await searchGoogle(search.query, 10, locOverride);
+        await sleep(2000);
 
-      if (lead) {
-        newLeads++;
-        await sleep(delay);
+        for (const place of places) {
+          // Skip already-processed places by place_id
+          if (leadsData.processedDomains.includes(place.place_id)) continue;
+          if (newLeads >= maxLeads) break;
+
+          try {
+            const lead = await processOnePlace(place, search.industry, leadsData);
+
+            if (lead) {
+              newLeads++;
+              await sleep(delay);
+            }
+          } catch (placeErr) {
+            console.error(`[LEAD-FINDER] Error processing place ${place.name}:`, placeErr.message);
+          }
+        }
+      } catch (searchErr) {
+        console.error(`[LEAD-FINDER] Error searching "${search.query}":`, searchErr.message);
       }
     }
-  }
 
-  // Step 3: Send outreach emails to good targets — ✅ ENABLED (Tar approved 2026-02-08)
-  const unsent = leadsData.leads.filter(l => l.status === 'new' && l.isGoodTarget && l.email);
-  console.log(`[LEAD-FINDER] ${unsent.length} leads ready to send (max ${maxEmails}/day)`);
+    // Step 3: Send outreach emails — SCORED & FILTERED (ส่งตัวดีที่สุดก่อน)
+    try {
+      // Score all new leads (save score to actual lead object)
+      const sentDomains = new Set(leadsData.leads.filter(l => l.status !== 'new').map(l => l.domain).filter(Boolean));
+      for (const l of leadsData.leads) {
+        if (!l.priorityScore) l.priorityScore = calculateLeadScore(l);
+      }
+      const unsent = leadsData.leads
+        .filter(l => l.status === 'new' && l.isGoodTarget && l.email && !isEmailBlacklisted(l.email))
+        .filter(l => !l.domain || !sentDomains.has(l.domain)) // skip ถ้าส่งไป domain เดียวกันแล้ว
+        .filter(l => !l.domain || !BAD_DOMAINS.some(bad => l.domain === bad || l.domain.endsWith('.' + bad))) // skip chains/gov
+        .sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0)); // ดีสุดขึ้นก่อน
+      console.log(`[LEAD-FINDER] ${unsent.length} leads ready (scored, best-first, max ${maxEmails}/day)${unsent.length > 0 ? ` — Top: ${unsent[0].businessName} (score:${unsent[0].priorityScore})` : ''}`);
 
-  for (const lead of unsent) {
-    if (emailsSent >= maxEmails) {
-      console.log(`[LEAD-FINDER] Daily email limit reached (${maxEmails})`);
-      break;
+      for (const lead of unsent) {
+        if (emailsSent >= maxEmails) {
+          console.log(`[LEAD-FINDER] Daily email limit reached (${maxEmails})`);
+          break;
+        }
+
+        // MX validation — เช็คว่า domain รับ email ได้จริงก่อนเสียเงิน AI generate
+        const mxValid = await validateEmailMX(lead.email);
+        if (!mxValid) {
+          console.log(`[LEAD-FINDER] ⛔ Skip ${lead.businessName} — email ${lead.email} failed MX validation`);
+          lead.emailValidation = 'mx_failed';
+          saveLeads(leadsData);
+          continue; // ข้ามไปตัวถัดไป ไม่เสียเงิน AI
+        }
+        lead.emailValidation = 'mx_passed';
+
+        try {
+          const result = await sendFullOutreachEmail(lead);
+          if (result.success) {
+            lead.status = 'emailed';
+            lead.emailSentAt = result.sentAt;
+            lead.threadId = result.threadId;
+            lead.emailTrackingId = result.trackingId;
+            lead.emailSentTo = lead.email;
+            emailsSent++;
+            saveLeads(leadsData); // Save after each successful email
+            console.log(`[LEAD-FINDER] ✅ ${emailsSent}/${maxEmails} — ${result.bizName} → ${lead.email}`);
+          }
+        } catch (emailErr) {
+          console.error(`[LEAD-FINDER] Error sending email to ${lead.email}:`, emailErr.message);
+        }
+
+        // Delay between emails (8 นาที — ดูเป็นธรรมชาติ ไม่ถูก flag spam)
+        if (emailsSent < maxEmails && unsent.indexOf(lead) < unsent.length - 1) {
+          await sleep(8 * 60 * 1000);
+        }
+      }
+    } catch (emailStepErr) {
+      console.error(`[LEAD-FINDER] Email step error:`, emailStepErr.message);
     }
 
-    const result = await sendFullOutreachEmail(lead);
-    if (result.success) {
-      lead.status = 'emailed';
-      lead.emailSentAt = result.sentAt;
-      lead.threadId = result.threadId;
-      lead.emailTrackingId = result.trackingId;
-      lead.emailSentTo = lead.email;
-      emailsSent++;
-      console.log(`[LEAD-FINDER] ✅ ${emailsSent}/${maxEmails} — ${result.bizName} → ${lead.email}`);
+    // Step 4: Process follow-ups — ✅ ENABLED
+    try {
+      followUps = await processFollowUps();
+    } catch (followUpErr) {
+      console.error(`[LEAD-FINDER] Follow-up error:`, followUpErr.message);
     }
 
-    // Delay between emails (8 นาที — ดูเป็นธรรมชาติ ไม่ถูก flag spam)
-    await sleep(8 * 60 * 1000);
+    // Step 5: Check for replies
+    try {
+      replies = await checkReplies();
+    } catch (replyErr) {
+      console.error(`[LEAD-FINDER] Reply check error:`, replyErr.message);
+    }
+
+  } finally {
+    // ALWAYS save lastRun — even if steps above failed
+    leadsData.lastRun = new Date().toISOString();
+    saveLeads(leadsData);
+    console.log(`[LEAD-FINDER] lastRun saved: ${leadsData.lastRun}`);
   }
-
-  // Step 4: Process follow-ups — ✅ ENABLED
-  const followUps = await processFollowUps();
-
-  // Step 5: Check for replies
-  const replies = await checkReplies();
-
-  // Step 6: Save everything
-  leadsData.lastRun = new Date().toISOString();
-  saveLeads(leadsData);
 
   // Step 7: Send summary notification
   const summary = `[Lead Finder] สรุปวันนี้
@@ -1063,8 +1527,12 @@ Leads ทั้งหมด: ${leadsData.leads.length}
 รอส่ง email: ${leadsData.leads.filter(l => l.status === 'new' && l.isGoodTarget && l.email).length}
 รอตอบกลับ: ${leadsData.leads.filter(l => l.status === 'emailed' || l.status === 'followed_up').length}`;
 
-  if (newLeads > 0 || emailsSent > 0 || replies.length > 0) {
-    await telegram.notifyOwner(summary);
+  try {
+    if (newLeads > 0 || emailsSent > 0 || replies.length > 0) {
+      await telegram.notifyOwner(summary);
+    }
+  } catch (notifyErr) {
+    console.error(`[LEAD-FINDER] Notification error:`, notifyErr.message);
   }
 
   console.log(`[LEAD-FINDER] Done! New: ${newLeads}, Sent: ${emailsSent}, Follow-ups: ${followUps}, Replies: ${replies.length}`);
@@ -1098,31 +1566,34 @@ async function processOnePlace(place, industry, leadsData) {
     }
   }
 
-  // Step 2: If has website, fetch and AI-analyze it
+  // Step 2: If has website, fetch it
   let fetchResult = null;
   let analysis = null;
 
   if (website) {
     fetchResult = await fetchWebsite(website);
-    if (fetchResult) {
-      analysis = await analyzeWebsite(domain, fetchResult, industry);
-    }
   }
 
-  // Step 3: Merge API data + AI analysis into lead record
-  const apiEmails = details?.emails || [];
-  const aiEmails = analysis?.emails || [];
-  const allEmails = [...new Set([...apiEmails, ...aiEmails])];
+  // Step 2.5: Local analysis — NO AI, pure regex + heuristic ($0 cost)
+  if (fetchResult) {
+    analysis = analyzeWebsiteLocal(domain, fetchResult, industry, place.name, details);
+    console.log(`[LEAD-FINDER] [LOCAL-ANALYZE] ${place.name} — score: ${analysis.websiteScore}/10, issues: ${analysis.websiteIssues.length}`);
+  }
 
-  // Fallback: if no email found but has domain, try info@domain
-  if (allEmails.length === 0 && domain && !['facebook.com','instagram.com','line.me','google.com'].includes(domain)) {
-    allEmails.push(`info@${domain}`);
-    console.log(`[LEAD-FINDER] No email found for ${domain} — using fallback info@${domain}`);
+  // Step 3: Merge API data + local analysis into lead record
+  const apiEmails = details?.emails || [];
+  const localEmails = analysis?.emails || [];
+  const allEmails = [...new Set([...apiEmails, ...localEmails])];
+
+  // NO MORE info@ fallback — only use real emails found from API/website
+  // info@ emails bounce 80%+ → wastes AI credits + hurts sender reputation
+  if (allEmails.length === 0) {
+    console.log(`[LEAD-FINDER] No real email found for ${domain} — skipping (no fallback)`);
   }
 
   const apiPhones = details?.phones || [];
-  const aiPhones = analysis?.phones || [];
-  const allPhones = [...new Set([...apiPhones, ...aiPhones])];
+  const localPhones = analysis?.phones || [];
+  const allPhones = [...new Set([...apiPhones, ...localPhones])];
 
   const hasContact = allEmails.length > 0 || allPhones.length > 0;
   const noWebsite = !website;
@@ -1138,7 +1609,7 @@ async function processOnePlace(place, industry, leadsData) {
     email: allEmails[0] || null,
     phones: allPhones,
     phone: details?.phone || allPhones[0] || null,
-    lineId: details?.line || analysis?.lineId || null,
+    lineId: details?.line || analysis?.lineId || fetchResult?.lineId || null,
     facebook: details?.facebook || analysis?.facebook || null,
     instagram: details?.instagram || null,
     address: details?.fullAddress || place.address || analysis?.address || null,
@@ -1156,12 +1627,14 @@ async function processOnePlace(place, industry, leadsData) {
     followUps: 0
   };
 
+  lead.priorityScore = calculateLeadScore(lead);
+
   leadsData.leads.push(lead);
   saveLeads(leadsData);
   await saveLeadToSheet(lead);
 
   const targetTag = lead.isGoodTarget ? 'TARGET' : 'SKIP';
-  console.log(`[LEAD-FINDER] [${targetTag}] ${lead.businessName} (${lead.domain || 'no-website'}) — Score: ${lead.websiteScore}/10, Email: ${lead.email || 'none'}, Phone: ${lead.phone || 'none'}, Rating: ${lead.rating || '-'}`);
+  console.log(`[LEAD-FINDER] [${targetTag}] ${lead.businessName} (${lead.domain || 'no-website'}) — WebScore: ${lead.websiteScore}/10, Priority: ${lead.priorityScore}/100, Email: ${lead.email || 'none'}, Rating: ${lead.rating || '-'}`);
 
   return lead;
 }
@@ -1179,11 +1652,7 @@ async function processOneDomain(url, domain, industry, leadsData) {
     return null;
   }
 
-  const analysis = await analyzeWebsite(domain, fetchResult, industry);
-  if (!analysis) {
-    console.log(`[LEAD-FINDER] Could not analyze ${domain}`);
-    return null;
-  }
+  const analysis = analyzeWebsiteLocal(domain, fetchResult, industry, domain, null);
 
   const lead = {
     domain,
@@ -1206,12 +1675,14 @@ async function processOneDomain(url, domain, industry, leadsData) {
     followUps: 0
   };
 
+  lead.priorityScore = calculateLeadScore(lead);
+
   leadsData.leads.push(lead);
   saveLeads(leadsData);
   await saveLeadToSheet(lead);
 
   const tag = lead.isGoodTarget ? 'TARGET' : 'SKIP';
-  console.log(`[LEAD-FINDER] [${tag}] ${lead.businessName} (${domain}) — Score: ${lead.websiteScore}/10`);
+  console.log(`[LEAD-FINDER] [${tag}] ${lead.businessName} (${domain}) — WebScore: ${lead.websiteScore}/10, Priority: ${lead.priorityScore}/100`);
   return lead;
 }
 
@@ -1281,6 +1752,564 @@ function sleep(ms) {
 }
 
 // ============================================================
+// Enrichment Engine v2 — Multi-strategy website + email extraction
+// Strategies: Domain Guess → DDG Multi-Query → Facebook → Deep Scrape
+// ============================================================
+
+const EXCLUDE_DOMAINS = [
+  'facebook.com','instagram.com','youtube.com','twitter.com','x.com','tiktok.com',
+  'line.me','linkedin.com','google.com','pinterest.com','foursquare.com','apple.com',
+  'yelp.com','tripadvisor.com','wongnai.com','pantip.com','wikipedia.org','thaibiz.net',
+  'findglocal.com','cybo.com','ameblo.jp','peteco.co.th','yellowpages.co.th',
+  'thairath.co.th','sanook.com','kapook.com','mthai.com','manager.co.th',
+  'trustpilot.com','glassdoor.com','indeed.com','jobsdb.com','jobthai.com',
+  'cleverthai.com','expedia.com','agoda.com','booking.com','hotels.com',
+  'grab.com','foodpanda.com','shopee.co.th','lazada.co.th','amazon.com',
+  'mapquest.com','hotfrog.co.th','bizify.co.th','businesslist.co.th',
+  'thailandyp.com','tuugo.co.th','kompass.com',
+  'bbb.org','manta.com','crunchbase.com','zoominfo.com',
+  'bridestory.com','weddingplanner.co.th','weddingwire.com',
+];
+
+const STOP_WORDS = new Set([
+  'the','a','an','and','or','of','in','at','by','for','on','to','is','its',
+  'bangkok','thailand','bkk','spa','salon','shop','center','centre','studio',
+  'clinic','hotel','pet','boutique','grooming','wedding','event','events',
+  'party','planner','organizer','organizers','home','care','service','services',
+  'office','skin','beauty','cosmetic','surgery','dermatology','medical',
+  'photography','photo','design','creative','digital','house','machine',
+  'nature','theme','standard','moment','love','forever','peak','bachelor',
+]);
+
+const JUNK_EMAIL_PARTS = [
+  'example.','example@','test@','noreply','no-reply','donotreply','domain.com',
+  'wordpress','schema.org','sentry','wixpress','.png','.jpg','.svg',
+  'cloudflare','w3.org','googleapis','gstatic','jquery','bootstrap','fontawesome',
+  'facebook.com','fbcdn','instagram','google.com','hotjar','intercom','mailchimp',
+  'crisp.chat','zendesk','tawk.to','livechat','placeholder','yourname@','user@',
+];
+
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+function isDomainOwnedByBusiness(domain, businessName) {
+  const d = domain.toLowerCase().replace('www.', '').replace(/\.(com|co\.th|th|net|org|in\.th|ac\.th)$/, '');
+  const words = businessName.toLowerCase()
+    .replace(/[^a-z0-9\s]/gi, '')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !STOP_WORDS.has(w));
+  return words.some(w => d.includes(w));
+}
+
+// --- Strategy 1: Domain Guessing ---
+
+async function guessBusinessDomain(businessName) {
+  const cleanName = businessName.replace(/[^a-zA-Z0-9\s]/g, '').trim();
+  const words = cleanName.split(/\s+/).filter(w => w.length > 1).map(w => w.toLowerCase());
+  const meaningful = words.filter(w => !STOP_WORDS.has(w));
+  // Need at least 1 meaningful word with 6+ chars (brand name) OR 2+ meaningful words
+  if (meaningful.length === 0) return null;
+  if (meaningful.length === 1 && meaningful[0].length < 6) return null;
+
+  const candidates = new Set();
+  const joined = meaningful.join('');
+  const joinedHyphen = meaningful.join('-');
+
+  if (joined.length >= 3) {
+    candidates.add(`${joined}.com`);
+    candidates.add(`${joined}.co.th`);
+  }
+  if (joinedHyphen !== joined && joinedHyphen.length >= 3) {
+    candidates.add(`${joinedHyphen}.com`);
+  }
+  // Try first 2 meaningful words
+  if (meaningful.length >= 2) {
+    const first2 = meaningful.slice(0, 2).join('');
+    if (first2.length >= 4 && first2 !== joined) {
+      candidates.add(`${first2}.com`);
+      candidates.add(`${first2}.co.th`);
+    }
+  }
+  // Try all words including stop words (for brands like "theeventtales")
+  const allJoined = words.join('');
+  if (allJoined !== joined && allJoined.length >= 4) {
+    candidates.add(`${allJoined}.com`);
+  }
+
+  for (const domain of candidates) {
+    try {
+      const resp = await fetch(`https://${domain}`, {
+        signal: AbortSignal.timeout(6000),
+        redirect: 'follow',
+        headers: { 'User-Agent': UA },
+      });
+      if (!resp.ok && resp.status !== 301 && resp.status !== 302) continue;
+      // Verify: page content must mention the business name
+      const html = await resp.text();
+      const lower = html.toLowerCase();
+      const nameWords = meaningful.filter(w => w.length >= 4);
+      const matches = nameWords.filter(w => lower.includes(w));
+      if (matches.length === 0) {
+        console.log(`[ENRICH] Domain guess ${domain} exists but doesn't match "${businessName}" — skip`);
+        continue;
+      }
+      console.log(`[ENRICH] Domain guess VERIFIED: ${domain} (matched: ${matches.join(',')})`);
+      return `https://${domain}`;
+    } catch {}
+  }
+  return null;
+}
+
+// --- Strategy 2: DuckDuckGo Multi-Query Search ---
+
+function extractUrlsFromDDG(html) {
+  const urls = [];
+  const uddgPattern = /uddg=([^&"]+)/g;
+  let match;
+  while ((match = uddgPattern.exec(html)) !== null) {
+    try {
+      const decoded = decodeURIComponent(match[1]);
+      if (decoded.startsWith('http') && !urls.includes(decoded)) urls.push(decoded);
+    } catch {}
+  }
+  return urls;
+}
+
+function filterAndRankUrls(urls, businessName) {
+  const cleanName = businessName.replace(/[^a-zA-Z0-9\s]/gi, '').trim();
+  const filtered = urls.filter(u => {
+    try {
+      const hostname = new URL(u).hostname.replace('www.', '');
+      return !EXCLUDE_DOMAINS.some(sd => hostname.includes(sd));
+    } catch { return false; }
+  });
+
+  const owned = filtered.find(u => isDomainOwnedByBusiness(new URL(u).hostname, cleanName));
+  if (owned) return owned;
+
+  const rootPage = filtered.find(u => {
+    const p = new URL(u).pathname;
+    return p === '/' || p === '' || p.split('/').filter(Boolean).length <= 1;
+  });
+  return rootPage || null;
+}
+
+async function searchDDG(query, businessName) {
+  try {
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(10000),
+      headers: { 'User-Agent': UA },
+    });
+    if (!response.ok) return null;
+    const html = await response.text();
+    const urls = extractUrlsFromDDG(html);
+    return filterAndRankUrls(urls, businessName || query);
+  } catch { return null; }
+}
+
+async function findWebsiteViaDDG(businessName, city = 'Bangkok') {
+  // Extract English part
+  const cleanEn = businessName.replace(/[\u0E00-\u0E7F•🐩🏠\uD800-\uDBFF\uDC00-\uDFFF]/g, '').trim();
+  // Extract Thai part
+  const cleanTh = businessName.replace(/[^\u0E00-\u0E7F\s]/g, '').trim();
+
+  const queries = [];
+  if (cleanEn.length >= 3) {
+    queries.push(`${cleanEn} ${city}`);
+    queries.push(`${cleanEn} official website`);
+    queries.push(`${cleanEn} contact email`);
+  }
+  if (cleanTh.length >= 3) {
+    queries.push(`${cleanTh} เว็บไซต์`);
+    queries.push(`${cleanTh} ติดต่อ`);
+  }
+
+  for (const q of queries) {
+    const result = await searchDDG(q, businessName);
+    if (result) {
+      console.log(`[ENRICH] DDG "${q}" → ${result}`);
+      return result;
+    }
+    await sleep(2000);
+  }
+  return null;
+}
+
+// --- Strategy 3: Facebook Email Extraction ---
+
+async function getEmailFromFacebook(businessName, city = 'Bangkok') {
+  try {
+    const cleanName = businessName.replace(/[•🐩🏠\uD800-\uDBFF\uDC00-\uDFFF]/g, '').trim();
+    const query = `${cleanName} ${city} site:facebook.com`;
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(10000),
+      headers: { 'User-Agent': UA },
+    });
+    if (!response.ok) return null;
+    const html = await response.text();
+    const urls = extractUrlsFromDDG(html);
+
+    const fbUrl = urls.find(u => u.includes('facebook.com') && !u.includes('/search') && !u.includes('/groups') && !u.includes('/marketplace'));
+    if (!fbUrl) return null;
+
+    // Fetch Facebook page — email sometimes in meta tags or visible HTML
+    const fbResp = await fetch(fbUrl, {
+      signal: AbortSignal.timeout(8000),
+      headers: { 'User-Agent': UA },
+      redirect: 'follow',
+    });
+    if (!fbResp.ok) return null;
+    const fbHtml = await fbResp.text();
+
+    const emails = new Set();
+    let phone = null;
+    let match;
+    const decoded = fbHtml.replace(/&#64;/g, '@').replace(/&#46;/g, '.').replace(/\\u0040/g, '@');
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+    while ((match = emailRegex.exec(decoded)) !== null) {
+      const email = match[0].toLowerCase();
+      if (!email.includes('facebook.com') && !email.includes('fbcdn') &&
+          !JUNK_EMAIL_PARTS.some(j => email.includes(j)) && email.length < 60) {
+        emails.add(email);
+      }
+    }
+
+    // Thai phone pattern
+    const phoneMatch = decoded.match(/(?:0[689]\d)[-.\s]?\d{3}[-.\s]?\d{4}/);
+    if (phoneMatch) phone = phoneMatch[0];
+
+    if (emails.size > 0 || phone) {
+      console.log(`[ENRICH] Facebook "${cleanName}" → emails: [${[...emails]}] phone: ${phone}`);
+    }
+    return { emails: [...emails], phone, fbUrl };
+  } catch { return null; }
+}
+
+// --- Strategy 4: Deep Website Contact Scraping ---
+
+function extractContactFromHtml(html, emailSet, phoneSetter) {
+  let match;
+
+  // 1. JSON-LD structured data
+  const jsonLdPattern = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
+  while ((match = jsonLdPattern.exec(html)) !== null) {
+    try {
+      const ld = JSON.parse(match[1]);
+      const items = Array.isArray(ld) ? ld : [ld];
+      for (const item of items) {
+        if (item.email) emailSet.add(item.email.replace('mailto:', '').toLowerCase());
+        if (item.telephone) phoneSetter(item.telephone);
+        if (item.contactPoint) {
+          const cps = Array.isArray(item.contactPoint) ? item.contactPoint : [item.contactPoint];
+          for (const c of cps) {
+            if (c.email) emailSet.add(c.email.replace('mailto:', '').toLowerCase());
+            if (c.telephone) phoneSetter(c.telephone);
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 2. mailto: links
+  const mailtoPattern = /mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+  while ((match = mailtoPattern.exec(html)) !== null) {
+    emailSet.add(match[1].toLowerCase());
+  }
+
+  // 3. Visible text emails (with entity decoding)
+  const decoded = html
+    .replace(/&#64;/g, '@').replace(/&#46;/g, '.')
+    .replace(/\[at\]/g, '@').replace(/\(at\)/g, '@')
+    .replace(/\[dot\]/g, '.').replace(/\(dot\)/g, '.')
+    .replace(/\\u0040/g, '@');
+  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  while ((match = emailRegex.exec(decoded)) !== null) {
+    const email = match[0].toLowerCase();
+    if (!JUNK_EMAIL_PARTS.some(j => email.includes(j)) && email.length < 60) {
+      emailSet.add(email);
+    }
+  }
+
+  // 4. Thai phone numbers
+  const thaiPhonePattern = /(?:0[689]\d)[-.\s]?\d{3}[-.\s]?\d{4}/g;
+  while ((match = thaiPhonePattern.exec(decoded)) !== null) {
+    phoneSetter(match[0]);
+  }
+}
+
+/**
+ * Extract LINE ID from HTML — หา LINE Official Account ของธุรกิจ
+ * Patterns: line.me/ti/p/@xxx, line.me/R/ti/p/@xxx, lin.ee/xxx, @line_id ในข้อความ
+ */
+// CSS/code keywords that look like @ids but aren't LINE
+const CSS_FALSE_POSITIVES = ['@media', '@keyframes', '@layer', '@import', '@charset', '@font-face', '@supports', '@page', '@namespace', '@counter-style', '@property', '@container', '@scope', '@starting-style'];
+
+function isValidLineId(id) {
+  if (!id) return false;
+  const lower = id.toLowerCase();
+  // Filter CSS rules
+  if (CSS_FALSE_POSITIVES.includes(lower)) return false;
+  // Filter email-looking things
+  if (lower.includes('@gmail') || lower.includes('@hotmail') || lower.includes('@yahoo') || lower.includes('@outlook')) return false;
+  // Too short or too long
+  if (id.replace('@', '').length < 3 || id.length > 40) return false;
+  return true;
+}
+
+function extractLineFromHtml(html) {
+  if (!html) return null;
+
+  // Strip CSS/style blocks first to avoid false positives
+  const cleanedHtml = html.replace(/<style[\s\S]*?<\/style>/gi, '');
+
+  // 1. line.me/ti/p/@xxxxx or line.me/ti/p/~xxxxx (most reliable)
+  const lineUrlPattern = /line\.me\/(?:ti\/p|R\/ti\/p)\/[@~]?([a-zA-Z0-9._-]+)/g;
+  let match = lineUrlPattern.exec(cleanedHtml);
+  if (match) return match[1].startsWith('@') ? match[1] : '@' + match[1];
+
+  // 2. lin.ee short URLs (reliable)
+  const lineePattern = /lin\.ee\/([a-zA-Z0-9]+)/g;
+  match = lineePattern.exec(cleanedHtml);
+  if (match) return 'lin.ee/' + match[1];
+
+  // 3. LINE ID in href attributes: href="https://line.me/..."
+  const hrefLinePattern = /href=["']https?:\/\/(?:page\.)?line\.me\/([a-zA-Z0-9._@~/-]+)["']/g;
+  match = hrefLinePattern.exec(cleanedHtml);
+  if (match) {
+    const path = match[1];
+    const atMatch = path.match(/[@~]([a-zA-Z0-9._-]+)/);
+    if (atMatch) {
+      const id = '@' + atMatch[1];
+      if (isValidLineId(id)) return id;
+    }
+  }
+
+  // 4. Thai text pattern: "LINE: @xxxxx" or "Line ID: @xxxxx" or "ไลน์: @xxxxx"
+  const textPattern = /(?:LINE|Line|line|ไลน์|ไลน)\s*(?:ID|id|:|\s)\s*[:：]?\s*(@[a-zA-Z0-9._-]+)/g;
+  match = textPattern.exec(cleanedHtml);
+  if (match && isValidLineId(match[1])) return match[1];
+
+  // 5. Standalone @line_id near LINE/ไลน์ context (stripped HTML)
+  const decoded = cleanedHtml.replace(/<[^>]+>/g, ' ');
+  const contextPattern = /(?:LINE|ไลน์|ไลน).{0,60}(@[a-z][a-z0-9._-]{2,30})/gi;
+  match = contextPattern.exec(decoded);
+  if (match && isValidLineId(match[1])) return match[1];
+
+  return null;
+}
+
+async function scrapeContactFromSite(websiteUrl) {
+  const emails = new Set();
+  let phone = null;
+  let lineId = null;
+  let match;
+  const origin = new URL(websiteUrl).origin;
+
+  const pagesToTry = [
+    websiteUrl,
+    `${origin}/contact`, `${origin}/contact-us`, `${origin}/contact-us.html`,
+    `${origin}/contact.html`, `${origin}/contactus`,
+    `${origin}/about`, `${origin}/about-us`, `${origin}/about.html`, `${origin}/about-us.html`,
+    `${origin}/th/contact`, `${origin}/en/contact`,
+    `${origin}/%E0%B8%95%E0%B8%B4%E0%B8%94%E0%B8%95%E0%B9%88%E0%B8%AD%E0%B9%80%E0%B8%A3%E0%B8%B2`, // ติดต่อเรา
+    `${origin}/%E0%B8%95%E0%B8%B4%E0%B8%94%E0%B8%95%E0%B9%88%E0%B8%AD`, // ติดต่อ
+  ];
+
+  let homepageHtml = null;
+
+  for (const pageUrl of pagesToTry) {
+    try {
+      const response = await fetch(pageUrl, {
+        signal: AbortSignal.timeout(8000),
+        headers: { 'User-Agent': UA },
+        redirect: 'follow',
+      });
+      if (!response.ok) continue;
+      const html = await response.text();
+      if (pageUrl === websiteUrl) homepageHtml = html;
+      extractContactFromHtml(html, emails, (p) => { if (!phone) phone = p; });
+      if (!lineId) lineId = extractLineFromHtml(html);
+      if (emails.size > 0 && lineId) break;
+    } catch { continue; }
+  }
+
+  // Discover contact links from homepage if no email found yet
+  if (emails.size === 0 && homepageHtml) {
+    const linkPattern = /href="([^"]*(?:contact|%E0%B8%95%E0%B8%B4%E0%B8%94|about)[^"]*)"/gi;
+    const discovered = new Set();
+    while ((match = linkPattern.exec(homepageHtml)) !== null) {
+      let href = match[1];
+      if (href.startsWith('/')) href = `${origin}${href}`;
+      else if (!href.startsWith('http')) href = `${origin}/${href}`;
+      if (href.startsWith(origin) && !pagesToTry.includes(href)) discovered.add(href);
+    }
+
+    for (const pageUrl of discovered) {
+      try {
+        const response = await fetch(pageUrl, {
+          signal: AbortSignal.timeout(8000),
+          headers: { 'User-Agent': UA },
+          redirect: 'follow',
+        });
+        if (!response.ok) continue;
+        const html = await response.text();
+        extractContactFromHtml(html, emails, (p) => { if (!phone) phone = p; });
+        if (!lineId) lineId = extractLineFromHtml(html);
+        if (emails.size > 0) break;
+      } catch { continue; }
+    }
+  }
+
+  return { emails: [...emails], phone, lineId };
+}
+
+// --- Main Enrichment v2 ---
+
+async function enrichLeads() {
+  const leadsData = loadLeads();
+
+  // Cleanup: remove false positive LINE IDs (CSS keywords)
+  for (const l of leadsData.leads) {
+    if (l.lineId && !isValidLineId(l.lineId)) {
+      console.log(`[ENRICH-V2] Removed fake LINE: ${l.businessName} → ${l.lineId}`);
+      l.lineId = null;
+    }
+  }
+
+  // Enrich leads without email OR without LINE ID
+  const toEnrich = leadsData.leads.filter(l => (!l.email || !l.lineId) && l.status === 'new');
+
+  console.log(`[ENRICH-V2] Starting for ${toEnrich.length} leads (email + LINE)...`);
+  let websitesFound = 0, emailsFound = 0, phonesFound = 0, linesFound = 0;
+
+  for (let i = 0; i < toEnrich.length; i++) {
+    const lead = toEnrich[i];
+    const name = lead.businessName || lead.businessNameEn;
+    if (!name) continue;
+
+    try {
+      // Step 1: RapidAPI (if quota available)
+      if (lead.place_id && !lead.url && !lead.email) {
+        try {
+          const details = await getPlaceDetails(lead.place_id);
+          if (details) {
+            if (details.website) lead.url = details.website;
+            if (details.emails?.length) { lead.emails = details.emails; lead.email = details.emails[0]; }
+            if (details.phone) lead.phone = details.phone;
+            if (details.facebook) lead.facebook = details.facebook;
+            if (details.instagram) lead.instagram = details.instagram;
+            if (details.rating) lead.rating = details.rating;
+            if (details.reviewCount) lead.reviewCount = details.reviewCount;
+            const d = details.website ? extractDomain(details.website) : details.tld;
+            if (d) lead.domain = d;
+          }
+        } catch {}
+      }
+
+      // Step 2: Domain guessing (FREE, fast, no API needed)
+      if (!lead.url && !lead.domain) {
+        const guessedUrl = await guessBusinessDomain(name);
+        if (guessedUrl) {
+          lead.url = guessedUrl;
+          lead.domain = extractDomain(guessedUrl);
+          websitesFound++;
+        }
+      }
+
+      // Step 3: DDG multi-query search
+      if (!lead.url && !lead.domain) {
+        const ddgUrl = await findWebsiteViaDDG(name);
+        if (ddgUrl) {
+          lead.url = ddgUrl;
+          lead.domain = extractDomain(ddgUrl);
+          websitesFound++;
+        }
+      }
+
+      // Step 4: Deep website scraping for email + phone + LINE
+      if ((lead.url || lead.domain) && !lead.email) {
+        const siteUrl = lead.url || `https://${lead.domain}`;
+        const contact = await scrapeContactFromSite(siteUrl);
+        if (contact.emails.length > 0) {
+          lead.emails = contact.emails;
+          lead.email = contact.emails[0];
+          emailsFound++;
+        }
+        if (contact.phone && !lead.phone) {
+          lead.phone = contact.phone;
+          phonesFound++;
+        }
+        if (contact.lineId && !lead.lineId) {
+          lead.lineId = contact.lineId;
+          console.log(`[ENRICH-V2] LINE found: ${name} → ${contact.lineId}`);
+        }
+        await sleep(1000);
+      }
+
+      // Step 5: Facebook email extraction (last resort for website-less)
+      if (!lead.email) {
+        const fbResult = await getEmailFromFacebook(name);
+        if (fbResult) {
+          if (fbResult.emails.length > 0) {
+            lead.emails = fbResult.emails;
+            lead.email = fbResult.emails[0];
+            emailsFound++;
+          }
+          if (fbResult.phone && !lead.phone) {
+            lead.phone = fbResult.phone;
+            phonesFound++;
+          }
+          if (fbResult.fbUrl && !lead.facebook) lead.facebook = fbResult.fbUrl;
+        }
+        await sleep(2000);
+      }
+
+      // Step 6: NO MORE info@ fallback — bounces 80%+ and wastes AI credits
+      // Keep lead in DB but don't assign fake email
+      if (!lead.email) {
+        console.log(`[ENRICH-V2] No real email for ${name} — keeping in DB without email`);
+      }
+
+      // Step 6.5: LINE scraping — for leads that HAVE email but NO LINE yet
+      if (!lead.lineId && (lead.url || lead.domain)) {
+        try {
+          const siteUrl = lead.url || `https://${lead.domain}`;
+          const contact = await scrapeContactFromSite(siteUrl);
+          if (contact.lineId) {
+            lead.lineId = contact.lineId;
+            linesFound++;
+            console.log(`[ENRICH-V2] LINE found: ${name} → ${contact.lineId}`);
+          }
+          await sleep(500);
+        } catch {}
+      }
+
+      // Update scoring
+      if (lead.url || lead.domain) {
+        lead.websiteScore = lead.websiteScore || 5;
+        if (lead.email) lead.isGoodTarget = true;
+      }
+
+      // Save every 3 leads (more frequent saves)
+      if ((i + 1) % 3 === 0) {
+        saveLeads(leadsData);
+        console.log(`[ENRICH-V2] ${i + 1}/${toEnrich.length} | Sites:${websitesFound} Emails:${emailsFound} Phones:${phonesFound}`);
+      }
+
+    } catch (error) {
+      console.error(`[ENRICH-V2] Error ${name}:`, error.message);
+    }
+  }
+
+  saveLeads(leadsData);
+  const summary = { total: toEnrich.length, websitesFound, emailsFound, phonesFound, linesFound };
+  console.log(`[ENRICH-V2] DONE! ${JSON.stringify(summary)}`);
+  return summary;
+}
+
+// ============================================================
 // Update lead by place_id, domain, or email (for tracking/status updates)
 // ============================================================
 function updateLead(identifier, updates) {
@@ -1307,6 +2336,7 @@ export {
   checkReplies,
   processFollowUps,
   addManualDomain,
+  enrichLeads,
   getStats,
   getLeads,
   searchGoogle,
@@ -1315,6 +2345,8 @@ export {
   processOneDomain,
   updateLead,
   sendFullOutreachEmail,
+  calculateLeadScore,
+  validateServicePageUrls,
   PDF_BUFFER,
   PDF_FILENAME
 };
@@ -1324,6 +2356,7 @@ export default {
   checkReplies,
   processFollowUps,
   addManualDomain,
+  enrichLeads,
   getStats,
   getLeads,
   searchGoogle,
@@ -1332,6 +2365,10 @@ export default {
   processOneDomain,
   updateLead,
   sendFullOutreachEmail,
+  calculateLeadScore,
+  validateServicePageUrls,
+  validateEmailMX,
+  addToBounceBlacklist,
   get pdfBuffer() { return PDF_BUFFER; },
   get pdfFilename() { return PDF_FILENAME; }
 };

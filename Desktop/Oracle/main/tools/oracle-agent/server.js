@@ -86,6 +86,7 @@ import imageGen from './lib/image-gen.js';
 import autonomy from './lib/autonomy.js';
 import hotelNotify from './lib/hotel-notifications.js';
 import checker404 from './lib/404-checker.js';
+import leadReplyHandler from './lib/lead-reply-handler.js';
 
 // Phase 5.3: Tier 1-3 OpenClaw Features
 import typingIndicators from './lib/typing-indicators.js';
@@ -184,10 +185,12 @@ app.use(express.json({ limit: '10mb' }));
 // Email Dashboard — static React app
 // Old paths → redirect to new
 app.get('/email*', (req, res) => res.redirect(301, '/vision/email' + req.path.replace('/email', '') + (req.path.endsWith('/') ? '' : '/')));
-app.get('/costs*', (req, res) => res.redirect(301, '/vision/email/costs/'));
-
+app.get('/vision/email/costs*', (req, res) => res.redirect(301, '/costs/'));
+// Shared assets (fonts + logo)
+app.use('/fonts', express.static(join(__dirname, 'public/fonts')));
+app.get('/logo.svg', (req, res) => res.sendFile(join(__dirname, 'public/logo.svg')));
 // VisionXBrain dashboards
-app.use('/vision/email/costs', express.static(join(__dirname, 'public/vision/email/costs')));
+app.use('/costs', express.static(join(__dirname, 'public/costs')));
 app.use('/vision/email', express.static(join(__dirname, 'public/vision/email')));
 app.use('/vision/growthstrategy', express.static(join(__dirname, 'public/vision/growthstrategy')));
 app.use('/vision/analytics', express.static(join(__dirname, 'public/vision/analytics')));
@@ -3318,8 +3321,16 @@ app.post('/webhook/gmail', async (req, res) => {
       payload = JSON.parse(data);
     }
 
-    const result = await gmailPubSub.processWebhook(payload);
-    res.json(result);
+    // Process both in parallel: lead reply detection + existing pubsub handler
+    const [leadResult, pubsubResult] = await Promise.allSettled([
+      leadReplyHandler.processGmailWebhook(payload),
+      gmailPubSub.processWebhook(payload)
+    ]);
+
+    res.json({
+      leadReply: leadResult.status === 'fulfilled' ? leadResult.value : { error: leadResult.reason?.message },
+      pubsub: pubsubResult.status === 'fulfilled' ? pubsubResult.value : { error: pubsubResult.reason?.message }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -3339,6 +3350,37 @@ app.post('/api/gmail/process', async (req, res) => {
 app.post('/api/gmail/reset-stats', (req, res) => {
   gmailPubSub.resetStats();
   res.json({ success: true, message: 'Stats reset' });
+});
+
+// =============================================================================
+// LEAD REPLY HANDLER (Real-time reply detection + auto-reply)
+// =============================================================================
+
+// Get lead reply handler status
+app.get('/api/lead-reply/status', (req, res) => {
+  res.json(leadReplyHandler.getStatus());
+});
+
+// Manual test — process a specific messageId
+app.post('/api/lead-reply/test', async (req, res) => {
+  try {
+    const { messageId } = req.body;
+    if (!messageId) return res.status(400).json({ error: 'messageId required' });
+    const result = await leadReplyHandler.processIncomingMessage(messageId);
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Force re-setup watch
+app.post('/api/lead-reply/setup-watch', async (req, res) => {
+  try {
+    const result = await leadReplyHandler.setupWatch();
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // =============================================================================
@@ -5802,28 +5844,52 @@ app.get('/api/leads/test-details', async (req, res) => {
 });
 
 // Map business type to relevant VXB service page
+// Service page URL mapping — validated against live sitemap on startup
+const SERVICE_PAGE_FALLBACK = 'https://www.visionxbrain.com/services/website';
+const SERVICE_PAGE_MAP = [
+  { kw: ['clinic', 'surgery', 'botox', 'hifu', 'filler', 'derma', 'skin'], url: 'https://www.visionxbrain.com/services/premium-clinic-website-hifu-botox-filler' },
+  { kw: ['spa', 'massage', 'wellness'], url: 'https://www.visionxbrain.com/services/premium-spa-wellness-website-design' },
+  { kw: ['restaurant', 'cafe', 'bakery', 'food'], url: 'https://www.visionxbrain.com/services/restaurant-website-design' },
+  { kw: ['hotel', 'resort', 'hostel', 'guesthouse'], url: 'https://www.visionxbrain.com/services/hotel-website-design' },
+  { kw: ['car rental', 'rent a car'], url: 'https://www.visionxbrain.com/services/car-rental-website-development' },
+  { kw: ['fitness', 'gym', 'yoga'], url: 'https://www.visionxbrain.com/services/fitness-website-design' },
+  { kw: ['dental', 'dentist'], url: 'https://www.visionxbrain.com/services/dental-cosmetic-surgery-clinic-sites' },
+  { kw: ['real estate', 'property'], url: 'https://www.visionxbrain.com/services/real-estate-website-development-thailand' },
+  { kw: ['shop', 'store', 'retail', 'ecommerce', 'e-commerce'], url: 'https://www.visionxbrain.com/services/e-commerce-website-design' },
+  { kw: ['education', 'school', 'tutor', 'academy'], url: 'https://www.visionxbrain.com/services/educational-website-development' },
+  { kw: ['law', 'legal'], url: 'https://www.visionxbrain.com/services/law-firm-website-design-experts' },
+  { kw: ['construction', 'architect', 'interior'], url: 'https://www.visionxbrain.com/services/web-design-construction-company' },
+  { kw: ['pet', 'vet', 'animal'], url: 'https://www.visionxbrain.com/services/website' },
+  { kw: ['travel', 'tour'], url: 'https://www.visionxbrain.com/services/travel-website-development' },
+];
+
+// Validate service page URLs against live sitemap on startup
+async function validateServicePageUrls() {
+  try {
+    const resp = await fetch('https://www.visionxbrain.com/sitemap.xml');
+    if (!resp.ok) { console.warn('[SERVICE-PAGES] Could not fetch sitemap, skipping validation'); return; }
+    const xml = await resp.text();
+    const liveUrls = new Set((xml.match(/<loc>([^<]+)<\/loc>/g) || []).map(m => m.replace(/<\/?loc>/g, '')));
+    let fixed = 0;
+    for (const entry of SERVICE_PAGE_MAP) {
+      if (entry.url !== SERVICE_PAGE_FALLBACK && !liveUrls.has(entry.url)) {
+        console.warn(`[SERVICE-PAGES] ⚠️ 404 DETECTED: ${entry.url} → fallback to hub page`);
+        entry.url = SERVICE_PAGE_FALLBACK;
+        fixed++;
+      }
+    }
+    console.log(`[SERVICE-PAGES] Validated ${SERVICE_PAGE_MAP.length} URLs against sitemap (${fixed} fixed)`);
+  } catch (err) {
+    console.warn('[SERVICE-PAGES] Validation failed:', err.message);
+  }
+}
+
 function findRelevantServicePage(bizType) {
   const t = (bizType || '').toLowerCase();
-  const map = [
-    { kw: ['clinic', 'surgery', 'botox', 'hifu', 'filler', 'derma', 'skin'], url: 'https://www.visionxbrain.com/services/premium-clinic-website-hifu-botox-filler' },
-    { kw: ['spa', 'massage', 'wellness'], url: 'https://www.visionxbrain.com/services/premium-spa-wellness-website-design' },
-    { kw: ['restaurant', 'cafe', 'bakery', 'food'], url: 'https://www.visionxbrain.com/services/restaurant-website-design' },
-    { kw: ['hotel', 'resort', 'hostel', 'guesthouse'], url: 'https://www.visionxbrain.com/services/hotel-website-design' },
-    { kw: ['car rental', 'rent a car'], url: 'https://www.visionxbrain.com/services/car-rental-website-design' },
-    { kw: ['fitness', 'gym', 'yoga'], url: 'https://www.visionxbrain.com/services/fitness-gym-website-design' },
-    { kw: ['dental', 'dentist'], url: 'https://www.visionxbrain.com/services/dental-clinic-website-design' },
-    { kw: ['real estate', 'property'], url: 'https://www.visionxbrain.com/services/real-estate-property-website-design' },
-    { kw: ['shop', 'store', 'retail', 'ecommerce', 'e-commerce'], url: 'https://www.visionxbrain.com/services/e-commerce-online-store-website-design' },
-    { kw: ['education', 'school', 'tutor', 'academy'], url: 'https://www.visionxbrain.com/services/education-website-design' },
-    { kw: ['law', 'legal'], url: 'https://www.visionxbrain.com/services/law-firm-website-design' },
-    { kw: ['construction', 'architect', 'interior'], url: 'https://www.visionxbrain.com/services/construction-company-website-design' },
-    { kw: ['pet', 'vet', 'animal'], url: 'https://www.visionxbrain.com/services/pet-shop-veterinary-website-design' },
-    { kw: ['travel', 'tour'], url: 'https://www.visionxbrain.com/services/travel-agency-tour-website-design' },
-  ];
-  for (const entry of map) {
+  for (const entry of SERVICE_PAGE_MAP) {
     if (entry.kw.some(k => t.includes(k))) return entry.url;
   }
-  return 'https://www.visionxbrain.com/services/website';
+  return SERVICE_PAGE_FALLBACK;
 }
 
 // Test: send genuine value-first outreach email — Tar's 13 Requirements
@@ -6491,12 +6557,13 @@ app.get('/api/costs', (req, res) => {
   }
 });
 
+// Costs Dashboard SPA fallback
+app.get('/costs/*', (req, res) => {
+  res.sendFile(join(__dirname, 'public/costs/index.html'));
+});
+
 // Email Dashboard SPA fallback
 app.get('/vision/email/*', (req, res) => {
-  // Costs page has its own static file
-  if (req.path.startsWith('/vision/email/costs')) {
-    return res.sendFile(join(__dirname, 'public/vision/email/costs/index.html'));
-  }
   res.sendFile(join(__dirname, 'public/vision/email/index.html'));
 });
 
@@ -6612,6 +6679,10 @@ const server = app.listen(PORT, async () => {
   // Check local status on startup
   const localOnline = LOCAL_TUNNEL_URL ? await checkLocalHealth() : false;
 
+  // Validate service page URLs against live sitemap (prevent 404 in outreach emails)
+  await validateServicePageUrls();
+  await leadFinder.validateServicePageUrls();
+
   // Initialize Autonomy Engine (Phase 3)
   autonomy.initialize();
 
@@ -6716,6 +6787,27 @@ const server = app.listen(PORT, async () => {
 
   console.log('[WEBHOOK] Webhook Ingress initialized');
   console.log('[FAILOVER] Model Failover initialized');
+
+  // Initialize Lead Reply Handler — Gmail watch for real-time reply detection
+  setTimeout(async () => {
+    try {
+      await leadReplyHandler.setupWatch();
+      console.log('[LEAD-REPLY] Watch setup complete');
+    } catch (err) {
+      console.error('[LEAD-REPLY] Watch setup failed:', err.message);
+    }
+  }, 10000);
+
+  // Renew Gmail watch every 6 days (expires after 7 days)
+  cron.schedule('0 3 */6 * *', async () => {
+    console.log('[LEAD-REPLY] Renewing Gmail watch...');
+    try {
+      await leadReplyHandler.setupWatch();
+      console.log('[LEAD-REPLY] Watch renewed');
+    } catch (err) {
+      console.error('[LEAD-REPLY] Watch renewal failed:', err.message);
+    }
+  }, { timezone: 'Asia/Bangkok' });
 
   // =========================================================================
   // PHASE 5.5: REMINDER SYSTEM - Set notification callback
@@ -6954,6 +7046,11 @@ const server = app.listen(PORT, async () => {
   console.log('║  - GET  /api/queue/status        Queue status              ║');
   console.log('║  - POST /api/queue/enqueue       Enqueue message           ║');
   console.log('║  - GET  /api/queue/lane/:lane    Lane status               ║');
+  console.log('║                                                            ║');
+  console.log('║  Lead Reply Handler (Real-time):                           ║');
+  console.log('║  - GET  /api/lead-reply/status   Watch status              ║');
+  console.log('║  - POST /api/lead-reply/test     Test with messageId       ║');
+  console.log('║  - POST /api/lead-reply/setup-watch  Force re-watch        ║');
   console.log('║                                                            ║');
   console.log('║  Scheduled:                                                ║');
   console.log('║  - 07:00  Morning Briefing (Auto)                          ║');
