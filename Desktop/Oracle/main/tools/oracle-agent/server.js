@@ -2865,7 +2865,7 @@ app.get('/api/ideas', (req, res) => {
   const data = autonomousIdeas.getIdeas();
   res.json({
     total: data.ideas.length,
-    ideas: data.ideas.slice(0, 20), // Return latest 20
+    ideas: data.ideas,
     executed: data.executedIdeas.length,
     lastThinking: data.lastThinking
   });
