@@ -3106,9 +3106,8 @@ app.get('/api/seo/sitemaps', async (req, res) => {
 
 app.post('/api/seo/submit-sitemap', async (req, res) => {
   try {
-    const siteUrl = config.seo?.siteUrl || 'sc-domain:visionxbrain.com';
-    const sitemapUrl = req.body?.sitemapUrl || 'https://www.visionxbrain.com/sitemap.xml';
-    const result = await searchConsole.submitSitemap(siteUrl, sitemapUrl);
+    const reason = req.body?.reason || 'manual-api';
+    const result = await submitSitemapIfNeeded(reason);
     res.json(result);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -5476,18 +5475,35 @@ cron.schedule(config.schedule.seo_keyword_alert || '0 8 * * *', async () => {
 }, { timezone: config.agent.timezone });
 
 // =============================================================================
-// SEO ENGINE - Auto Submit Sitemap (ทุกวัน 06:00)
+// SEO ENGINE - Sitemap Submit (Weekly + Event-Driven with Debounce)
 // =============================================================================
 
-cron.schedule('0 6 * * *', async () => {
-  console.log('[SEO] 🗺️ Auto Sitemap Submit triggered');
+// Debounced event-driven sitemap submit — ป้องกัน submit ถี่เกินไป (min 1 ชม.)
+let lastSitemapSubmit = 0;
+const SITEMAP_DEBOUNCE_MS = 60 * 60 * 1000; // 1 hour
+
+async function submitSitemapIfNeeded(reason = 'unknown') {
+  const now = Date.now();
+  if (now - lastSitemapSubmit < SITEMAP_DEBOUNCE_MS) {
+    console.log(`[SEO] Sitemap submit skipped (debounce) — last submit ${Math.round((now - lastSitemapSubmit) / 60000)}m ago, reason: ${reason}`);
+    return { success: false, skipped: true, reason: 'debounce' };
+  }
   const siteUrl = config.seo?.siteUrl || 'sc-domain:visionxbrain.com';
   try {
     const result = await searchConsole.submitSitemap(siteUrl, 'https://www.visionxbrain.com/sitemap.xml');
-    console.log('[SEO] Sitemap auto-submitted:', result.success ? 'OK' : 'failed');
+    lastSitemapSubmit = now;
+    console.log(`[SEO] Sitemap submitted — reason: ${reason}, result: ${result.success ? 'OK' : 'failed'}`);
+    return result;
   } catch (error) {
-    console.error('[SEO] Auto sitemap error:', error.message);
+    console.error(`[SEO] Sitemap submit error (${reason}):`, error.message);
+    return { success: false, error: error.message };
   }
+}
+
+// Weekly fallback — ทุกจันทร์ 06:00
+cron.schedule('0 6 * * 1', async () => {
+  console.log('[SEO] 🗺️ Weekly Sitemap Submit triggered');
+  await submitSitemapIfNeeded('weekly-cron');
 }, { timezone: config.agent.timezone });
 
 // =============================================================================
@@ -5638,6 +5654,68 @@ setTimeout(async () => {
 
 app.get('/api/leads/stats', (req, res) => {
   res.json(leadFinder.getStats());
+});
+
+app.get('/api/leads/replies', async (req, res) => {
+  try {
+    // Get all leads that replied (including audit_sent and closed with reply)
+    const allLeadsData = leadFinder.getLeads({});
+    const repliedLeads = allLeadsData.filter(l =>
+      l.status === 'replied' || l.status === 'audit_sent' ||
+      (l.status === 'closed' && l.replyClassification) ||
+      l.replyClassification
+    );
+    const repliesWithContent = [];
+
+    for (const lead of repliedLeads) {
+      const entry = {
+        businessName: lead.businessName,
+        industry: lead.industry,
+        email: lead.email,
+        domain: lead.domain,
+        repliedAt: lead.repliedAt,
+        replySubject: lead.replySubject || '',
+        replySnippet: lead.replySnippet || '',
+        replyBody: lead.replyBody || '',
+        classification: lead.replyClassification || 'unknown',
+        auditSentAt: lead.auditSentAt || null,
+        status: lead.status,
+      };
+
+      // If no reply content stored, try to fetch from Gmail
+      if (!entry.replyBody && lead.email) {
+        try {
+          const results = await gmailClient.search(`from:${lead.email} newer_than:30d`, 3);
+          if (results && results.length > 0) {
+            const msg = await gmailClient.getMessage(results[0].id);
+            entry.replySnippet = msg?.snippet || '';
+            const payload = msg?.payload;
+            if (payload?.body?.data) {
+              entry.replyBody = Buffer.from(payload.body.data, 'base64').toString('utf-8');
+            } else if (payload?.parts) {
+              const textPart = payload.parts.find(p => p.mimeType === 'text/plain');
+              const htmlPart = payload.parts.find(p => p.mimeType === 'text/html');
+              if (textPart?.body?.data) {
+                entry.replyBody = Buffer.from(textPart.body.data, 'base64').toString('utf-8');
+              } else if (htmlPart?.body?.data) {
+                entry.replyBody = Buffer.from(htmlPart.body.data, 'base64').toString('utf-8');
+              }
+            }
+            const subjectH = payload?.headers?.find(h => h.name?.toLowerCase() === 'subject');
+            entry.replySubject = subjectH?.value || entry.replySubject;
+          }
+        } catch (gmailErr) {
+          // ignore — show what we have
+        }
+      }
+
+      repliesWithContent.push(entry);
+    }
+
+    res.json({ total: repliesWithContent.length, replies: repliesWithContent });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/leads', (req, res) => {
@@ -5892,6 +5970,33 @@ function findRelevantServicePage(bizType) {
   }
   return SERVICE_PAGE_FALLBACK;
 }
+
+// Test: send audit report (language-aware) — ทดสอบก่อนส่งจริง
+app.post('/api/leads/test-audit', async (req, res) => {
+  try {
+    const { to, bizName, domain, bizType, replyText } = req.body;
+    if (!to) return res.status(400).json({ error: 'to (email) required' });
+
+    // สร้าง fake lead สำหรับทดสอบ
+    const fakeLead = {
+      email: to,
+      domain: domain || 'example.com',
+      businessName: bizName || 'Test Business',
+      type: bizType || '',
+      industry: bizType || '',
+      websiteIssues: [],
+      replyBody: replyText || '',
+      replySnippet: replyText || '',
+      threadId: null,
+    };
+
+    const result = await leadFinder.generateAndSendAuditReport(fakeLead);
+    res.json({ success: true, ...result, language: /[\u0E00-\u0E7F]/.test(replyText || '') ? 'TH' : 'EN' });
+  } catch (err) {
+    console.error('[TEST-AUDIT] Error:', err);
+    res.json({ success: false, error: err.message });
+  }
+});
 
 // Test: send genuine value-first outreach email — Tar's 13 Requirements
 app.post('/api/leads/test-email', async (req, res) => {
@@ -7296,9 +7401,76 @@ const server = app.listen(PORT, async () => {
           } else {
             console.log('[AUTO-SYNC] No new leads to sync');
           }
+
+          // 🛡️ REPLY SYNC: เช็ค replies จาก leads ที่ sync มา — ป้องกัน follow-up คนที่ declined
+          const emailedLeads = ld.leads.filter(l => l.status === 'emailed' && l.email);
+          let replyFixed = 0;
+          const genericDomains = ['gmail.com','hotmail.com','yahoo.com','outlook.com','live.com','icloud.com'];
+          for (const lead of emailedLeads.slice(0, 30)) { // max 30 เพื่อไม่ให้ช้า
+            try {
+              const emailDomain = lead.email.split('@')[1];
+              const searchEmail = (emailDomain && !genericDomains.includes(emailDomain))
+                ? `@${emailDomain}`
+                : lead.email;
+              const replyResults = await gmailClient.search(`from:${searchEmail} newer_than:30d`, 1);
+              if (replyResults && replyResults.length > 0) {
+                // มี reply → ดึง snippet มาดู
+                try {
+                  const replyMsg = await gmailClient.getMessage(replyResults[0].id);
+                  const snippet = replyMsg?.snippet || '';
+                  const declineKeywords = ['ไม่สนใจ','ไม่ต้อง','ขอบคุณค่ะ แต่','ขอบคุณครับ แต่','ยกเลิก','ไม่รับ','ปฏิเสธ','ไม่ประสงค์','not interested','unsubscribe','remove','not to proceed','decided not to','decline','no thank','not at this time','ไม่สะดวก','ไม่ต้องการ'];
+                  const isDeclined = declineKeywords.some(kw => snippet.toLowerCase().includes(kw));
+                  lead.status = isDeclined ? 'closed' : 'replied';
+                  lead.repliedAt = new Date().toISOString();
+                  lead.replySnippet = snippet.substring(0, 200);
+                  if (isDeclined) lead.closedReason = 'declined_detected_on_sync';
+                  replyFixed++;
+                  console.log(`[AUTO-SYNC] ${lead.businessName || lead.email} → ${lead.status} (${isDeclined ? 'declined' : 'has reply'})`);
+                } catch (msgErr) {
+                  lead.status = 'replied';
+                  replyFixed++;
+                }
+              }
+            } catch (replyErr) {
+              // ignore individual errors
+            }
+          }
+          if (replyFixed > 0) {
+            writeFileSync(leadsFile, JSON.stringify(ld, null, 2));
+            console.log(`[AUTO-SYNC] 🛡️ Fixed ${replyFixed} lead statuses from Gmail replies`);
+          }
         }
       } else {
         console.log(`[AUTO-SYNC] ${emailedCount} emailed leads OK — skip sync`);
+
+        // 🛡️ Even with enough leads, still check replies for status accuracy
+        try {
+          const { readFileSync: rfs, writeFileSync: wfs } = await import('fs');
+          const lFile = join(__dirname, 'data', 'leads.json');
+          let lData;
+          try { lData = JSON.parse(rfs(lFile, 'utf-8')); } catch { lData = null; }
+          if (lData && lData.leads) {
+            const emailedOnly = lData.leads.filter(l => l.status === 'emailed' && l.email && !l.replyClassification);
+            const genericDs = ['gmail.com','hotmail.com','yahoo.com','outlook.com','live.com','icloud.com'];
+            let fixed = 0;
+            for (const lead of emailedOnly.slice(0, 20)) {
+              try {
+                const eDomain = lead.email.split('@')[1];
+                const sEmail = (eDomain && !genericDs.includes(eDomain)) ? `@${eDomain}` : lead.email;
+                const rr = await gmailClient.search(`from:${sEmail} newer_than:30d`, 1);
+                if (rr && rr.length > 0) {
+                  lead.status = 'replied';
+                  lead.repliedAt = new Date().toISOString();
+                  fixed++;
+                }
+              } catch {}
+            }
+            if (fixed > 0) {
+              wfs(lFile, JSON.stringify(lData, null, 2));
+              console.log(`[AUTO-SYNC] 🛡️ Fixed ${fixed} lead reply statuses`);
+            }
+          }
+        } catch {}
       }
     } catch (e) {
       console.error('[AUTO-SYNC] Failed:', e.message);
