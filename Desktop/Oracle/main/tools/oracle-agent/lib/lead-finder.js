@@ -10,7 +10,10 @@ import { chat } from './claude.js';
 import gmail from './gmail.js';
 import sheets from './google-sheets.js';
 import telegram from './telegram.js';
+import { verifyEmail as verifyEmailAPI, isConfigured as isEmailVerifyConfigured } from './email-verifier.js';
+import dbLeads from './db-leads.js';
 import dns from 'dns';
+import net from 'net';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
@@ -90,6 +93,34 @@ const BAD_DOMAINS = [
   'gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com'
 ];
 
+// Daily email counter — shared limit for cold + follow-up (ป้องกัน spam flag)
+const DAILY_COUNTER_FILE = path.join(DATA_DIR, 'daily-email-count.json');
+const MAX_TOTAL_EMAILS_PER_DAY = 30; // cold + follow-up + audit combined
+
+function getDailyEmailCount() {
+  try {
+    const data = JSON.parse(fs.readFileSync(DAILY_COUNTER_FILE, 'utf-8'));
+    const today = new Date().toISOString().slice(0, 10);
+    if (data.date === today) return data.count;
+    return 0; // new day → reset
+  } catch { return 0; }
+}
+
+function incrementDailyEmailCount() {
+  const today = new Date().toISOString().slice(0, 10);
+  let data;
+  try { data = JSON.parse(fs.readFileSync(DAILY_COUNTER_FILE, 'utf-8')); }
+  catch { data = { date: today, count: 0 }; }
+  if (data.date !== today) data = { date: today, count: 0 };
+  data.count++;
+  fs.writeFileSync(DAILY_COUNTER_FILE, JSON.stringify(data));
+  return data.count;
+}
+
+function canSendMoreToday() {
+  return getDailyEmailCount() < MAX_TOTAL_EMAILS_PER_DAY;
+}
+
 // Bounce blacklist — auto-populated when emails bounce
 const BOUNCE_BLACKLIST_FILE = path.join(DATA_DIR, 'bounce-blacklist.json');
 
@@ -105,41 +136,130 @@ function saveBounceBlacklist(data) {
 function addToBounceBlacklist(email) {
   const bl = loadBounceBlacklist();
   const domain = email.split('@')[1];
-  if (domain && !bl.domains.includes(domain)) {
-    bl.domains.push(domain);
-    bl.emails.push(email);
-    saveBounceBlacklist(bl);
-    console.log(`[BOUNCE] Blacklisted domain: ${domain} (from ${email})`);
+  const emailLower = email.toLowerCase();
+
+  // Always blacklist the specific email
+  if (!bl.emails.includes(emailLower)) {
+    bl.emails.push(emailLower);
   }
+
+  // Only blacklist domain for non-public email providers
+  // mail.com, gmail.com, etc. are public — don't block entire domain
+  if (domain && !bl.domains.includes(domain) && !PUBLIC_EMAIL_PROVIDERS.includes(domain)) {
+    bl.domains.push(domain);
+    console.log(`[BOUNCE] Blacklisted domain: ${domain} (from ${email})`);
+  } else {
+    console.log(`[BOUNCE] Blacklisted email only: ${emailLower} (${domain} is public provider)`);
+  }
+
+  saveBounceBlacklist(bl);
 }
 
 /**
- * Validate email by checking MX records — domain ต้องรับ email ได้จริง
- * ฟรี, ไม่เสียเงิน, DNS lookup เท่านั้น
+ * SMTP RCPT TO verification — เช็คว่า mailbox มีจริงก่อนส่ง
+ * ฟรี, ไม่เสียเงิน, ใช้ SMTP handshake เท่านั้น (ไม่ได้ส่ง email จริง)
+ */
+async function verifyEmailSMTP(email, mxHost) {
+  return new Promise((resolve) => {
+    const timeout = 10000; // 10 seconds
+    let resolved = false;
+    const done = (result) => {
+      if (resolved) return;
+      resolved = true;
+      socket.destroy();
+      resolve(result);
+    };
+
+    const socket = net.createConnection(25, mxHost);
+    socket.setTimeout(timeout);
+    let step = 0;
+    let response = '';
+
+    socket.on('data', (data) => {
+      response += data.toString();
+      if (!response.includes('\r\n')) return;
+
+      const code = parseInt(response.substring(0, 3));
+      response = '';
+
+      if (step === 0 && code === 220) {
+        // Server greeting → send HELO
+        socket.write('HELO visionxbrain.com\r\n');
+        step = 1;
+      } else if (step === 1 && code === 250) {
+        // HELO accepted → send MAIL FROM
+        socket.write('MAIL FROM:<verify@visionxbrain.com>\r\n');
+        step = 2;
+      } else if (step === 2 && code === 250) {
+        // MAIL FROM accepted → send RCPT TO (the actual check!)
+        socket.write(`RCPT TO:<${email}>\r\n`);
+        step = 3;
+      } else if (step === 3) {
+        // RCPT TO response: 250 = exists, 550/553 = doesn't exist
+        socket.write('QUIT\r\n');
+        if (code === 250 || code === 251) {
+          done({ valid: true, code });
+        } else {
+          done({ valid: false, code, reason: `RCPT rejected (${code})` });
+        }
+      } else {
+        done({ valid: false, code, reason: `Unexpected response at step ${step}` });
+      }
+    });
+
+    socket.on('timeout', () => done({ valid: true, reason: 'timeout — port 25 likely blocked on Railway (SMTP verify skipped)' }));
+    socket.on('error', (err) => done({ valid: true, reason: `port 25 error: ${err.message} — SMTP verify skipped` }));
+  });
+}
+
+/**
+ * Validate email — 3-layer check:
+ * 1. Bounce blacklist
+ * 2. MX records (domain can receive email)
+ * 3. SMTP RCPT TO (mailbox actually exists)
  */
 async function validateEmailMX(email) {
   if (!email) return false;
+  email = email.trim();
   const domain = email.split('@')[1];
   if (!domain) return false;
 
-  // Check bounce blacklist first
+  // Layer 1: Check bounce blacklist
   const bl = loadBounceBlacklist();
-  if (bl.domains.includes(domain)) {
-    console.log(`[EMAIL-VALIDATE] ❌ ${email} — domain bounced before`);
+  if (bl.domains.includes(domain) || bl.emails.includes(email.toLowerCase())) {
+    console.log(`[EMAIL-VALIDATE] ❌ ${email} — in bounce blacklist`);
     return false;
   }
 
+  // Layer 2: MX records
+  let mxRecords;
   try {
-    const records = await resolveMx(domain);
-    if (records && records.length > 0) {
-      console.log(`[EMAIL-VALIDATE] ✅ ${email} — MX: ${records[0].exchange}`);
-      return true;
+    mxRecords = await resolveMx(domain);
+    if (!mxRecords || mxRecords.length === 0) {
+      console.log(`[EMAIL-VALIDATE] ❌ ${email} — no MX records`);
+      return false;
     }
-    console.log(`[EMAIL-VALIDATE] ❌ ${email} — no MX records`);
-    return false;
   } catch (err) {
     console.log(`[EMAIL-VALIDATE] ❌ ${email} — DNS error: ${err.code || err.message}`);
     return false;
+  }
+
+  // Layer 3: SMTP RCPT TO verification
+  const mxHost = mxRecords.sort((a, b) => a.priority - b.priority)[0].exchange;
+  try {
+    const smtpResult = await verifyEmailSMTP(email, mxHost);
+    if (smtpResult.valid) {
+      console.log(`[EMAIL-VALIDATE] ✅ ${email} — MX: ${mxHost}, SMTP: valid${smtpResult.reason ? ` (${smtpResult.reason})` : ''}`);
+      return true;
+    } else {
+      console.log(`[EMAIL-VALIDATE] ❌ ${email} — SMTP rejected: ${smtpResult.reason} (code: ${smtpResult.code})`);
+      addToBounceBlacklist(email);
+      return false;
+    }
+  } catch (err) {
+    // If SMTP check fails, fall back to MX-only (assume valid)
+    console.log(`[EMAIL-VALIDATE] ⚠️ ${email} — SMTP check failed (${err.message}), MX OK — sending anyway`);
+    return true;
   }
 }
 
@@ -203,6 +323,115 @@ function isEmailBlacklisted(email) {
 }
 
 // ============================================================
+// Gmail-based Dedup — ป้องกันส่งซ้ำหลัง deploy (Gmail = source of truth)
+// ============================================================
+
+const OUTREACH_SUBJECT_KEYWORDS = '(subject:คำแนะนำ OR subject:ผลตรวจเว็บ OR subject:เพิ่มลูกค้า OR subject:ดึงดูดลูกค้า OR subject:เคล็ดลับ OR subject:แผน OR subject:เว็บไซต์)';
+const GENERIC_MAIL_DOMAINS = ['gmail.com','hotmail.com','yahoo.com','outlook.com','live.com','icloud.com'];
+const PUBLIC_EMAIL_PROVIDERS = [
+  'gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com', 'live.com', 'icloud.com',
+  'mail.com', 'gmx.com', 'gmx.net', 'aol.com', 'protonmail.com', 'proton.me',
+  'zoho.com', 'ymail.com', 'me.com', 'msn.com', 'rocketmail.com',
+  'yahoo.co.th', 'hotmail.co.th', 'outlook.co.th', 'fastmail.com', 'tutanota.com',
+  'mail.ru', 'yandex.com', 'qq.com', '163.com', '126.com',
+];
+
+/**
+ * Count emails we've sent to this email/domain — Gmail = source of truth
+ * ใช้ป้องกันส่งซ้ำแม้ leads.json จะ reset หลัง deploy
+ * Returns: number of emails sent (0 = never contacted)
+ */
+async function countEmailsSentTo(email) {
+  if (!email || !gmail.isConfigured()) return -1; // -1 = can't check
+  try {
+    // Search ALL emails sent to this address (no subject filter — bulletproof)
+    const query = `from:me to:${email} in:sent newer_than:60d`;
+    const results = await gmail.search(query, 10);
+    const count = results ? results.length : 0;
+
+    // Also check domain (non-generic) — ป้องกันส่งไป email อื่นในบริษัทเดียวกัน
+    if (count === 0) {
+      const domain = email.split('@')[1];
+      if (domain && !GENERIC_MAIL_DOMAINS.includes(domain) && !PUBLIC_EMAIL_PROVIDERS.includes(domain)) {
+        const domainQuery = `from:me to:@${domain} in:sent newer_than:60d`;
+        const domainResults = await gmail.search(domainQuery, 5);
+        if (domainResults && domainResults.length > 0) {
+          console.log(`[DEDUP] Found ${domainResults.length} emails to @${domain} — same company`);
+          return domainResults.length;
+        }
+      }
+    }
+
+    return count;
+  } catch (err) {
+    console.error(`[DEDUP] Gmail check failed for ${email}:`, err.message);
+    return -1; // -1 = can't check (will trigger fail-closed)
+  }
+}
+
+/**
+ * Check Gmail SENT to see if we already contacted this email/domain
+ * 🛡️ FAIL-CLOSED: ถ้า Gmail check พัง → ห้ามส่ง (ปลอดภัยกว่าส่งซ้ำ)
+ */
+async function hasAlreadyContacted(email) {
+  const count = await countEmailsSentTo(email);
+  if (count === -1) {
+    console.log(`[DEDUP] ⛔ Gmail check failed for ${email} — FAIL-CLOSED (won't send)`);
+    return true; // fail-closed: ถ้าเช็คไม่ได้ ไม่ส่ง (ปลอดภัยกว่าส่งซ้ำ จนลูกค้าด่า!)
+  }
+  if (count > 0) {
+    console.log(`[DEDUP] ⛔ Already sent ${count} email(s) to ${email}`);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Check if a lead has received a reply in Gmail — for follow-up safety
+ * ป้องกันส่ง follow-up ไปหาคนที่ตอบแล้ว (declined/interested) หลัง deploy ใหม่
+ */
+/**
+ * Check if email has bounced — search Gmail for bounce/delivery failure messages
+ * ใช้ก่อนส่ง follow-up เพื่อป้องกันส่งไป email ที่ bounce แล้ว
+ */
+async function hasBouncedInGmail(email) {
+  if (!email || !gmail.isConfigured()) return false;
+  try {
+    const queries = [
+      `from:mailer-daemon ${email} newer_than:30d`,
+      `from:postmaster ${email} newer_than:30d`,
+      `subject:"Delivery Status" ${email} newer_than:30d`,
+      `subject:"Undeliverable" ${email} newer_than:30d`,
+    ];
+    for (const query of queries) {
+      const results = await gmail.search(query, 1);
+      if (results && results.length > 0) {
+        console.log(`[BOUNCE-CHECK] Found bounce for ${email} via query: ${query}`);
+        return true;
+      }
+    }
+    return false;
+  } catch (err) {
+    return false;
+  }
+}
+
+async function hasReplyInGmail(email) {
+  if (!email || !gmail.isConfigured()) return false;
+  try {
+    const domain = email.split('@')[1];
+    const searchEmail = (domain && !GENERIC_MAIL_DOMAINS.includes(domain))
+      ? `@${domain}`
+      : email;
+    const query = `from:${searchEmail} newer_than:30d`;
+    const results = await gmail.search(query, 1);
+    return results && results.length > 0;
+  } catch (err) {
+    return false;
+  }
+}
+
+// ============================================================
 // Storage
 // ============================================================
 
@@ -223,11 +452,19 @@ function loadLeads() {
 }
 
 function saveLeads(data) {
+  // 1. Write to file (synchronous — primary)
   const content = JSON.stringify(data, null, 2);
   const fd = fs.openSync(LEADS_FILE, 'w');
   fs.writeSync(fd, content);
   fs.fsyncSync(fd);
   fs.closeSync(fd);
+
+  // 2. Write to DB in background (persistent backup — survives deploy)
+  if (dbLeads.isDBReady()) {
+    dbLeads.saveLeads(data).catch(err => {
+      console.error('[LEAD-FINDER] DB background save error:', err.message);
+    });
+  }
 }
 
 function isDomainProcessed(domain, leadsData) {
@@ -612,11 +849,13 @@ const SHARED_RULES = `=== ตัวตนของต้าร์ ===
 - ห้ามพูดถึง Google reviews/rating (อาจผิด)
 - ห้ามให้คะแนน/score "3/10" "4/10"
 - ห้ามตะโกน ห้ามคำว่า "ด่วน" "ก่อนสาย" "รีบ"
-- ห้ามภาษาทางการ — ใช้ "ผม" "คุณ" "ครับ"
+- ห้ามภาษาทางการ — ใช้ "ผม" "คุณ" "ครับ" เท่านั้น
+- ห้ามใช้ "ค่ะ" ห้ามใช้ "ครับ/ค่ะ" เด็ดขาด! (ผู้ส่งเป็นผู้ชาย ใช้ "ครับ" อย่างเดียว)
 - ห้ามเขียนเหมือน AI — ไม่ใช่ "ข้อเสนอแนะ" "ข้อควรพิจารณา"
 - ประโยคสั้นยาวสลับ อ่านแล้วเหมือนคนพิมพ์
 - Emoji ได้แค่ในกล่อง action (อย่างละไม่เกิน 1 ที่) — ห้ามใส่ emoji ใน subject เด็ดขาด!
 - HTML inline style ทั้งหมด (email client)
+- ห้ามใช้ placeholder เช่น [ชื่อผู้รับ] [ชื่อ] [Name] เด็ดขาด! เราไม่รู้ชื่อเจ้าของ ให้ใช้ "คุณ" หรือเอ่ยชื่อธุรกิจแทน
 - ตอบ JSON เท่านั้น`;
 
 const ACTION_STEP_HTML = `<div style="background:#fafafa;border-left:4px solid #eb3f43;padding:16px 20px;margin:16px 0;border-radius:0 8px 8px 0;">
@@ -1009,10 +1248,17 @@ async function sendFullOutreachEmail(lead) {
 
     const emailContent = JSON.parse(jsonMatch[0]);
 
-    // Step 2: Strip emoji from subject (safety net)
+    // Step 2: Strip emoji + placeholders from subject (safety net)
     const subject = emailContent.subject
       .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1FA00}-\u{1FA9F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/gu, '')
+      .replace(/\[ชื่อ[^\]]*\]/g, '').replace(/\[Name[^\]]*\]/g, '').replace(/\[ผู้รับ[^\]]*\]/g, '')
       .trim();
+
+    // Step 2b: Strip placeholders from body
+    emailContent.body = emailContent.body
+      .replace(/คุณ\s*\[ชื่อ[^\]]*\]/g, 'คุณ')
+      .replace(/\[ชื่อ[^\]]*\]/g, '').replace(/\[Name[^\]]*\]/g, '').replace(/\[ผู้รับ[^\]]*\]/g, '')
+      .replace(/คุณ\s*\[.*?\]/g, 'คุณ');
 
     // Step 3: Generate tracking IDs
     const trackingId = (lead.place_id || domain) + '_' + Date.now();
@@ -1128,32 +1374,423 @@ async function sendOutreachEmail(lead, emailContent) {
  * Send follow-up email
  */
 async function sendFollowUp(lead, followUpNumber) {
-  const prompt = `เขียน follow-up email #${followUpNumber} สำหรับธุรกิจ "${lead.businessName}"
-เราเคยส่ง email เสนอ audit เว็บฟรีไปแล้วเมื่อ ${followUpNumber === 1 ? '3 วันก่อน' : '7 วันก่อน'}
+  // Build context จาก cold email ที่ส่งไป
+  const bizType = lead.industry || lead.bizType || 'ธุรกิจ';
+  const hasWeb = lead.hasWebsite !== false && lead.domain && lead.domain !== '-';
+  const webContext = hasWeb
+    ? `ส่ง Action Plan เรื่องเว็บ + Digital Marketing ไปให้ทาง ${lead.businessName}`
+    : `ส่งคำแนะนำเรื่อง Google Business + Digital Marketing ให้ทาง ${lead.businessName}`;
 
-เขียนสั้นๆ 2-3 ประโยค:
-- ถามว่าเห็น email ก่อนหน้าไหม
-- ย้ำว่า audit ฟรี ไม่มีข้อผูกมัด
-- ${followUpNumber === 2 ? 'บอกว่านี่เป็น email สุดท้ายที่จะส่ง' : ''}
+  const prompt = `เขียน follow-up email #${followUpNumber} ถึง "${lead.businessName}" (${bizType})
+ผม (ต้าร์) เคย${webContext}เมื่อ ${followUpNumber === 1 ? '3 วันก่อน' : '1 อาทิตย์ก่อน'}
+
+=== สไตล์ต้าร์ (ห้ามเปลี่ยน!) ===
+- เขียนเหมือนเพื่อนทัก ไม่ใช่ sales pitch — สั้น ตรง เป็นกันเอง
+- ใช้ "ผม" "ครับ" เท่านั้น — ห้าม "ค่ะ" ห้าม "ดิฉัน" ห้าม "เรา"
+- ห้ามภาษาทางการ — ห้ามคำว่า "ไม่ทราบว่า" "หากสนใจ" "สามารถ" "ท่าน" "กรุณา" "ข้อเสนอ"
+- ห้ามใส่ emoji ห้าม placeholder เช่น [ชื่อผู้รับ]
+- ห้ามคำว่า "ฟรี" ซ้ำเกิน 1 ครั้ง — ห้ามพูด "ไม่มีข้อผูกมัด" (ฟัง scam)
+- Subject ต้องมีชื่อ "${lead.businessName}"
+
+=== เนื้อหา (3-5 บรรทัด เท่านั้น) ===
+1. "สวัสดีครับ ผมต้าร์จาก VisionXBrain ครับ" — แล้วบอกว่าส่ง Action Plan ให้ ${lead.businessName} ไปเมื่อก่อน
+2. remind 1 ข้อที่ทำได้ทันที — เลือกจาก: Google Business Post ที่คู่แข่งมองข้าม / AI Search (ChatGPT, Gemini) / ปรับเว็บให้ดึงลูกค้า — ให้ value ไม่ใช่แค่ขอ reply
+3. ${followUpNumber === 2 ? '"นี่เป็น email สุดท้ายจากผมครับ ไม่รบกวนอีก — แต่ถ้าสนใจคุยเรื่อง Digital ตอบกลับเลยนะครับ"' : '"ตอบกลับเลยครับ หรือโทร 097-153-6565"'}
+4. ลงชื่อแค่: ต้าร์ — VisionXBrain
+
+=== ตัวอย่าง tone ที่ถูกต้อง (follow-up #1) ===
+"สวัสดีครับ ผมต้าร์จาก VisionXBrain ครับ\\n\\nส่ง Action Plan เรื่องเพิ่มลูกค้าออนไลน์ให้ทาง ${lead.businessName} ไปเมื่อ 3 วันก่อนครับ ลองเช็คดูนะครับ\\n\\nโดยเฉพาะเรื่อง Google Business Post ครับ คู่แข่ง${bizType}ส่วนใหญ่ยังไม่ทำ ทำง่ายแต่ผลดีมากครับ\\n\\nตอบกลับเลยครับ หรือโทร 097-153-6565\\nต้าร์ — VisionXBrain"
+
+=== ตัวอย่าง tone ที่ถูกต้อง (follow-up #2 สุดท้าย) ===
+"สวัสดีครับ ต้าร์จาก VisionXBrain อีกครั้งครับ\\n\\nส่ง Action Plan ให้ทาง ${lead.businessName} ไปเมื่ออาทิตย์ก่อน มี 5-6 ข้อที่ทำเองได้เลยครับ ลองดูเวลาว่างนะครับ\\n\\nนี่เป็น email สุดท้ายจากผมครับ ไม่รบกวนอีก ถ้าอยากคุยเรื่อง Digital ตอบกลับเลยนะครับ\\nต้าร์ — VisionXBrain (097-153-6565)"
 
 ตอบ JSON: { "subject": "...", "body": "..." }`;
 
   try {
     const response = await chat(
       [{ role: 'user', content: prompt }],
-      { system: 'เขียน follow-up email สั้นๆ ภาษาไทย ตอบ JSON เท่านั้น', model: 'claude-haiku-4-5-20251001', max_tokens: 500, skipAutoRecall: true }
+      { system: 'เขียน follow-up email สั้นๆ เหมือนเพื่อนทัก ภาษาไทย ใช้ "ครับ" เท่านั้น ห้ามทางการ ห้าม placeholder ตอบ JSON เท่านั้น', model: 'claude-haiku-4-5-20251001', max_tokens: 500, skipAutoRecall: true }
     );
 
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const emailContent = JSON.parse(jsonMatch[0]);
-      return sendOutreachEmail(lead, emailContent);
+      // 🛡️ Safety net: strip placeholders ที่ AI อาจใส่มา
+      emailContent.body = emailContent.body
+        .replace(/คุณ\s*\[ชื่อ[^\]]*\]/g, '')
+        .replace(/\[ชื่อ[^\]]*\]/g, '')
+        .replace(/\[Name[^\]]*\]/g, '')
+        .replace(/\[ผู้รับ[^\]]*\]/g, '')
+        .replace(/คุณ\s*\[.*?\]/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      emailContent.subject = emailContent.subject
+        .replace(/\[ชื่อ[^\]]*\]/g, '')
+        .replace(/\[Name[^\]]*\]/g, '')
+        .replace(/\[ผู้รับ[^\]]*\]/g, '')
+        .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+        .trim();
+
+      // Convert \n in AI text to <br> for HTML
+      const htmlBody = emailContent.body.replace(/\n/g, '<br>');
+
+      // Tracking pixel
+      const trackingId = (lead.place_id || lead.domain || lead.email) + '_fu' + followUpNumber + '_' + Date.now();
+
+      // 🎨 Branded follow-up template (lighter than cold email, same branding)
+      const body = `
+<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:640px;margin:0 auto;color:#1b1c1b;line-height:1.8;background:#fff;padding:0 20px;">
+  <div style="height:3px;background:linear-gradient(90deg,#eb3f43,#6e49f3);border-radius:2px;margin-bottom:28px;"></div>
+  <div style="font-size:15px;">${htmlBody}</div>
+  <!-- Signature -->
+  <table style="margin-top:28px;border-top:1px solid #eee;padding-top:16px;width:100%;">
+    <tr>
+      <td style="padding-right:12px;vertical-align:top;">
+        <div style="width:3px;height:44px;background:linear-gradient(180deg,#eb3f43,#6e49f3);border-radius:2px;"></div>
+      </td>
+      <td style="font-size:12px;color:#888;line-height:1.6;">
+        <strong style="color:#1b1c1b;font-size:14px;">Tanakit Chaithip (ต้าร์)</strong><br>
+        Founder — <span style="color:#eb3f43;">VisionXBrain</span><br>
+        <a href="tel:0971536565" style="color:#1b1c1b;text-decoration:none;">097-153-6565</a> | <a href="https://www.visionxbrain.com" style="color:#eb3f43;text-decoration:none;">visionxbrain.com</a>
+      </td>
+    </tr>
+  </table>
+  <p style="color:#bbb;font-size:11px;margin-top:20px;">ไม่ต้องการรับ email จากเรา? ตอบกลับว่า "ยกเลิก" ได้เลยครับ</p>
+  <img src="https://oracle-agent-production-546e.up.railway.app/api/email/track/${trackingId}.png" width="1" height="1" style="display:block;width:1px;height:1px;border:0;opacity:0;" alt="">
+</div>`;
+
+      // 🔗 Send in same thread as cold email (ไม่ใช่ thread ใหม่!)
+      const sendOpts = {
+        to: lead.email,
+        subject: emailContent.subject,
+        body,
+      };
+      if (lead.threadId) {
+        sendOpts.threadId = lead.threadId;
+      }
+
+      try {
+        const result = await gmail.send(sendOpts);
+        incrementDailyEmailCount();
+        console.log(`[FOLLOW-UP] ✅ Sent #${followUpNumber} to ${lead.email} (thread: ${lead.threadId || 'new'}, daily: ${getDailyEmailCount()}/${MAX_TOTAL_EMAILS_PER_DAY})`);
+        return { success: true, messageId: result.id, threadId: result.threadId, sentAt: new Date().toISOString() };
+      } catch (sendErr) {
+        console.error(`[FOLLOW-UP] ❌ Failed to send to ${lead.email}:`, sendErr.message);
+        return { success: false, error: sendErr.message };
+      }
     }
   } catch (error) {
     console.error(`[LEAD-FINDER] Follow-up failed:`, error.message);
   }
 
   return { success: false };
+}
+
+// ============================================================
+// Auto Reply Classification + Audit Report
+// ============================================================
+
+/**
+ * AI classify reply — สนใจ / ปฏิเสธ / auto-reply
+ */
+async function classifyReply(replyBody, replySnippet, businessName) {
+  const text = replyBody || replySnippet || '';
+  if (!text) return 'unknown';
+
+  // Quick pattern checks before AI
+  const autoReplyPatterns = /out of office|automatic reply|auto.?reply|ไม่อยู่|ลาพักร้อน|ตอบกลับอัตโนมัติ/i;
+  if (autoReplyPatterns.test(text)) return 'auto_reply';
+
+  const declinePatterns = /not proceed|ไม่สนใจ|ปฏิเสธ|decided not to|no thank|ไม่ต้อง|ไม่เอา|unsubscribe/i;
+  if (declinePatterns.test(text)) return 'declined';
+
+  // AI classify for ambiguous cases
+  try {
+    const response = await chat(
+      [{ role: 'user', content: `จำแนกข้อความตอบกลับนี้:
+
+ธุรกิจ: ${businessName}
+ข้อความ: "${text.substring(0, 500)}"
+
+ตอบคำเดียว:
+- "interested" = สนใจ/อยากรู้เพิ่ม/ขอข้อมูล/ถามรายละเอียด/ขอบคุณแบบเปิดรับ
+- "declined" = ปฏิเสธชัดเจน/ไม่สนใจ/ไม่ต้องการ
+- "auto_reply" = auto-reply/out of office/ระบบตอบ
+
+ตอบคำเดียวเท่านั้น` }],
+      { system: 'Classify email reply. Answer ONLY: interested, declined, or auto_reply', model: 'claude-haiku-4-5-20251001', max_tokens: 20, skipAutoRecall: true }
+    );
+    const clean = (response || '').trim().toLowerCase();
+    if (clean.includes('interested')) return 'interested';
+    if (clean.includes('declined')) return 'declined';
+    if (clean.includes('auto_reply') || clean.includes('auto reply')) return 'auto_reply';
+    return 'interested'; // default to interested if unclear
+  } catch (err) {
+    console.error(`[CLASSIFY] Error: ${err.message}`);
+    return 'interested'; // default to interested
+  }
+}
+
+/**
+ * Generate detailed audit report + send to lead who replied
+ */
+async function generateAndSendAuditReport(lead) {
+  const domain = lead.domain || '-';
+  const bizName = lead.businessName || domain;
+  const bizType = lead.type || lead.industry || '';
+  const issues = (lead.websiteIssues || []).filter(i => !/ssl|https/i.test(i));
+  const websiteUrl = domain !== '-' ? 'https://' + domain : '';
+  const servicePage = findRelevantServicePage(bizType);
+  const isHotel = /hotel|resort|hostel|guesthouse|โรงแรม|ที่พัก/i.test(bizType);
+
+  // 🌐 Detect reply language — ตอบภาษาเดียวกับลูกค้า
+  const replyText = lead.replyBody || lead.replySnippet || '';
+  const thaiCharCount = (replyText.match(/[\u0E00-\u0E7F]/g) || []).length;
+  const isEnglish = thaiCharCount < 5; // ถ้าไทยน้อยกว่า 5 ตัว = ภาษาอังกฤษ
+  console.log(`[AUDIT-REPORT] Language detected: ${isEnglish ? 'EN' : 'TH'} (Thai chars: ${thaiCharCount})`);
+
+  const prompt = isEnglish
+    ? `You are Tar — Founder of VisionXBrain, writing a FREE Website Audit Report for "${bizName}"
+The client replied in English expressing interest — send a professional, valuable report in English.
+
+=== Business Info ===
+- Name: ${bizName}
+- Type: ${bizType}
+- Website: ${domain}
+- Issues found: ${issues.length > 0 ? issues.join(', ') : 'Need deeper analysis'}
+
+=== Rules ===
+- Write in English, professional but friendly tone
+- Write like a real person, not AI-generated
+- Do NOT mention hotel/Pai experience
+- Do NOT mention Google reviews/ratings
+- Do NOT recommend SSL
+- No emoji in subject
+${isHotel ? '- This is a hotel → mention Auto Reviews, Kiosk Self Check-In, Auto Social Post' : ''}
+
+=== Audit Report Structure ===
+
+Opening:
+- Thank them for their interest
+- "I've analyzed ${domain} for you. Here's the full audit report."
+
+Audit Findings (8-10 items):
+Each finding uses this HTML format:
+<div style="background:#fafafa;border-left:4px solid #eb3f43;padding:16px 20px;margin:16px 0;border-radius:0 8px 8px 0;">
+  <strong style="color:#1b1c1b;font-size:15px;">Finding X: Issue Title</strong>
+  <p style="margin:8px 0 4px;color:#eb3f43;font-weight:bold;font-size:14px;">Impact: Business impact description</p>
+  <p style="margin:4px 0;font-size:14px;color:#444;line-height:1.7;">Detailed explanation + actionable step-by-step fix</p>
+</div>
+
+Topics to cover:
+A) SEO On-Page — Title, Meta, H1, Alt text, Schema Markup
+B) Page Speed — Core Web Vitals, Image optimization
+C) Mobile Responsiveness
+D) Content Strategy — E-E-A-T signals
+E) Google Business Profile optimization
+F) NAP Consistency
+G) AI Search Optimization — ChatGPT, Gemini, Perplexity
+H) Conversion Optimization — CTA, UX flow
+I) Multilingual (if relevant to the business)
+J) Competitive Analysis — strengths vs competitors
+
+Closing:
+- Summarize top 3 priorities
+- Offer a free 30-minute meeting to discuss details
+- "If you'd like us to help implement any of these, we'd be happy to assist — no strings attached."
+- Sign off: Tar — VisionXBrain (097-153-6565)
+
+Reply JSON: { "subject": "...", "body": "..." }
+subject must include "${bizName}" + indicate it's an Audit Report`
+    : `คุณคือ ต้าร์ — Founder ของ VisionXBrain กำลังเขียน Audit Report เว็บไซต์ฟรีให้ "${bizName}"
+ลูกค้าตอบ email กลับมาแล้วว่าสนใจ — ต้องส่ง report จริงจังที่มีคุณค่า
+
+=== ข้อมูลธุรกิจ ===
+- ชื่อ: ${bizName}
+- ประเภท: ${bizType}
+- เว็บ: ${domain}
+- ปัญหาที่เจอ: ${issues.length > 0 ? issues.join(', ') : 'ต้องวิเคราะห์เพิ่ม'}
+
+=== กฎเหล็ก ===
+- ใช้ "ครับ" เท่านั้น ห้าม "ค่ะ" ห้าม "ครับ/ค่ะ"
+- ใช้ "ผม" ไม่ใช่ "เรา"
+- เขียนเหมือนคนจริงพิมพ์ ไม่ใช่ AI
+- ห้ามพูดถึงโรงแรม/ปาย
+- ห้ามพูดถึง Google reviews/rating
+- ห้ามแนะนำเรื่อง SSL
+- ห้ามใส่ emoji ใน subject
+${isHotel ? '- เป็นโรงแรม → เพิ่มข้อเสนอ Auto Reviews, Kiosk Self Check-In, Auto Social Post' : ''}
+
+=== โครงสร้าง Audit Report ===
+
+เปิดเรื่อง:
+- ขอบคุณที่สนใจ + ตื่นเต้นที่ได้ช่วย
+- "ผมวิเคราะห์เว็บ ${domain} ให้แล้วครับ นี่คือ report ฉบับเต็ม"
+
+Audit Findings (8-10 ข้อ):
+แต่ละข้อใช้ HTML format:
+<div style="background:#fafafa;border-left:4px solid #eb3f43;padding:16px 20px;margin:16px 0;border-radius:0 8px 8px 0;">
+  <strong style="color:#1b1c1b;font-size:15px;">Finding X: ชื่อปัญหา</strong>
+  <p style="margin:8px 0 4px;color:#eb3f43;font-weight:bold;font-size:14px;">Impact: ผลกระทบต่อธุรกิจ</p>
+  <p style="margin:4px 0;font-size:14px;color:#444;line-height:1.7;">อธิบายปัญหาละเอียด + วิธีแก้ที่ทำได้เลย step-by-step</p>
+</div>
+
+หัวข้อที่ต้องครอบคลุม:
+A) SEO On-Page — Title, Meta, H1, Alt text, Schema Markup
+B) Page Speed — Core Web Vitals, Image optimization
+C) Mobile Responsiveness
+D) Content Strategy — E-E-A-T signals
+E) Google Business Profile optimization
+F) NAP Consistency
+G) AI Search Optimization — ChatGPT, Gemini, Perplexity
+H) Conversion Optimization — CTA, UX flow
+I) Multilingual (ถ้าเหมาะกับธุรกิจ)
+J) Competitive Analysis — จุดที่ชนะ/แพ้คู่แข่ง
+
+ปิดท้าย:
+- สรุป 3 อันดับแรกที่ต้องทำก่อน
+- เสนอ meeting 30 นาทีฟรีเพื่อคุยรายละเอียด
+- "ถ้าสนใจให้ผมช่วยทำ ผมจัดให้ได้เลยครับ ไม่มีข้อผูกมัดอะไร"
+- ลงชื่อ: ต้าร์ — VisionXBrain (097-153-6565)
+
+ตอบ JSON: { "subject": "...", "body": "..." }
+subject ต้องมีชื่อ "${bizName}" + บอกว่าเป็น Audit Report`;
+
+  try {
+    const aiRes = await chat(
+      [{ role: 'user', content: prompt }],
+      {
+        system: isEnglish
+          ? 'You are Tar, founder of VisionXBrain, writing a Website Audit Report for an interested client. Write in English, professional and friendly. Reply JSON only.'
+          : 'คุณคือ ต้าร์ เจ้าของ VisionXBrain เขียน Audit Report ให้ลูกค้าที่สนใจ ใช้ "ครับ" เท่านั้น ห้าม "ค่ะ" ตอบ JSON เท่านั้น',
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 8000,
+        skipAutoRecall: true
+      }
+    );
+
+    let cleanedRes = aiRes.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    const jsonMatch = cleanedRes.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error(`[AUDIT-REPORT] No JSON in AI response for ${bizName}`);
+      return { success: false, error: 'AI JSON parse failed' };
+    }
+
+    const emailContent = JSON.parse(jsonMatch[0]);
+
+    // Strip emoji + placeholders from subject
+    const subject = emailContent.subject
+      .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1FA00}-\u{1FA9F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/gu, '')
+      .replace(/\[ชื่อ[^\]]*\]/g, '').replace(/\[Name[^\]]*\]/g, '').replace(/\[ผู้รับ[^\]]*\]/g, '')
+      .trim();
+
+    // Strip placeholders from body
+    emailContent.body = emailContent.body
+      .replace(/คุณ\s*\[ชื่อ[^\]]*\]/g, 'คุณ')
+      .replace(/\[ชื่อ[^\]]*\]/g, '').replace(/\[Name[^\]]*\]/g, '').replace(/\[ผู้รับ[^\]]*\]/g, '')
+      .replace(/คุณ\s*\[.*?\]/g, 'คุณ');
+
+    // Template text based on language
+    const tpl = isEnglish ? {
+      serviceLabel: 'Relevant service for your business:',
+      ctaEmail: `Interested in a consultation — ${bizName}`,
+      ctaPrimary: 'Book a Free 30-Min Meeting',
+      ctaCall: 'Call Us Free',
+      ctaReply: 'or simply reply to this email',
+      sigTitle: 'Tanakit Chaithip (Tar)',
+      sigRole: 'Founder & Creative Director',
+      sigCompany: 'VisionXBrain Co., Ltd.',
+      sigClients: '80+ clients across 6 countries | Clutch 5.0',
+      sigPhone: '097-153-6565 — Free consultation call',
+    } : {
+      serviceLabel: 'บริการที่เกี่ยวข้องกับธุรกิจของคุณครับ:',
+      ctaEmail: `สนใจปรึกษาเพิ่ม — ${bizName}`,
+      ctaPrimary: 'นัด Meeting ฟรี 30 นาที',
+      ctaCall: 'โทรปรึกษาฟรี',
+      ctaReply: 'หรือตอบกลับ email นี้ได้เลยครับ',
+      sigTitle: 'Tanakit Chaithip (ต้าร์)',
+      sigRole: 'Founder & Creative Director',
+      sigCompany: 'บริษัท วิสัยทัศน์ เอ็กซ์ เบรน จำกัด',
+      sigClients: '80+ ลูกค้า 6 ประเทศ | Clutch 5.0 | ทะเบียน: 0585564000175',
+      sigPhone: '097-153-6565 — โทรปรึกษาฟรีครับ',
+    };
+
+    // Wrap in VXB branded template
+    const body = `
+<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:640px;margin:0 auto;color:#1b1c1b;line-height:1.8;background:#fff;padding:0 20px;">
+
+  <div style="height:3px;background:linear-gradient(90deg,#eb3f43,#6e49f3);border-radius:2px;margin-bottom:28px;"></div>
+
+  ${emailContent.body}
+
+  <!-- Service Page Link -->
+  <div style="background:#f8f7f5;border-radius:12px;padding:18px 24px;margin:24px 0;text-align:center;">
+    <p style="margin:0 0 8px;font-size:14px;color:#666;">${tpl.serviceLabel}</p>
+    <a href="${servicePage}" style="color:#eb3f43;font-weight:bold;text-decoration:none;font-size:15px;">${servicePage.replace('https://', '')}</a>
+  </div>
+
+  <!-- CTA Buttons -->
+  <div style="text-align:center;margin:32px 0;">
+    <a href="mailto:info@visionxbrain.com?subject=${encodeURIComponent(tpl.ctaEmail)}" style="display:inline-block;background:linear-gradient(135deg,#eb3f43,#d63337);color:#fff;padding:16px 40px;border-radius:100px;text-decoration:none;font-size:16px;font-weight:bold;letter-spacing:0.3px;box-shadow:0 4px 12px rgba(235,63,67,0.3);">${tpl.ctaPrimary}</a>
+    <span style="display:inline-block;width:12px;"></span>
+    <a href="tel:0971536565" style="display:inline-block;background:#fff;color:#eb3f43;padding:16px 40px;border-radius:100px;text-decoration:none;font-size:16px;font-weight:bold;letter-spacing:0.3px;border:2px solid #eb3f43;">${tpl.ctaCall}</a>
+    <p style="color:#999;font-size:13px;margin-top:10px;">${tpl.ctaReply}</p>
+  </div>
+
+  <!-- Signature -->
+  <table style="margin-top:36px;border-top:1px solid #eee;padding-top:20px;width:100%;">
+    <tr>
+      <td style="padding-right:16px;vertical-align:top;">
+        <div style="width:4px;height:52px;background:linear-gradient(180deg,#eb3f43,#6e49f3);border-radius:2px;"></div>
+      </td>
+      <td style="font-size:13px;color:#666;line-height:1.7;">
+        <strong style="color:#1b1c1b;font-size:15px;">${tpl.sigTitle}</strong><br>
+        ${tpl.sigRole} — <span style="color:#eb3f43;font-weight:bold;">${tpl.sigCompany}</span><br>
+        ${tpl.sigClients}<br>
+        <span style="font-size:14px;"><a href="tel:0971536565" style="color:#1b1c1b;text-decoration:none;font-weight:bold;">097-153-6565</a> — ${tpl.sigPhone}</span><br>
+        <a href="https://www.visionxbrain.com" style="color:#eb3f43;text-decoration:none;">www.visionxbrain.com</a>
+      </td>
+    </tr>
+  </table>
+
+</div>`;
+
+    // Send as reply in same thread
+    const sendOpts = {
+      to: lead.email,
+      subject,
+      body,
+    };
+
+    // Reply in same thread if we have threadId
+    if (lead.threadId) {
+      sendOpts.threadId = lead.threadId;
+    }
+
+    // Attach PDF
+    if (PDF_BUFFER) {
+      sendOpts.attachments = [{
+        filename: PDF_FILENAME,
+        content: PDF_BUFFER,
+        mimeType: 'application/pdf'
+      }];
+    }
+
+    const result = await gmail.send(sendOpts);
+
+    console.log(`[AUDIT-REPORT] ✅ Sent audit report to ${lead.email}: ${subject}`);
+
+    return {
+      success: true,
+      messageId: result.id,
+      threadId: result.threadId,
+      sentAt: new Date().toISOString(),
+      subject
+    };
+  } catch (error) {
+    console.error(`[AUDIT-REPORT] ❌ Failed for ${bizName}: ${error.message}`);
+    return { success: false, error: error.message };
+  }
 }
 
 // ============================================================
@@ -1165,7 +1802,8 @@ async function sendFollowUp(lead, followUpNumber) {
  */
 async function checkReplies() {
   const leadsData = loadLeads();
-  const sentLeads = leadsData.leads.filter(l => l.status === 'emailed' || l.status === 'followed_up');
+  const sentLeads = leadsData.leads.filter(l => l.status === 'emailed' || l.status === 'followed_up')
+    .filter(l => !l.replyClassification); // skip already classified replies
 
   if (sentLeads.length === 0) return [];
 
@@ -1175,23 +1813,102 @@ async function checkReplies() {
     for (const lead of sentLeads) {
       if (!lead.email) continue;
 
-      // ค้นด้วย email เต็ม ไม่ใช่แค่ domain (ป้องกัน false positive จาก gmail.com/hotmail.com)
-      const searchResults = await gmail.search(`from:${lead.email} newer_than:7d`, 5);
+      // ค้นด้วย email เต็ม + domain (reply อาจมาจาก email อื่นในองค์กรเดียวกัน)
+      const emailDomain = lead.email.split('@')[1];
+      // ถ้า domain เป็น generic (gmail/hotmail/yahoo) → ค้นด้วย exact email เท่านั้น
+      const genericDomains = ['gmail.com','hotmail.com','yahoo.com','outlook.com','live.com'];
+      const isGeneric = genericDomains.includes(emailDomain);
+      const searchQuery = isGeneric
+        ? `from:${lead.email} newer_than:14d`
+        : `from:@${emailDomain} newer_than:14d`;
+      const searchResults = await gmail.search(searchQuery, 5);
 
       if (searchResults && searchResults.length > 0) {
         lead.status = 'replied';
         lead.repliedAt = new Date().toISOString();
+
+        // Fetch reply content
+        try {
+          const replyMsg = await gmail.getMessage(searchResults[0].id);
+          lead.replyMessageId = searchResults[0].id;
+          lead.replySnippet = replyMsg?.snippet || '';
+
+          // Extract full text body from payload
+          let replyBody = '';
+          const payload = replyMsg?.payload;
+          if (payload?.body?.data) {
+            replyBody = Buffer.from(payload.body.data, 'base64').toString('utf-8');
+          } else if (payload?.parts) {
+            const textPart = payload.parts.find(p => p.mimeType === 'text/plain');
+            const htmlPart = payload.parts.find(p => p.mimeType === 'text/html');
+            if (textPart?.body?.data) {
+              replyBody = Buffer.from(textPart.body.data, 'base64').toString('utf-8');
+            } else if (htmlPart?.body?.data) {
+              replyBody = Buffer.from(htmlPart.body.data, 'base64').toString('utf-8')
+                .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            }
+          }
+          lead.replyBody = replyBody.substring(0, 2000); // Limit to 2000 chars
+
+          // Get subject from headers
+          const subjectHeader = payload?.headers?.find(h => h.name?.toLowerCase() === 'subject');
+          lead.replySubject = subjectHeader?.value || '';
+        } catch (replyErr) {
+          console.error(`[REPLY] Failed to fetch reply content: ${replyErr.message}`);
+          lead.replySnippet = '(ไม่สามารถดึงเนื้อหาได้)';
+        }
+
         replies.push(lead);
 
-        await telegram.notifyOwner(`[LEAD-FINDER] ตอบกลับแล้ว!
+        // Classify reply: interested / declined / auto_reply
+        const classification = await classifyReply(lead.replyBody, lead.replySnippet, lead.businessName);
+        lead.replyClassification = classification;
+        console.log(`[REPLY] ${lead.businessName} classified as: ${classification}`);
 
-ธุรกิจ: ${lead.businessName}
-Industry: ${lead.industry}
+        if (classification === 'interested') {
+          // Auto send audit report!
+          lead.status = 'replied';
+          try {
+            console.log(`[REPLY] ${lead.businessName} is interested — generating audit report...`);
+            const auditResult = await generateAndSendAuditReport(lead);
+            if (auditResult.success) {
+              lead.auditSentAt = auditResult.sentAt;
+              lead.auditSubject = auditResult.subject;
+              lead.status = 'audit_sent';
+              console.log(`[REPLY] ✅ Audit report sent to ${lead.email}`);
+            }
+          } catch (auditErr) {
+            console.error(`[REPLY] ❌ Audit report failed for ${lead.businessName}: ${auditErr.message}`);
+          }
+
+          await telegram.notifyOwner(`[LEAD] ✅ ${lead.businessName} สนใจ!
+
+ข้อความ: ${lead.replySnippet || '(ดูใน Gmail)'}
 Email: ${lead.email}
 Domain: ${lead.domain}
 
-เข้าไปอ่านใน Gmail เลย`);
-        console.log(`[LEAD-FINDER] Reply detected from ${lead.email}`);
+${lead.auditSentAt ? '→ ส่ง Audit Report ให้แล้วอัตโนมัติ!' : '→ ส่ง Audit Report ไม่สำเร็จ — ต้องส่งเอง'}
+
+เข้าไปดูใน Gmail + Dashboard`);
+
+        } else if (classification === 'declined') {
+          lead.status = 'closed';
+          lead.closedReason = 'declined';
+          await telegram.notifyOwner(`[LEAD] ❌ ${lead.businessName} ปฏิเสธ
+
+ข้อความ: ${lead.replySnippet || '(ดูใน Gmail)'}
+Email: ${lead.email}
+
+→ Mark as closed แล้ว`);
+
+        } else if (classification === 'auto_reply') {
+          // Don't count as real reply — revert status
+          lead.status = lead.followUps > 0 ? 'followed_up' : 'emailed';
+          lead.replyClassification = 'auto_reply';
+          console.log(`[REPLY] ${lead.businessName} — auto-reply, ignoring`);
+        }
+
+        console.log(`[REPLY] ${lead.businessName}: ${classification} — ${lead.replySnippet?.substring(0, 80)}`);
       }
     }
 
@@ -1199,35 +1916,62 @@ Domain: ${lead.domain}
       saveLeads(leadsData);
     }
 
-    // Bounce detection — check for mailer-daemon / delivery failure
+    // Bounce detection — check ALL bounce sources (Google, Outlook, Hotmail, generic)
     try {
-      const bounces = await gmail.search('from:mailer-daemon@googlemail.com newer_than:3d', 20);
-      if (bounces && bounces.length > 0) {
-        for (const bounce of bounces) {
-          try {
-            const msg = await gmail.getMessage(bounce.id);
-            const body = msg?.snippet || msg?.payload?.body?.data || '';
-            // Extract bounced email from the snippet
-            const emailMatch = body.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z]{2,})/);
-            if (emailMatch) {
-              const bouncedEmail = emailMatch[1].toLowerCase();
-              // Skip our own email
-              if (bouncedEmail.includes('visionxbrain') || bouncedEmail.includes('googlemail')) continue;
-              addToBounceBlacklist(bouncedEmail);
-              // Mark the lead as bounced
-              const bouncedLead = leadsData.leads.find(l => l.email?.toLowerCase() === bouncedEmail);
-              if (bouncedLead) {
-                bouncedLead.status = 'bounced';
-                bouncedLead.bouncedAt = new Date().toISOString();
-                console.log(`[BOUNCE] Marked ${bouncedLead.businessName} as bounced (${bouncedEmail})`);
+      const bounceQueries = [
+        'from:mailer-daemon@googlemail.com newer_than:7d',
+        'from:postmaster@outlook.com newer_than:7d',
+        'from:postmaster@hotmail.com newer_than:7d',
+        'subject:"Delivery Status Notification" newer_than:7d',
+        'subject:"Delivery has failed" newer_than:7d',
+        'subject:"Undeliverable" newer_than:7d',
+      ];
+      const processedBounceIds = new Set();
+
+      for (const query of bounceQueries) {
+        try {
+          const bounces = await gmail.search(query, 20);
+          if (!bounces || bounces.length === 0) continue;
+
+          for (const bounce of bounces) {
+            if (processedBounceIds.has(bounce.id)) continue;
+            processedBounceIds.add(bounce.id);
+
+            try {
+              const msg = await gmail.getMessage(bounce.id);
+              const snippet = msg?.snippet || '';
+              const bodyData = msg?.payload?.body?.data || '';
+              const body = snippet + ' ' + (bodyData ? Buffer.from(bodyData, 'base64').toString('utf-8') : '');
+
+              // Extract ALL emails from bounce message
+              const emailMatches = body.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z]{2,})/g) || [];
+              for (const match of emailMatches) {
+                const bouncedEmail = match.toLowerCase();
+                // Skip system emails
+                if (bouncedEmail.includes('visionxbrain') ||
+                    bouncedEmail.includes('googlemail') ||
+                    bouncedEmail.includes('postmaster') ||
+                    bouncedEmail.includes('mailer-daemon') ||
+                    bouncedEmail.includes('noreply')) continue;
+
+                addToBounceBlacklist(bouncedEmail);
+                // Mark the lead as bounced
+                const bouncedLead = leadsData.leads.find(l => l.email?.toLowerCase() === bouncedEmail);
+                if (bouncedLead && bouncedLead.status !== 'bounced') {
+                  bouncedLead.status = 'bounced';
+                  bouncedLead.bouncedAt = new Date().toISOString();
+                  console.log(`[BOUNCE] Marked ${bouncedLead.businessName} as bounced (${bouncedEmail})`);
+                }
               }
+            } catch (bounceErr) {
+              // ignore individual bounce parse errors
             }
-          } catch (bounceErr) {
-            // ignore individual bounce parse errors
           }
+        } catch (queryErr) {
+          // ignore individual query errors, continue with next
         }
-        saveLeads(leadsData);
       }
+      saveLeads(leadsData);
     } catch (bounceErr) {
       console.error(`[BOUNCE] Bounce check error:`, bounceErr.message);
     }
@@ -1317,19 +2061,96 @@ async function processFollowUps() {
   let followUpsSent = 0;
 
   for (const lead of leadsData.leads) {
-    if (lead.status === 'replied' || lead.status === 'closed') continue;
+    // 🛡️ Daily limit check — หยุดทันทีถ้าหมด quota วันนี้
+    if (!canSendMoreToday()) {
+      console.log(`[FOLLOW-UP] ⛔ Daily email limit reached (${MAX_TOTAL_EMAILS_PER_DAY}) — stopping follow-ups`);
+      break;
+    }
+
+    if (lead.status === 'replied' || lead.status === 'closed' || lead.status === 'bounced' || lead.status === 'audit_sent') continue;
     if (!lead.emailSentAt) continue;
+    // Skip blacklisted emails (hotmail.com, gmail.com, etc.)
+    if (isEmailBlacklisted(lead.email)) {
+      console.log(`[FOLLOW-UP] ⛔ Skip ${lead.businessName} — ${lead.email} is blacklisted`);
+      continue;
+    }
+
+    // 🛡️ Bounce blacklist check — ป้องกัน follow-up ไป email ที่ bounce แล้ว
+    const bl = loadBounceBlacklist();
+    if (bl.emails.includes(lead.email.toLowerCase()) || bl.domains.includes(lead.email.split('@')[1])) {
+      console.log(`[FOLLOW-UP] ⛔ Skip ${lead.businessName} — ${lead.email} is in bounce blacklist`);
+      lead.status = 'bounced';
+      lead.bouncedAt = lead.bouncedAt || new Date().toISOString();
+      saveLeads(leadsData);
+      continue;
+    }
+
+    // 🛡️ Gmail bounce check — เช็ค bounce จาก Gmail ก่อนส่ง follow-up
+    try {
+      const bounced = await hasBouncedInGmail(lead.email);
+      if (bounced) {
+        console.log(`[FOLLOW-UP] ⛔ Skip ${lead.businessName} — bounce detected in Gmail for ${lead.email}`);
+        addToBounceBlacklist(lead.email);
+        lead.status = 'bounced';
+        lead.bouncedAt = new Date().toISOString();
+        saveLeads(leadsData);
+        continue;
+      }
+    } catch (bounceCheckErr) {
+      // fail-open
+    }
+
+    // 🛡️ Gmail reply check — ป้องกัน follow-up คนที่ตอบแล้ว (declined) หลัง deploy ใหม่
+    try {
+      const hasReply = await hasReplyInGmail(lead.email);
+      if (hasReply) {
+        console.log(`[FOLLOW-UP] ⛔ Skip ${lead.businessName} — has reply in Gmail (might be declined)`);
+        lead.status = 'replied';
+        lead.skipReason = 'gmail_reply_detected';
+        saveLeads(leadsData);
+        continue;
+      }
+    } catch (replyCheckErr) {
+      // fail-open: if Gmail check fails, let existing status checks handle it
+    }
 
     const sentTime = new Date(lead.emailSentAt).getTime();
     const daysSinceSent = (now - sentTime) / (1000 * 60 * 60 * 24);
+
+    // 🛡️ Gmail dedup for follow-ups — bulletproof ป้องกันส่งซ้ำหลัง deploy
+    // นับจำนวน email ที่ส่งไปแล้วจาก Gmail SENT (source of truth)
+    const emailsSentCount = await countEmailsSentTo(lead.email);
+    if (emailsSentCount === -1) {
+      console.log(`[FOLLOW-UP] ⛔ Skip ${lead.businessName} — Gmail check failed (FAIL-CLOSED)`);
+      continue;
+    }
 
     // Check each follow-up day
     for (let i = 0; i < followUpDays.length; i++) {
       const followUpDay = followUpDays[i];
       const followUpNumber = i + 1;
 
+      // emailsSentCount includes: cold email (1) + follow-ups sent
+      // Cold = 1, Follow-up #1 = 2, Follow-up #2 = 3
+      // ถ้า Gmail มี >= followUpNumber + 1 → follow-up นี้ส่งไปแล้ว
+      if (emailsSentCount >= followUpNumber + 1) {
+        if ((!lead.followUps || lead.followUps < followUpNumber)) {
+          // Fix local state ให้ตรงกับ Gmail
+          lead.followUps = followUpNumber;
+          saveLeads(leadsData);
+          console.log(`[FOLLOW-UP] 🔧 Fixed: ${lead.businessName} already has ${emailsSentCount} emails in Gmail — set followUps=${followUpNumber}`);
+        }
+        continue;
+      }
+
       if (daysSinceSent >= followUpDay && (!lead.followUps || lead.followUps < followUpNumber)) {
-        console.log(`[LEAD-FINDER] Sending follow-up #${followUpNumber} to ${lead.email}`);
+        // 🛡️ Daily limit re-check ก่อนส่งแต่ละ follow-up
+        if (!canSendMoreToday()) {
+          console.log(`[FOLLOW-UP] ⛔ Daily limit reached — skipping follow-up #${followUpNumber} for ${lead.businessName}`);
+          break;
+        }
+
+        console.log(`[LEAD-FINDER] Sending follow-up #${followUpNumber} to ${lead.email} (Gmail sent count: ${emailsSentCount})`);
 
         const result = await sendFollowUp(lead, followUpNumber);
         if (result.success) {
@@ -1443,11 +2264,13 @@ async function runDaily() {
     try {
       // Score all new leads (save score to actual lead object)
       const sentDomains = new Set(leadsData.leads.filter(l => l.status !== 'new').map(l => l.domain).filter(Boolean));
+      const sentEmails = new Set(leadsData.leads.filter(l => l.status !== 'new').map(l => l.emailSentTo || l.email).filter(Boolean));
       for (const l of leadsData.leads) {
         if (!l.priorityScore) l.priorityScore = calculateLeadScore(l);
       }
       const unsent = leadsData.leads
         .filter(l => l.status === 'new' && l.isGoodTarget && l.email && !isEmailBlacklisted(l.email))
+        .filter(l => !sentEmails.has(l.email)) // email-level dedup — ห้ามส่ง email ซ้ำ
         .filter(l => !l.domain || !sentDomains.has(l.domain)) // skip ถ้าส่งไป domain เดียวกันแล้ว
         .filter(l => !l.domain || !BAD_DOMAINS.some(bad => l.domain === bad || l.domain.endsWith('.' + bad))) // skip chains/gov
         .sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0)); // ดีสุดขึ้นก่อน
@@ -1455,8 +2278,27 @@ async function runDaily() {
 
       for (const lead of unsent) {
         if (emailsSent >= maxEmails) {
-          console.log(`[LEAD-FINDER] Daily email limit reached (${maxEmails})`);
+          console.log(`[LEAD-FINDER] Daily cold email limit reached (${maxEmails})`);
           break;
+        }
+        if (!canSendMoreToday()) {
+          console.log(`[LEAD-FINDER] ⛔ Total daily email limit reached (${MAX_TOTAL_EMAILS_PER_DAY} cold+follow-up combined)`);
+          break;
+        }
+
+        // 🛡️ Gmail SENT dedup — ป้องกันส่งซ้ำหลัง deploy ใหม่ (ลูกค้าลำคาญ!)
+        try {
+          const alreadyContacted = await hasAlreadyContacted(lead.email);
+          if (alreadyContacted) {
+            console.log(`[LEAD-FINDER] ⛔ Skip ${lead.businessName} — already contacted (Gmail history)`);
+            lead.status = 'already_contacted';
+            lead.skipReason = 'gmail_sent_history';
+            saveLeads(leadsData);
+            continue;
+          }
+        } catch (dedupErr) {
+          console.error(`[DEDUP] Check failed for ${lead.email}:`, dedupErr.message);
+          // fail-open: continue to next check
         }
 
         // MX validation — เช็คว่า domain รับ email ได้จริงก่อนเสียเงิน AI generate
@@ -1469,17 +2311,62 @@ async function runDaily() {
         }
         lead.emailValidation = 'mx_passed';
 
+        // 🛡️ Email Verification API — ตรวจ email จริงก่อนส่ง (จ่ายเงิน แต่จบปัญหา bounce)
+        if (isEmailVerifyConfigured()) {
+          try {
+            const verifyResult = await verifyEmailAPI(lead.email);
+            lead.emailVerifyStatus = verifyResult.status;
+            lead.emailVerifySource = verifyResult.source;
+
+            if (!verifyResult.valid) {
+              console.log(`[LEAD-FINDER] ⛔ Skip ${lead.businessName} — email verification FAILED: ${lead.email} (${verifyResult.status})`);
+              addToBounceBlacklist(lead.email);
+              lead.emailValidation = `verify_failed_${verifyResult.status}`;
+              lead.status = 'bounced';
+              lead.bouncedAt = new Date().toISOString();
+              saveLeads(leadsData);
+              continue;
+            }
+
+            if (verifyResult.risky) {
+              console.log(`[LEAD-FINDER] ⚠️ ${lead.businessName} — email is risky: ${lead.email} (${verifyResult.status}) — sending anyway`);
+            }
+
+            lead.emailValidation = `verify_${verifyResult.status}`;
+          } catch (verifyErr) {
+            console.error(`[LEAD-FINDER] Email verify error:`, verifyErr.message);
+            // fail-open: continue to send
+          }
+        }
+
+        // 🛡️ Gmail bounce pre-check — เช็คว่า email นี้เคย bounce ก่อนส่ง (ป้องกันส่งซ้ำไป email เสีย)
+        try {
+          const bounced = await hasBouncedInGmail(lead.email);
+          if (bounced) {
+            console.log(`[LEAD-FINDER] ⛔ Skip ${lead.businessName} — bounce detected in Gmail for ${lead.email}`);
+            addToBounceBlacklist(lead.email);
+            lead.status = 'bounced';
+            lead.bouncedAt = new Date().toISOString();
+            saveLeads(leadsData);
+            continue;
+          }
+        } catch (bounceErr) {
+          // fail-open
+        }
+
         try {
           const result = await sendFullOutreachEmail(lead);
           if (result.success) {
             lead.status = 'emailed';
             lead.emailSentAt = result.sentAt;
             lead.threadId = result.threadId;
+            lead.emailMessageId = result.messageId;
             lead.emailTrackingId = result.trackingId;
             lead.emailSentTo = lead.email;
             emailsSent++;
+            incrementDailyEmailCount();
             saveLeads(leadsData); // Save after each successful email
-            console.log(`[LEAD-FINDER] ✅ ${emailsSent}/${maxEmails} — ${result.bizName} → ${lead.email}`);
+            console.log(`[LEAD-FINDER] ✅ ${emailsSent}/${maxEmails} — ${result.bizName} → ${lead.email} (daily: ${getDailyEmailCount()}/${MAX_TOTAL_EMAILS_PER_DAY})`);
           }
         } catch (emailErr) {
           console.error(`[LEAD-FINDER] Error sending email to ${lead.email}:`, emailErr.message);
@@ -1494,18 +2381,19 @@ async function runDaily() {
       console.error(`[LEAD-FINDER] Email step error:`, emailStepErr.message);
     }
 
-    // Step 4: Process follow-ups — ✅ ENABLED
-    try {
-      followUps = await processFollowUps();
-    } catch (followUpErr) {
-      console.error(`[LEAD-FINDER] Follow-up error:`, followUpErr.message);
-    }
-
-    // Step 5: Check for replies
+    // Step 4: Check for replies + detect bounces FIRST (before follow-ups!)
+    // ⚠️ ต้องรันก่อน follow-ups เพื่อให้ bounce detection mark leads เป็น bounced → follow-up จะ skip
     try {
       replies = await checkReplies();
     } catch (replyErr) {
       console.error(`[LEAD-FINDER] Reply check error:`, replyErr.message);
+    }
+
+    // Step 5: Process follow-ups — ✅ ENABLED (runs AFTER bounce detection)
+    try {
+      followUps = await processFollowUps();
+    } catch (followUpErr) {
+      console.error(`[LEAD-FINDER] Follow-up error:`, followUpErr.message);
     }
 
   } finally {
@@ -1716,8 +2604,10 @@ function getStats() {
     new: leads.filter(l => l.status === 'new').length,
     emailed: leads.filter(l => l.status === 'emailed').length,
     followedUp: leads.filter(l => l.status === 'followed_up').length,
-    replied: leads.filter(l => l.status === 'replied').length,
+    replied: leads.filter(l => l.status === 'replied' || l.status === 'audit_sent').length,
+    auditSent: leads.filter(l => l.status === 'audit_sent').length,
     closed: leads.filter(l => l.status === 'closed').length,
+    bounced: leads.filter(l => l.status === 'bounced').length,
     processedDomains: leadsData.processedDomains.length,
     lastRun: leadsData.lastRun
   };
@@ -2345,6 +3235,7 @@ export {
   processOneDomain,
   updateLead,
   sendFullOutreachEmail,
+  generateAndSendAuditReport,
   calculateLeadScore,
   validateServicePageUrls,
   PDF_BUFFER,
@@ -2365,6 +3256,7 @@ export default {
   processOneDomain,
   updateLead,
   sendFullOutreachEmail,
+  generateAndSendAuditReport,
   calculateLeadScore,
   validateServicePageUrls,
   validateEmailMX,

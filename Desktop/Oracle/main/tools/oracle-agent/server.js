@@ -82,6 +82,7 @@ import parcelWatchlist from './lib/parcel-watchlist.js';
 import realtimeContext from './lib/realtime-context.js';
 import autonomousLoop from './lib/autonomous-loop.js';
 import leadFinder from './lib/lead-finder.js';
+import { initLeadsDB } from './lib/db-leads.js';
 import imageGen from './lib/image-gen.js';
 import autonomy from './lib/autonomy.js';
 import hotelNotify from './lib/hotel-notifications.js';
@@ -129,6 +130,7 @@ import autonomousScheduler from './lib/autonomous-scheduler.js';
 import apiHunter from './lib/api-hunter.js';
 
 // Phase 10: Forbes Weekly Summary
+import { setupBillingRoutes, checkOverdueBills } from './lib/billing.js';
 import forbesWeekly from './lib/forbes-weekly.js';
 
 // Phase 11: Hospitality Trends + Weekly Revenue Dashboard
@@ -196,6 +198,10 @@ app.use('/vision/email', express.static(join(__dirname, 'public/vision/email')))
 app.use('/vision/growthstrategy', express.static(join(__dirname, 'public/vision/growthstrategy')));
 app.use('/vision/analytics', express.static(join(__dirname, 'public/vision/analytics')));
 app.use('/vision/404check', express.static(join(__dirname, 'public/vision/404check')));
+app.use('/vision/documents', express.static(join(__dirname, 'public/vision/documents')));
+
+// Billing System — ใบเสนอราคา / ใบวางบิล / ใบเสร็จรับเงิน
+setupBillingRoutes(app, gmailClient);
 
 // Heartbeat Manager instance
 let heartbeatManager = null;
@@ -5620,6 +5626,19 @@ cron.schedule('0 9,12,15,18 * * *', async () => {
   }
 }, { timezone: config.agent.timezone });
 
+// Billing: เช็คใบวางบิลค้างชำระทุกวัน 09:00
+cron.schedule('0 9 * * *', () => {
+  console.log('[BILLING] Checking overdue bills...');
+  try {
+    checkOverdueBills(gmailClient, async (msg) => {
+      await line.notifyOwner(msg).catch(() => {});
+      if (telegram.isConfigured()) await telegram.notifyOwner(msg).catch(() => {});
+    });
+  } catch (error) {
+    console.error('[BILLING] Overdue check error:', error.message);
+  }
+}, { timezone: config.agent.timezone });
+
 // Lead Finder: Startup catchup — ถ้า server เพิ่ง boot และยังไม่เคย run วันนี้ → run เลย
 setTimeout(async () => {
   try {
@@ -5652,8 +5671,15 @@ setTimeout(async () => {
 // LEAD FINDER API — Manual control + stats
 // =============================================================================
 
-app.get('/api/leads/stats', (req, res) => {
-  res.json(leadFinder.getStats());
+app.get('/api/leads/stats', async (req, res) => {
+  const stats = leadFinder.getStats();
+  // Include DB status
+  const { getStatus: getLeadsDBStatus, getLeadStats: getDBLeadStats } = await import('./lib/db-leads.js');
+  stats.database = getLeadsDBStatus();
+  if (stats.database.dbReady) {
+    stats.dbLeadCounts = await getDBLeadStats();
+  }
+  res.json(stats);
 });
 
 app.get('/api/leads/replies', async (req, res) => {
@@ -7179,6 +7205,18 @@ const server = app.listen(PORT, async () => {
     console.log('[UNIFIED-MEMORY] System initialized');
   } catch (error) {
     console.log('[UNIFIED-MEMORY] Running without PostgreSQL:', error.message);
+  }
+
+  // Initialize Leads Database (Postgres persistent storage — survives deploys!)
+  try {
+    const dbOk = await initLeadsDB();
+    if (dbOk) {
+      console.log('[DB-LEADS] ✅ Leads database ready — data survives deploys');
+    } else {
+      console.log('[DB-LEADS] ⚠️ Using file-only mode (leads.json)');
+    }
+  } catch (error) {
+    console.log('[DB-LEADS] Running without DB:', error.message);
   }
 
   // Initialize Local Agent WebSocket Server (Phase 6: Remote Execution)

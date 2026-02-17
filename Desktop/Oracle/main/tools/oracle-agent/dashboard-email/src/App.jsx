@@ -13,6 +13,7 @@ function statusLabel(s) {
     emailed: 'ส่งแล้ว',
     bounced: 'Bounce',
     replied: 'ตอบกลับ',
+    audit_sent: 'ส่ง Audit แล้ว',
     clicked: 'คลิกลิงก์',
     closed: 'ปิดดีล',
     new: 'ใหม่',
@@ -26,6 +27,7 @@ function statusColor(s) {
     emailed: 'bg-blue-100 text-blue-700',
     bounced: 'bg-red-100 text-red-700',
     replied: 'bg-green-100 text-green-700',
+    audit_sent: 'bg-emerald-100 text-emerald-700',
     clicked: 'bg-amber-100 text-amber-700',
     closed: 'bg-purple-100 text-purple-700',
     new: 'bg-gray-100 text-gray-600',
@@ -54,6 +56,93 @@ function HeroKPIs({ leads, email }) {
       <StatCard title="คลิกลิงก์" value={fmtNum(clicked)} badge={clickRate + ' click rate'} />
       <StatCard title="ตอบกลับ" value={fmtNum(replied)} badge={replied > 0 ? pctOf(replied, emailed) + ' reply rate' : 'ยังไม่มี'} />
     </div>
+  );
+}
+
+/* ── Section: Replies ──────────────────────────────────── */
+
+function RepliesSection({ replies, loading: repliesLoading }) {
+  if (repliesLoading) {
+    return (
+      <section className="mb-8 overflow-hidden rounded-[15px] border-2 border-green-200 bg-white shadow-xxs">
+        <SectionHeader title="ข้อความตอบกลับ" description="กำลังโหลด..." />
+        <div className="p-6 text-center text-text-secondary">กำลังดึงข้อความ...</div>
+      </section>
+    );
+  }
+
+  if (!replies || replies.length === 0) {
+    return (
+      <section className="mb-8 overflow-hidden rounded-[15px] border border-border-primary bg-white shadow-xxs">
+        <SectionHeader title="ข้อความตอบกลับ" description="ยังไม่มีใครตอบกลับ" />
+        <div className="p-6 text-center text-text-secondary">ยังไม่มีการตอบกลับ — ระบบจะเช็คทุก 3 ชม.</div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mb-8 overflow-hidden rounded-[15px] border-2 border-green-300 bg-white shadow-xxs">
+      <div className="flex items-center gap-2 border-b border-border-primary bg-green-50 px-6 py-4">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500 text-white text-sm font-bold">
+          {replies.length}
+        </div>
+        <div>
+          <h3 className="text-base font-bold text-green-800">ข้อความตอบกลับ</h3>
+          <p className="text-xs text-green-600">ลูกค้าที่ตอบกลับ email ของเรา</p>
+        </div>
+      </div>
+      <div className="divide-y divide-border-primary">
+        {replies.map((r, i) => (
+          <div key={i} className="p-6 hover:bg-gray-50 transition-colors">
+            <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-base font-bold text-text-primary">{r.businessName}</h4>
+                  {r.classification === 'interested' && (
+                    <span className="inline-block rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">สนใจ</span>
+                  )}
+                  {r.classification === 'declined' && (
+                    <span className="inline-block rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">ปฏิเสธ</span>
+                  )}
+                  {r.classification === 'auto_reply' && (
+                    <span className="inline-block rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">Auto-reply</span>
+                  )}
+                  {r.auditSentAt && (
+                    <span className="inline-block rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700">Audit ส่งแล้ว</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  {r.industry && (
+                    <span className="inline-block rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{r.industry}</span>
+                  )}
+                  <span className="text-xs text-text-secondary">{r.email}</span>
+                  {r.domain && (
+                    <a href={`https://${r.domain}`} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-primary hover:underline">{r.domain}</a>
+                  )}
+                </div>
+              </div>
+              <span className="text-xs text-text-secondary whitespace-nowrap">
+                {r.repliedAt ? timeAgo(r.repliedAt) : ''}
+              </span>
+            </div>
+            {r.replySubject && (
+              <p className="mb-2 text-sm font-medium text-text-primary">Re: {r.replySubject}</p>
+            )}
+            <div className="rounded-lg border border-green-200 bg-green-50/50 p-4">
+              {r.replyBody ? (
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-text-primary">
+                  {r.replyBody.length > 500 ? r.replyBody.substring(0, 500) + '...' : r.replyBody}
+                </p>
+              ) : r.replySnippet ? (
+                <p className="text-sm leading-relaxed text-text-secondary italic">{r.replySnippet}</p>
+              ) : (
+                <p className="text-sm text-text-secondary italic">เปิดดูใน Gmail เพื่ออ่านข้อความเต็ม</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -653,6 +742,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('cold');
+  const [replies, setReplies] = useState([]);
+  const [repliesLoading, setRepliesLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     setRefreshing(true);
@@ -667,6 +758,16 @@ export default function App() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+    // Fetch replies separately (may be slower due to Gmail API calls)
+    try {
+      setRepliesLoading(true);
+      const repliesRes = await fetch(`${API}/api/leads/replies`).then(r => r.json()).catch(() => null);
+      if (repliesRes?.replies) setReplies(repliesRes.replies);
+    } catch (err) {
+      console.error('Replies fetch error:', err);
+    } finally {
+      setRepliesLoading(false);
     }
   }, []);
 
@@ -723,6 +824,10 @@ export default function App() {
             {activeTab === 'cold' ? (
               <>
                 <HeroKPIs leads={leads} email={email} />
+
+                <div className="mt-8">
+                  <RepliesSection replies={replies} loading={repliesLoading} />
+                </div>
 
                 <div className="mt-8">
                   <ActionItems leads={leads} email={email} emailLeads={emailLeads} />
