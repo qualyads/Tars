@@ -28,6 +28,7 @@
 | **Webflow API** ⭐ | แก้ SEO, meta desc, OG, publish เว็บ, audit pages | `webflow-api.md` |
 | **Webflow 404 Redirects** ⭐⭐ | แก้ 404, GSC audit, slug matching, CSV redirect import | `webflow-404-redirects.md` |
 | **Webflow MCP** ⭐⭐ | แก้ body text primary locale, Designer API, set_text, element | `webflow-mcp.md` |
+| **Webflow CMS** ⭐⭐⭐ | สร้าง/จัดการ CMS collections, fields, items, bulk create, อัพรูป, publish | `webflow-cms.md` |
 | **CRO Copywriting** ⭐ | เขียน copy ที่ขาย, meta desc, title, ad, landing page, email | `cro-copywriting.md` |
 | **LINE Bot** | LINE, messaging, notify | `line-bot.md` |
 | **Memory Search** | หาข้อมูลเก่า, เคยคุย, semantic | `memory-search.md` |
@@ -56,6 +57,8 @@
 | **React → Webflow** ⭐⭐ | แปลง React/Next.js → Webflow, Relume JSON + MCP hybrid, paste + set_text | `react-to-webflow.md` |
 | **Parallel Agents** ⭐⭐⭐⭐ | Fan-Out/Fan-In, batch งานซ้ำๆ 5-23 agents พร้อมกัน, self-contained, retry, audit | `parallel-agents.md` |
 | **DGP Proposal** ⭐⭐⭐ | สร้าง proposal email DGP, pricing cards, CRO Landing Page + SEO Autopilot, VXB brand | `dgp-proposal.md` |
+| **Webflow Custom Scripts** ⭐⭐⭐ | เขียน JS ฝัง Webflow, TOC, scroll spy, Custom Code vs App Scripts, line-break bug | `webflow-custom-scripts.md` |
+| **Smolpix Auto-Blog** ⭐⭐⭐ | auto-publish SEO articles, 43 rules, Claude Sonnet, sitemap submit, cron, internal links | `smolpix-autoblog.md` |
 
 ---
 
@@ -74,6 +77,7 @@
 **แก้ SEO/meta/OG/publish เว็บ** → โหลด `webflow-api.md` ⭐
 **แก้ 404/redirect/GSC errors** → โหลด `webflow-404-redirects.md` ⭐⭐
 **แก้ body text ภาษาไทย/primary locale** → โหลด `webflow-mcp.md` ⭐⭐
+**สร้าง CMS/collection/field/items/อัพรูป** → โหลด `webflow-cms.md` ⭐⭐⭐
 **เขียน copy/meta/title/ad ที่ขาย** → โหลด `cro-copywriting.md` ⭐
 **เขียน content ให้ VXB (ทุกประเภท)** → โหลด `vxb-voice.md` ⭐⭐⭐⭐ ก่อนเสมอ!
 **พุต/deploy Railway** → โหลด `railway-deploy.md`
@@ -91,6 +95,8 @@
 **แปลง React → Webflow/Relume+MCP** → โหลด `react-to-webflow.md` ⭐⭐
 **งาน batch ซ้ำๆ/parallel/fan-out** → โหลด `parallel-agents.md` ⭐⭐⭐⭐
 **สร้าง DGP proposal/ปิดการขาย/pricing** → โหลด `dgp-proposal.md` ⭐⭐⭐
+**เขียน JS ฝัง Webflow/TOC/scroll spy** → โหลด `webflow-custom-scripts.md` ⭐⭐⭐
+**Smolpix auto-blog/sitemap/SEO** → โหลด `smolpix-autoblog.md` ⭐⭐⭐
 
 ---
 

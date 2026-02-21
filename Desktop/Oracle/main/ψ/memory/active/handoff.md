@@ -1,7 +1,346 @@
 # Session Handoff
 
-**From:** Session 2026-02-11 (GSC Audit + Sitemap Cleanup)
+**From:** Session 2026-02-21 (Smolpix Auto-Blog Bug Fixes + Race Condition)
 **To:** Next Session
+
+---
+
+## 🆕 Session 2026-02-21 — Smolpix Auto-Blog Bug Fixes
+
+### สถานะ: ✅ ALL DEPLOYED TO RAILWAY (cheerful-peace/pixie)
+
+### 1. Race Condition Fix ✅
+- **ปัญหา**: 2 requests พร้อมกัน → บทความซ้ำ 2 ชิ้น (13 วินาทีห่างกัน)
+- **แก้ 3 ชั้น**:
+  1. In-memory mutex (`isProcessing` flag + `finally` unlock)
+  2. Atomic topic lock (PENDING → IN_PROGRESS ด้วย WHERE status='PENDING')
+  3. Daily limit (calendar day Bangkok)
+- **Error recovery**: topic revert to PENDING on failure
+- **ลบซ้ำ**: `cmlvxbjaf000baruapy7a615p` (slug `-1`) ลบจาก DB แล้ว
+
+### 2. Daily Limit Fix ✅
+- **ปัญหา**: rolling 24h window → วันก่อน 17:46 block วันถัดไป 09:00
+- **แก้**: calendar day Bangkok midnight (`toLocaleDateString("en-CA", {timeZone: "Asia/Bangkok"})`)
+
+### 3. Catch-up Window Extended ✅
+- **เดิม**: 3h (ถึง 12:00)
+- **ใหม่**: 5h (ถึง 14:00) → `hoursPastSchedule <= 5`
+
+### 4. SEO Rules 41+42 Enforcement ✅
+- **Rule 41** (code blocks): prompt เข้มขึ้น + Fix 11 inject code block อัตโนมัติ
+- **Rule 42** (brand mentions): prompt strict max 5 + Fix 10 ลด brand mentions อัตโนมัติ
+- **แก้บทความวันนี้**: brand 15→8, code blocks 0→1
+
+### 5. Full Duplicate Audit ✅
+- 31 published articles — ไม่มีซ้ำ
+- 10 PENDING topics พร้อม (topic แรก: "AVIF vs WebP")
+- 0 stuck IN_PROGRESS topics
+- 0 orphan topics
+
+### ไฟล์ที่แก้ (pixie-main)
+```
+src/app/api/cron/auto-publish-topics/route.ts — mutex + atomic lock + error recovery + daily limit + catch-up 5h
+src/lib/auto-blog/content-generation.ts — rules 41+42 strengthened prompts
+src/lib/auto-blog/utils.ts — Fix 10 (brand reduction) + Fix 11 (code block inject)
+```
+
+### Skill File: `ψ/skills/smolpix-autoblog.md` ← อัปเดทแล้ว
+
+---
+
+## Session 2026-02-20 — Smolpix Auto-Blog SEO Overhaul
+
+### สถานะ: ✅ ALL DEPLOYED TO RAILWAY (cheerful-peace/pixie)
+
+### 1. OpenAI → Claude Migration ✅
+- Article gen: Claude Sonnet 4.6 (~$0.08/บทความ)
+- Image prompt + utilities: Claude Haiku 4.5 (~$0.002/บทความ)
+- ประหยัด ~60% จาก OpenAI GPT-4o-mini
+
+### 2. SEO Quality — 43 Rules ✅
+| Rules | รายละเอียด |
+|-------|-----------|
+| 1-25 | Original: 7-section structure + AEO/GEO |
+| 26-29 | Anti-repetition (ห้ามซ้ำ stats/phrases) |
+| 30 | Hook patterns (stat, question, bold claim) |
+| 31-34 | Conversational tone + regional examples |
+| 35-39 | E-E-A-T (data sources, year citations) |
+| 40 | Title ≥50 chars |
+| 41 | Code block ≥1 อัน |
+| 42 | Brand mention ≤5-6 ครั้ง |
+| 43 | Heading format (blank lines before/after) |
+
+### 3. Internal Links Fix ✅
+- **ลบ** `generateAnchorVariants()` — สร้าง anchor แปลกๆ เช่น "Lower Photo", "Top Techniques"
+- **ลบ** 70% random variant replacement logic
+- **ตอนนี้** ใช้ matched keyword เป็น anchor เสมอ → ประโยคอ่านเป็นธรรมชาติ
+- **แก้ 2 บทความเก่า** ใน DB (stripped 7 broken links)
+
+### 4. Email Notifications — Gmail API ✅
+- Primary: Oracle Agent Gmail API (`POST /api/gmail/send`)
+- Fallback: Brevo (ถ้า Gmail ล้มเหลว)
+- ส่งถึง: `vxb.visionxbrain@gmail.com`
+- แก้ 4 ไฟล์: brevo.ts, auto-publish route, signup route, stripe webhook
+
+### 5. Auto-Blog Schedule ✅
+| Setting | Value |
+|---------|-------|
+| Schedule | 09:00 Bangkok daily |
+| Catch-up Fallback | 10:00-12:00 (ถ้า 09:00 พลาด) |
+| Language | English |
+| Pending topics | 10 (was 28, 18 published since 2026-02-11) |
+| autoBlogEnabled | true |
+| Email notification | vxb.visionxbrain@gmail.com |
+
+### 8. Sitemap Auto-Submit to Google Search Console ✅
+| Item | Detail |
+|------|--------|
+| Google SC Property | `sc-domain:smolpix.co` (siteOwner) |
+| Cron ทุก 3 วัน | `0 10 */3 * *` Bangkok via Oracle agent |
+| Event-driven | หลัง auto-publish → trigger Oracle agent |
+| API endpoint | `POST oracle-agent/api/seo/submit-sitemap/smolpix` |
+| Check status | `GET oracle-agent/api/seo/sitemaps?site=sc-domain:smolpix.co` |
+| Debounce | 1 ชม. (ป้องกัน submit ถี่เกิน) |
+| Sitemap URLs | 37 URLs (dynamic จาก DB) |
+| Verified | ✅ Google downloaded sitemap (2026-02-20 14:06) |
+| http:// sitemap เก่า | ลบผ่าน API ไม่ได้ (Google limitation) — ไม่กระทบ |
+
+### Skill File: `ψ/skills/smolpix-autoblog.md` ← สรุปทุกอย่างในไฟล์เดียว
+
+### 6. Catch-up Fallback (ใหม่!) ✅
+```
+09:00 → ลอง publish (ปกติ)
+  ❌ พลาด → catch-up window เปิด
+10:00-12:00 → เช็คทุก 15 นาที
+  มีบทความใน 24h → ข้าม
+  ไม่มี → publish ทันที + log "CATCH-UP: Xh late"
+12:01+ → หมดเวลา catch-up
+```
+
+### 7. First Articles Published ✅
+- "How to Optimize Images for Your Website in 2026" (13:45 Bangkok) — auto
+- "Best Online Image Compression Tools in 2026" (17:46 Bangkok) — test
+- คุณภาพ 7.5-8/10 (vs ม.ค. 5/10) — readTime 13-14 min, 7 FAQs, 6-7 E-E-A-T sources
+
+### ไฟล์ที่แก้ (pixie-main)
+```
+src/lib/auto-blog/content-generation.ts — 43 rules prompt
+src/lib/auto-blog/utils.ts — ลบ generateAnchorVariants, fix anchor logic
+src/lib/brevo.ts — Gmail API primary + Brevo fallback
+src/app/api/cron/auto-publish-topics/route.ts — catch-up fallback + email fix
+src/app/api/auth/signup/route.ts — email condition fix
+src/app/api/stripe/webhook/route.ts — email condition fix
+```
+
+### DB (Railway Postgres)
+```
+Public URL: postgresql://postgres:glTiNRCeTuVUgQTPFdDfJyWsPSgFqMDm@switchback.proxy.rlwy.net:12890/railway
+scheduleHour=9, scheduleMinute=0, autoBlogEnabled=true, language=en
+notificationEmail=vxb.visionxbrain@gmail.com
+28 pending topics remaining (~1 month content)
+```
+
+---
+
+## 🆕 Session 2026-02-20 — API Cost Audit + Feature Flags
+
+### สถานะ: ✅ DEPLOYED TO RAILWAY
+
+### 1. Anthropic API Cost Audit
+- **รวมค่าใช้จ่าย**: $23.23 (2 keys: vision-agi $0.82 + api-visionagi $22.41)
+- **ต่อวัน (ก่อน)**: ~$2.50/day = ~$75/mo
+- **ตัวกินเงินเปล่า**: Autonomous Ideas ($18/mo), API Hunter ($10.5/mo), Lead Finder ($30/mo)
+
+### 2. Feature Flags System — ✅ LIVE
+| Item | Detail |
+|------|--------|
+| Dashboard | `https://oracle-agent-production-546e.up.railway.app/apiset` |
+| Module | `tools/oracle-agent/lib/feature-flags.js` |
+| UI | `tools/oracle-agent/public/apiset.html` |
+| API | `GET /api/features`, `PATCH /api/features/:key` |
+| Persist | `data/feature-flags.json` (survive restart) |
+| Features | 18 toggles แบ่ง 6 categories |
+
+### Disabled by Default:
+- **Autonomous Ideas** (OFF) — ประหยัด ~$18/mo
+- **API Hunter** (OFF) — ประหยัด ~$10.5/mo
+
+### หลังปิด 2 ตัว:
+- **ต่อวัน**: ~$1.55/day = ~$46.5/mo (ลด 38%)
+- **ตัวกินเงินเยอะสุดที่เหลือ**: Lead Finder $1.00/day ($30/mo = 65% ของ cost)
+
+### Cron Jobs ทั้งหมด (18 ตัว) เช็ค feature flag แล้ว:
+- Core: Heartbeat, Morning Briefing, Evening Summary, LINE/Terminal Summarizer
+- Hotel: Daily Summary, Check-out Reminder, Hourly Revenue
+- Sales: Lead Finder, Lead Reply Check
+- SEO: Keyword Alert
+- Weekly: Forbes, Hospitality Trends, Revenue, SEO Report
+- Experimental: Autonomous Ideas (OFF), API Hunter (OFF), Self-Reflection
+
+### ไฟล์ที่สร้าง/แก้:
+- `lib/feature-flags.js` (NEW) — module เก็บ state
+- `public/apiset.html` (NEW) — dashboard UI
+- `server.js` — import feature flags + API routes + ทุก cron เช็ค flag
+
+---
+
+## Session 2026-02-19 — Prama & Will Group
+
+---
+
+## 🆕 Session 2026-02-19 — Prama & Will Group
+
+### สถานะ: ✅ ALL COMPLETE & LIVE
+
+**Site:** Prama & Will Group
+**Site ID:** `698abe8e6a8ba3cee537b884`
+**Locale IDs:** en-TH `6996d0546e13990dbfe7b17d` | th-TH `6996df47ac608388f91cc7b9`
+
+---
+
+### 1. CMS Thai Localization — ✅ COMPLETE
+
+**CMS Collections สร้างใหม่ (8 collections):**
+- Blog Posts, Categories, Departments, Job Openings, Team Members, Success Stories, Services, Legal Pages
+
+**TOC Engine:** Custom JS script ฝังผ่าน Custom Code (Before </body>) — scroll spy + sidebar nav อัตโนมัติ
+
+**Thai Localization (ทั้งหมด):**
+
+| ประเภท | จำนวน | สถานะ |
+|--------|--------|--------|
+| Pages (static) | 11 หน้า | ✅ |
+| Components | 4 (CTA, Footer, Contact Form, CMS Navbar) | ✅ |
+| CMS Templates | 7 (Blog, Services, Legal, Success Stories, etc.) | ✅ |
+| Categories | 6/6 items | ✅ |
+| Departments | 4/4 items | ✅ |
+| Team Members | 12/12 items | ✅ |
+| Job Openings | 4/4 items (metadata + body-content) | ✅ |
+| Services | 6/6 items (metadata + body-content) | ✅ |
+| Blog Posts | 6/6 items (metadata + body-content) | ✅ |
+| Success Stories | 6/6 items (metadata + body-content) | ✅ |
+| Legal Pages | 3/3 items | ⚠️ Skipped — API 404 (locale ไม่รองรับ) |
+
+**Publish:** ✅ Published to Webflow subdomain (2026-02-19) — publish 2 รอบ
+
+### 2. Cookie Consent PDPA — ✅ LIVE ทุกหน้า
+
+| Item | Detail |
+|------|--------|
+| ระบบ | PDPA/GDPR compliant cookie consent (648 บรรทัด) |
+| ภาษา | **ไทยทั้งหมด** — แปลจาก EN ครบทุกจุด |
+| Architecture | MCP loader (2KB inline, header) → External JS จาก Railway |
+| MCP Script | `cookie_consent_pdpa` v1.0.0 — applied site-wide header |
+| External JS | `oracle-agent-production-546e.up.railway.app/scripts/cookie-consent.js` |
+| Local file | `tools/oracle-agent/public/scripts/cookie-consent.js` |
+| Deploy | ✅ Railway deployed (2026-02-19) |
+| Features | Banner + Modal + FAB + 4 categories + script blocking (`data-cookie-category`) |
+| Style | Prama CI: Navy #002248, Gold #FAA62A, Inter font, rounded buttons |
+
+**UI ภาษาไทยที่แปล:**
+- Banner: เว็บไซต์นี้ใช้คุกกี้ / ตั้งค่า / ปฏิเสธ / ยอมรับทั้งหมด
+- Modal: ตั้งค่าความเป็นส่วนตัว / PDPA / ปฏิเสธทั้งหมด / ยอมรับทั้งหมด
+- Categories: คุกกี้ที่จำเป็น (เปิดใช้งานเสมอ) / คุกกี้วิเคราะห์ / คุกกี้การตลาด / คุกกี้ปรับแต่ง
+- Footer: ยกเลิก / บันทึกการตั้งค่า
+- FAB: ตั้งค่าคุกกี้
+
+### บทเรียน
+```
+1. API Verify จับ bug ได้! — 18 name fields หลุดเป็นอังกฤษ (Crash-Proof Protocol ช่วย)
+2. MCP inline script จำกัด 2000 chars → ใช้ loader pattern โหลด external JS จาก Railway
+3. Cookie consent ต้องแปลไทยทุกจุด — banner, modal, FAB, categories, aria-labels
+```
+
+### หมายเหตุ
+- Thai locale content ถูกบันทึกแล้ว แต่จะแสดงผลเมื่อ client upgrade Webflow plan ที่รองรับ locale publishing
+- Legal Pages (Privacy, Terms, Cookie) ไม่สามารถแปลผ่าน API ได้ — collection อาจถูกสร้างหลัง locale setup
+- Main Navbar ต้องแปลมือใน Webflow Designer (hardcoded)
+- Skill files: `webflow-cms.md`, `webflow-custom-scripts.md`
+
+### Collection IDs (Prama)
+```
+Blog Posts:      6996d0546e13990dbfe7b196
+Categories:      6996d4c6c91472327f24e67a
+Departments:     6996d58c4e4d254025077faa
+Job Openings:    6996d58f1dae99324c789e10
+Team Members:    6996d81f5f9fd143a3f96646
+Success Stories: 6996d9895d63bce26c122e0e
+Services:        6996db3024509c77110291f5
+Legal Pages:     6996dfe6f8a55a33615ac856
+```
+
+---
+
+## Session 2026-02-17 — Billing System Build
+
+### 4. สร้างระบบ Billing System ครบ
+```
+✅ Task #1: Data Layer — customers.json + documents.json
+✅ Task #2: template-rc.html (ใบเสร็จรับเงิน สีเขียว) — มีอยู่แล้ว
+✅ Task #3: API Endpoints — lib/billing.js (625 บรรทัด)
+   - Customers CRUD: GET/POST/PUT /api/customers
+   - Documents: GET /api/documents, GET /api/documents/:id
+   - Create: POST /api/documents/create (QT/BL/RC)
+   - PDF: POST /api/documents/generate-pdf, GET /api/documents/preview/:id
+   - Send: POST /api/documents/send-email (attachments, default email body)
+   - Mark Paid: POST /api/documents/mark-paid
+   - Revenue: GET /api/documents/revenue
+   - Overdue: GET /api/documents/overdue
+   - Reminder: POST /api/documents/reminder
+   - Static PDF: GET /api/documents/pdf/:number
+✅ Task #4: Document Dashboard (Relume UI)
+   - dashboard-documents/ (Vite + React + Relume + shared components)
+   - Built → public/vision/documents/
+   - URL: /vision/documents/
+   - Features: Revenue KPIs, Overdue Alert, Documents Table, Customers, Preview Modal
+✅ Task #5: ระบบแจ้งเตือนครบกำหนด
+   - Cron 09:00 ทุกวัน เช็ค overdue → LINE/Telegram
+   - Dashboard กดส่ง reminder email ได้เลย
+```
+
+### ไฟล์ใหม่ที่สร้าง
+- `tools/oracle-agent/lib/billing.js` — API module
+- `tools/oracle-agent/dashboard-documents/` — React dashboard (7 ไฟล์)
+- `tools/oracle-agent/data/customers.json` — Customer database
+- `tools/oracle-agent/data/documents.json` — Document database
+
+### ไฟล์ที่แก้
+- `tools/oracle-agent/server.js` — import billing, static serve, cron
+- `tools/oracle-agent/dashboard-shared/config/navigation.js` — เพิ่มเมนู "เอกสาร"
+- `tools/oracle-agent/dashboard-shared/components/Icons.jsx` — เพิ่ม BiFileText icon
+
+---
+
+### สิ่งที่ทำก่อนหน้า (session เดียวกัน)
+
+### 1. เปลี่ยนเลขบัญชีธนาคาร
+```
+เก่า: 035-1-82502-2 นาย ธนกฤต ไชยทิพย์ (ไม่ใช้แล้ว)
+ใหม่: 226-3-25037-3 บจก.วิสัยทัศน์ เอ็กซ์ เบรน ✅
+```
+อัพเดท 6 ไฟล์:
+- `ψ/skills/quotation.md` (3 จุด)
+- `tools/quotation/template.html`
+- `tools/quotation/template-bl.html`
+- `tools/quotation/QT2026020002.html`
+- `tools/quotation/BL2026020001.html`
+- `ψ/memory/knowledge/personal-items.md`
+
+### 2. Gen PDF ใหม่ + ส่ง Email ลูกค้าทีดีที
+- Gen PDF ใหม่: QT2026020002.pdf + BL2026020001.pdf (เลขบัญชีใหม่)
+- ไฟล์แนบ: ใช้ `bookbank update.pdf` แทน `bookbank.pdf` เดิม
+- ส่งเทส natiya.nami@gmail.com → OK
+- **ส่งจริง natakorn.s@vssportsthailand.com (คุณณฐกร — ทีดีที เทรดดิ้ง) ✅**
+- Subject: ทีดีที เทรดดิ้ง — ใบเสนอราคา + ใบวางบิลงวดที่ 1 (อัพเดทข้อมูลบัญชีธนาคาร)
+- แนบ: QT, BL, สำเนาบัตร, สมุดบัญชี (ใหม่)
+
+### 3. อัพเดท Skill Files
+- `ψ/skills/quotation.md` — เพิ่มข้อมูลลูกค้าทีดีที + อัพเดท bookbank path + บัญชีใหม่
+
+### บทเรียน
+- natiya.nami@gmail.com = Tar ใช้เทส (ไม่ใช่ลูกค้า!)
+- ลูกค้าจริง ทีดีที = natakorn.s@vssportsthailand.com คุณณฐกร
+- ต้อง search Gmail sent ก่อนส่ง ถ้าไม่แน่ใจอีเมลลูกค้า
 
 ---
 
@@ -51,7 +390,7 @@ Link map:         main/tools/oracle-agent/data/internal-link-map.json (203 pages
 
 ---
 
-## apibooking ↔ checkin Cross-Project (2026-02-09)
+## apibooking ↔ checkin Cross-Project (2026-02-16)
 
 | Item | Detail |
 |------|--------|
@@ -62,6 +401,7 @@ Link map:         main/tools/oracle-agent/data/internal-link-map.json (203 pages
 | Knowledge | `ψ/memory/knowledge/checkin-system.md` section 13 |
 | Features | Batch API, 📱/🖥️ badge + เวลา, auto-refresh 60s, timezone Bangkok |
 | Backlog | gen booking ID + QR code สำหรับ Walk-in, ดู section 13 |
+| **Fix 2026-02-16** | ✅ C10/C11 room mapping สลับกัน — แก้ checkin beds24.ts + mock-data.ts + deployed (`61b3ceb`) |
 
 ---
 
@@ -232,12 +572,15 @@ Ideas:   /api/ideas
 | **Dashboard** | ✅ `https://oracle-agent-production-546e.up.railway.app/vision/email/` |
 | **Costs Page** | ✅ `https://oracle-agent-production-546e.up.railway.app/vision/email/costs/` |
 | **Gmail Sync** | ✅ Auto-sync on startup |
-| **Skill** | `ψ/skills/email-marketing.md` ⭐⭐⭐⭐⭐ (v7) |
+| **Skill** | `ψ/skills/email-marketing.md` ⭐⭐⭐⭐⭐ (v8) |
 | Auto-send | ✅ ENABLED — max 20/day, priority scored |
 | **Cost/mo** | **1,292 THB** ($38) — ลด 79% จากเดิม 6,178 THB |
-| **Geo-filter** | ✅ Thailand bounding box + city name in query (2026-02-10 fix) |
-| **Sanitizer** | ✅ Unicode surrogate fix in claude.js (2026-02-10 fix) |
-| **Real-time Reply** | ✅ Gmail Pub/Sub → auto-detect reply + AI intent + auto-reply calendar slots (2026-02-12) |
+| **SMTP Verify** | ✅ 3-layer: blacklist → MX → SMTP RCPT TO (2026-02-16) |
+| **Auto Audit** | ✅ Reply → classify → interested = auto send audit report (2026-02-16) |
+| **Bounce Fix** | ✅ Detect Outlook/Hotmail/generic + follow-up ไม่ส่งไป bounced (2026-02-16) |
+| **ห้าม ค่ะ** | ✅ ใช้ "ครับ" เท่านั้น ทั้ง cold + follow-up (2026-02-16) |
+| **Reply Domain** | ✅ ค้น reply ด้วย @domain ไม่ใช่แค่ exact email (2026-02-16) |
+| **Dashboard Reply** | ✅ แสดงข้อความตอบกลับ + classification badge (2026-02-16) |
 | **DGP v3** | ✅ Manual DGP proposals sent (2026-02-12) — ดูด้านล่าง |
 | ถัดไป | ย้าย leads.json → DB, A/B test subject lines |
 

@@ -176,6 +176,8 @@ import {
   registerHttpServer
 } from './lib/graceful-shutdown.js';
 
+import featureFlags from './lib/feature-flags.js';
+
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, writeFileSync } from 'fs';
@@ -199,6 +201,30 @@ app.use('/vision/growthstrategy', express.static(join(__dirname, 'public/vision/
 app.use('/vision/analytics', express.static(join(__dirname, 'public/vision/analytics')));
 app.use('/vision/404check', express.static(join(__dirname, 'public/vision/404check')));
 app.use('/vision/documents', express.static(join(__dirname, 'public/vision/documents')));
+// Feature Flags Dashboard
+app.get('/apiset', (req, res) => res.sendFile(join(__dirname, 'public/apiset.html')));
+
+// Feature Flags API
+app.get('/api/features', (req, res) => {
+  res.json({ features: featureFlags.getAll(), summary: featureFlags.getSummary() });
+});
+
+app.patch('/api/features/:key', (req, res) => {
+  const { key } = req.params;
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') return res.status(400).json({ ok: false, error: 'enabled must be boolean' });
+  const result = featureFlags.toggle(key, enabled);
+  if (!result) return res.status(404).json({ ok: false, error: 'Feature not found' });
+  res.json({ ok: true, feature: result, summary: featureFlags.getSummary() });
+});
+
+// Public scripts (Cookie Consent, etc.)
+app.use('/scripts', express.static(join(__dirname, 'public/scripts'), {
+  setHeaders: (res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cache-Control', 'public, max-age=3600');
+  }
+}));
 
 // Billing System — ใบเสนอราคา / ใบวางบิล / ใบเสร็จรับเงิน
 setupBillingRoutes(app, gmailClient);
@@ -3102,9 +3128,9 @@ app.post('/api/seo/inspect', async (req, res) => {
 
 app.get('/api/seo/sitemaps', async (req, res) => {
   try {
-    const siteUrl = config.seo?.siteUrl || 'sc-domain:visionxbrain.com';
+    const siteUrl = req.query.site || config.seo?.siteUrl || 'sc-domain:visionxbrain.com';
     const sitemaps = await searchConsole.listSitemaps(siteUrl);
-    res.json({ success: true, sitemaps });
+    res.json({ success: true, siteUrl, sitemaps });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -3120,9 +3146,20 @@ app.post('/api/seo/submit-sitemap', async (req, res) => {
   }
 });
 
+// Smolpix sitemap submit endpoint (called after auto-publish or manually)
+app.post('/api/seo/submit-sitemap/smolpix', async (req, res) => {
+  try {
+    const reason = req.body?.reason || 'manual-api';
+    const result = await submitSmolpixSitemap(reason);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.post('/api/seo/delete-sitemap', async (req, res) => {
   try {
-    const siteUrl = config.seo?.siteUrl || 'sc-domain:visionxbrain.com';
+    const siteUrl = req.body?.siteUrl || config.seo?.siteUrl || 'sc-domain:visionxbrain.com';
     const sitemapUrl = req.body?.sitemapUrl;
     if (!sitemapUrl) return res.status(400).json({ success: false, error: 'sitemapUrl required' });
     const result = await searchConsole.deleteSitemap(siteUrl, sitemapUrl);
@@ -5206,6 +5243,7 @@ app.post('/api/summarize', async (req, res) => {
 // Morning Briefing - 07:00 Bangkok time
 if (config.autonomy.auto_morning_briefing) {
   cron.schedule(config.schedule.morning_briefing, async () => {
+    if (!featureFlags.isEnabled('morningBriefing')) { console.log('[HEARTBEAT] Morning briefing SKIPPED (disabled)'); return; }
     console.log('[HEARTBEAT] Morning briefing triggered');
     try {
       await autonomousScheduler.triggerBriefing();
@@ -5217,6 +5255,7 @@ if (config.autonomy.auto_morning_briefing) {
 
 // Evening Summary - 18:00 Bangkok time
 cron.schedule(config.schedule.evening_summary, async () => {
+  if (!featureFlags.isEnabled('eveningSummary')) { console.log('[HEARTBEAT] Evening summary SKIPPED (disabled)'); return; }
   console.log('[HEARTBEAT] Evening summary triggered');
   try {
     await autonomousScheduler.triggerSummary();
@@ -5227,6 +5266,7 @@ cron.schedule(config.schedule.evening_summary, async () => {
 
 // Hotel Daily Summary - 08:00 Bangkok time (after morning briefing)
 cron.schedule('0 8 * * *', async () => {
+  if (!featureFlags.isEnabled('hotelDailySummary')) { console.log('[HOTEL] Daily summary SKIPPED (disabled)'); return; }
   console.log('[HOTEL] Daily summary triggered');
   try {
     await hotelNotify.notifyDailySummary();
@@ -5237,6 +5277,7 @@ cron.schedule('0 8 * * *', async () => {
 
 // Check-out Reminders - 09:00 Bangkok time
 cron.schedule('0 9 * * *', async () => {
+  if (!featureFlags.isEnabled('checkoutReminder')) { console.log('[HOTEL] Check-out reminder SKIPPED (disabled)'); return; }
   console.log('[HOTEL] Check-out reminder triggered');
   try {
     const checkOuts = await beds24.getCheckOutsToday();
@@ -5261,8 +5302,8 @@ if (config.autonomy.auto_rank_report) {
 // =============================================================================
 
 // Nightly LINE Session Summarization - 23:00 Bangkok time
-// Uses Claude Haiku for cost-effective summarization (~$0.30/month)
 cron.schedule('0 23 * * *', async () => {
+  if (!featureFlags.isEnabled('lineSummarizer')) { console.log('[SUMMARIZER] LINE summarization SKIPPED (disabled)'); return; }
   console.log('[SUMMARIZER] Nightly LINE session summarization triggered');
   logSystemEvent('system', 'summarization_start', { type: 'line' });
 
@@ -5284,8 +5325,8 @@ cron.schedule('0 23 * * *', async () => {
 }, { timezone: config.agent.timezone });
 
 // Nightly Terminal Session Summarization - 23:30 Bangkok time
-// Summarizes Claude Code terminal sessions
 cron.schedule('30 23 * * *', async () => {
+  if (!featureFlags.isEnabled('terminalSummarizer')) { console.log('[SUMMARIZER] Terminal summarization SKIPPED (disabled)'); return; }
   console.log('[SUMMARIZER] Nightly terminal session summarization triggered');
   logSystemEvent('system', 'summarization_start', { type: 'terminal' });
 
@@ -5312,7 +5353,8 @@ cron.schedule('30 23 * * *', async () => {
 
 // Daily reflection at 23:45 Bangkok time
 cron.schedule('45 23 * * *', async () => {
-  console.log('[SELF-AWARENESS] 🪞 Daily Self-Reflection triggered');
+  if (!featureFlags.isEnabled('selfReflection')) { console.log('[SELF-AWARENESS] Self-Reflection SKIPPED (disabled)'); return; }
+  console.log('[SELF-AWARENESS] Daily Self-Reflection triggered');
   logSystemEvent('system', 'self_reflection_start', {});
 
   try {
@@ -5331,12 +5373,13 @@ cron.schedule('45 23 * * *', async () => {
 }, { timezone: config.agent.timezone });
 
 // =============================================================================
-// AUTONOMOUS IDEA ENGINE - Oracle คิดเอง ทำเอง (ทุก 6 ชั่วโมง)
+// AUTONOMOUS IDEA ENGINE - ควบคุมผ่าน Feature Flags (/apiset)
 // =============================================================================
 
 // Think every 6 hours (0:00, 6:00, 12:00, 18:00)
 cron.schedule('0 0,6,12,18 * * *', async () => {
-  console.log('[IDEAS] 🧠 Autonomous Thinking Cycle triggered (every 6 hours)');
+  if (!featureFlags.isEnabled('autonomousIdeas')) { console.log('[IDEAS] Autonomous Ideas SKIPPED (disabled)'); return; }
+  console.log('[IDEAS] Autonomous Thinking Cycle triggered (every 6 hours)');
   logSystemEvent('system', 'ideas_thinking_start', {});
 
   try {
@@ -5355,7 +5398,8 @@ cron.schedule('0 0,6,12,18 * * *', async () => {
 
 // Run Ideas immediately on server start (after 30 seconds delay)
 setTimeout(async () => {
-  console.log('[IDEAS] 🚀 Running initial thinking cycle on startup...');
+  if (!featureFlags.isEnabled('autonomousIdeas')) { console.log('[IDEAS] Startup thinking SKIPPED (disabled)'); return; }
+  console.log('[IDEAS] Running initial thinking cycle on startup...');
   try {
     const result = await autonomousIdeas.runThinkingCycle(config);
     console.log('[IDEAS] Startup thinking result:', result.success ? 'success' : 'failed');
@@ -5365,14 +5409,15 @@ setTimeout(async () => {
   } catch (error) {
     console.error('[IDEAS] Startup thinking error:', error.message);
   }
-}, 30000); // 30 seconds after startup
+}, 30000);
 
 // =============================================================================
 // FORBES WEEKLY SUMMARY - สรุปข่าว Forbes ทุกวันจันทร์ 09:00
 // =============================================================================
 
 cron.schedule(config.schedule.forbes_summary || '0 9 * * 1', async () => {
-  console.log('[FORBES] 📰 Weekly Forbes Summary triggered');
+  if (!featureFlags.isEnabled('forbesWeekly')) { console.log('[FORBES] Forbes Weekly SKIPPED (disabled)'); return; }
+  console.log('[FORBES] Weekly Forbes Summary triggered');
   logSystemEvent('system', 'forbes_summary_start', {});
 
   try {
@@ -5394,7 +5439,8 @@ cron.schedule(config.schedule.forbes_summary || '0 9 * * 1', async () => {
 // =============================================================================
 
 cron.schedule(config.schedule.hospitality_trends || '30 9 * * 1', async () => {
-  console.log('[HOSP] 🏨 Weekly Hospitality Trends triggered');
+  if (!featureFlags.isEnabled('hospitalityTrends')) { console.log('[HOSP] Hospitality Trends SKIPPED (disabled)'); return; }
+  console.log('[HOSP] Weekly Hospitality Trends triggered');
   logSystemEvent('system', 'hospitality_trends_start', {});
 
   try {
@@ -5416,7 +5462,8 @@ cron.schedule(config.schedule.hospitality_trends || '30 9 * * 1', async () => {
 // =============================================================================
 
 cron.schedule(config.schedule.weekly_revenue || '0 10 * * 1', async () => {
-  console.log('[REVENUE] 📊 Weekly Revenue Report triggered');
+  if (!featureFlags.isEnabled('weeklyRevenue')) { console.log('[REVENUE] Weekly Revenue SKIPPED (disabled)'); return; }
+  console.log('[REVENUE] Weekly Revenue Report triggered');
   logSystemEvent('system', 'weekly_revenue_start', {});
 
   try {
@@ -5438,7 +5485,8 @@ cron.schedule(config.schedule.weekly_revenue || '0 10 * * 1', async () => {
 // =============================================================================
 
 cron.schedule(config.schedule.seo_weekly_report || '30 10 * * 1', async () => {
-  console.log('[SEO] 🔍 Weekly SEO Report triggered');
+  if (!featureFlags.isEnabled('seoWeeklyReport')) { console.log('[SEO] SEO Weekly Report SKIPPED (disabled)'); return; }
+  console.log('[SEO] Weekly SEO Report triggered');
   logSystemEvent('system', 'seo_weekly_report_start', {});
 
   try {
@@ -5464,7 +5512,8 @@ cron.schedule(config.schedule.seo_weekly_report || '30 10 * * 1', async () => {
 // =============================================================================
 
 cron.schedule(config.schedule.seo_keyword_alert || '0 8 * * *', async () => {
-  console.log('[SEO] 🔔 Daily Keyword Alert Check triggered');
+  if (!featureFlags.isEnabled('seoKeywordAlert')) { console.log('[SEO] Keyword Alert SKIPPED (disabled)'); return; }
+  console.log('[SEO] Daily Keyword Alert Check triggered');
   logSystemEvent('system', 'seo_keyword_alert_start', {});
 
   try {
@@ -5513,12 +5562,42 @@ cron.schedule('0 6 * * 1', async () => {
 }, { timezone: config.agent.timezone });
 
 // =============================================================================
-// API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส (ทุก 2 ชม.)
+// SMOLPIX - Sitemap Submit (Every 3 days + Event-Driven)
+// =============================================================================
+
+let lastSmolpixSitemapSubmit = 0;
+
+async function submitSmolpixSitemap(reason = 'unknown') {
+  const now = Date.now();
+  if (now - lastSmolpixSitemapSubmit < SITEMAP_DEBOUNCE_MS) {
+    console.log(`[SMOLPIX-SEO] Sitemap submit skipped (debounce) — last submit ${Math.round((now - lastSmolpixSitemapSubmit) / 60000)}m ago, reason: ${reason}`);
+    return { success: false, skipped: true, reason: 'debounce' };
+  }
+  try {
+    const result = await searchConsole.submitSitemap('sc-domain:smolpix.co', 'https://smolpix.co/sitemap.xml');
+    lastSmolpixSitemapSubmit = now;
+    console.log(`[SMOLPIX-SEO] Sitemap submitted — reason: ${reason}, result: ${result.success ? 'OK' : 'failed'}`);
+    return result;
+  } catch (error) {
+    console.error(`[SMOLPIX-SEO] Sitemap submit error (${reason}):`, error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+// Every 3 days at 10:00 Bangkok — auto submit smolpix.co sitemap
+cron.schedule('0 10 */3 * *', async () => {
+  console.log('[SMOLPIX-SEO] 🗺️ Smolpix Sitemap Submit (every 3 days)');
+  await submitSmolpixSitemap('3day-cron');
+}, { timezone: config.agent.timezone });
+
+// =============================================================================
+// API HUNTER - ควบคุมผ่าน Feature Flags (/apiset)
 // =============================================================================
 
 // Hunt every 2 hours during active hours (9:00-21:00)
 cron.schedule('0 9,11,13,15,17,19,21 * * *', async () => {
-  console.log('[API-HUNTER] 🔍 API Hunt Cycle triggered');
+  if (!featureFlags.isEnabled('apiHunter')) { console.log('[API-HUNTER] API Hunter SKIPPED (disabled)'); return; }
+  console.log('[API-HUNTER] API Hunt Cycle triggered');
   logSystemEvent('system', 'api_hunt_start', {});
 
   try {
@@ -5530,19 +5609,13 @@ cron.schedule('0 9,11,13,15,17,19,21 * * *', async () => {
       opportunities: result.opportunities
     });
 
-    // Notify Tars if found good opportunity
     if (result.bestOpportunity && result.bestOpportunity.analysis?.score?.total >= 70) {
       const opp = result.bestOpportunity;
-      let message = `🔍 **API Hunter พบโอกาส!**\n\n`;
-      message += `API: ${opp.api}\n`;
-      message += `Score: ${opp.analysis.score.total}/100\n`;
-      message += `Recommendation: ${opp.analysis.recommendation}\n\n`;
+      let message = `API Hunter พบโอกาส!\n\nAPI: ${opp.api}\nScore: ${opp.analysis.score.total}/100\nRecommendation: ${opp.analysis.recommendation}\n`;
       if (opp.analysis.projectIdea) {
-        message += `💡 Project Idea: ${opp.analysis.projectIdea.name}\n`;
-        message += `${opp.analysis.projectIdea.description}\n`;
+        message += `Project Idea: ${opp.analysis.projectIdea.name}\n${opp.analysis.projectIdea.description}\n`;
       }
       message += `\nต้องการให้ทำไหมครับ?`;
-
       await gateway.notifyOwner(message);
     }
   } catch (error) {
@@ -5557,8 +5630,9 @@ cron.schedule('0 9,11,13,15,17,19,21 * * *', async () => {
 
 // Send revenue report every hour during active hours (8:00-21:00)
 cron.schedule('0 8-21 * * *', async () => {
+  if (!featureFlags.isEnabled('hourlyRevenue')) { console.log('[REVENUE] Hourly Revenue SKIPPED (disabled)'); return; }
   const hour = new Date().getHours();
-  console.log(`[REVENUE] 📊 Hourly Revenue Report triggered at ${hour}:00`);
+  console.log(`[REVENUE] Hourly Revenue Report triggered at ${hour}:00`);
   logSystemEvent('system', 'revenue_report_start', { hour });
 
   try {
@@ -5596,29 +5670,32 @@ cron.schedule('0 8-21 * * *', async () => {
 // =============================================================================
 
 cron.schedule('0 10 * * *', async () => {
-  console.log('[LEAD-FINDER] ⏰ Morning lead search CRON at', new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }));
+  if (!featureFlags.isEnabled('leadFinder')) { console.log('[LEAD-FINDER] Morning lead search SKIPPED (disabled)'); return; }
+  console.log('[LEAD-FINDER] Morning lead search CRON at', new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }));
   try {
     const result = await leadFinder.runDaily();
-    console.log('[LEAD-FINDER] ✅ Morning result:', JSON.stringify(result));
+    console.log('[LEAD-FINDER] Morning result:', JSON.stringify(result));
   } catch (error) {
-    console.error('[LEAD-FINDER] ❌ Morning run error:', error.message, error.stack);
+    console.error('[LEAD-FINDER] Morning run error:', error.message, error.stack);
   }
 }, { timezone: config.agent.timezone });
 
-// Lead Finder: Afternoon run (15:00) — ใช้ RapidAPI Pro quota ให้คุ้ม
+// Lead Finder: Afternoon run (15:00)
 cron.schedule('0 15 * * *', async () => {
-  console.log('[LEAD-FINDER] ⏰ Afternoon lead search CRON at', new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }));
+  if (!featureFlags.isEnabled('leadFinder')) { console.log('[LEAD-FINDER] Afternoon lead search SKIPPED (disabled)'); return; }
+  console.log('[LEAD-FINDER] Afternoon lead search CRON at', new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }));
   try {
     const result = await leadFinder.runDaily();
-    console.log('[LEAD-FINDER] ✅ Afternoon result:', JSON.stringify(result));
+    console.log('[LEAD-FINDER] Afternoon result:', JSON.stringify(result));
   } catch (error) {
-    console.error('[LEAD-FINDER] ❌ Afternoon run error:', error.message, error.stack);
+    console.error('[LEAD-FINDER] Afternoon run error:', error.message, error.stack);
   }
 }, { timezone: config.agent.timezone });
 
 // Lead Finder: Check replies (ทุก 3 ชม. ระหว่าง 9:00-18:00)
 cron.schedule('0 9,12,15,18 * * *', async () => {
-  console.log('[LEAD-FINDER] 🔍 Reply check CRON TRIGGERED at', new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }));
+  if (!featureFlags.isEnabled('leadReplyCheck')) { console.log('[LEAD-FINDER] Reply check SKIPPED (disabled)'); return; }
+  console.log('[LEAD-FINDER] Reply check CRON at', new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }));
   try {
     await leadFinder.checkReplies();
   } catch (error) {
@@ -7235,7 +7312,7 @@ const server = app.listen(PORT, async () => {
   console.log('[CLAUDE] Failover notification callback configured');
 
   // Initialize Heartbeat System (Phase 4)
-  if (config.heartbeat?.enabled) {
+  if (config.heartbeat?.enabled && featureFlags.isEnabled('heartbeat')) {
     heartbeatManager = new HeartbeatManager(config.heartbeat);
 
     // Set notification callback to hotel team (owner + subscribers)
