@@ -82,12 +82,17 @@ import parcelWatchlist from './lib/parcel-watchlist.js';
 import realtimeContext from './lib/realtime-context.js';
 import autonomousLoop from './lib/autonomous-loop.js';
 import leadFinder from './lib/lead-finder.js';
-import { initLeadsDB } from './lib/db-leads.js';
+import { initLeadsDB, saveLead as dbSaveLead, loadLeads as dbLoadLeads, saveLeads as dbSaveLeads } from './lib/db-leads.js';
 import imageGen from './lib/image-gen.js';
 import autonomy from './lib/autonomy.js';
 import hotelNotify from './lib/hotel-notifications.js';
 import checker404 from './lib/404-checker.js';
 import leadReplyHandler from './lib/lead-reply-handler.js';
+import seoAudit from './lib/seo-audit.js';
+import seoSubscription from './lib/seo-subscription.js';
+import clairifyCredits from './lib/clairify-credits.js';
+import emailNurture from './lib/email-nurture.js';
+import upwork from './lib/upwork.js';
 
 // Phase 5.3: Tier 1-3 OpenClaw Features
 import typingIndicators from './lib/typing-indicators.js';
@@ -139,6 +144,9 @@ import weeklyRevenue from './lib/weekly-revenue.js';
 
 // Phase 12: SEO Auto-Optimize Engine
 import seoEngine from './lib/seo-engine.js';
+
+// Phase 13: Backlink Engine — Auto backlink building
+import backlinkEngine from './lib/backlink-engine.js';
 
 // Phase 9: Unified Memory & Practical AGI
 import memoryApiRouter from './lib/memory-api.js';
@@ -3195,6 +3203,120 @@ app.post('/api/seo/batch-inspect', async (req, res) => {
   }
 });
 
+// Request indexing for a single URL
+app.post('/api/seo/request-indexing', async (req, res) => {
+  try {
+    const url = req.body?.url;
+    if (!url) return res.status(400).json({ success: false, error: 'url required' });
+    const result = await searchConsole.requestIndexing(url);
+    res.json({ success: true, url, result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Batch request indexing for multiple URLs
+app.post('/api/seo/batch-request-indexing', async (req, res) => {
+  try {
+    const urls = req.body?.urls;
+    if (!urls || !Array.isArray(urls)) return res.status(400).json({ success: false, error: 'urls array required' });
+    const results = await searchConsole.batchRequestIndexing(urls, 500);
+    res.json({ success: true, ...results });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =============================================================================
+// BACKLINK ENGINE — Auto Backlink Building API
+// =============================================================================
+
+// Get backlink engine stats
+app.get('/api/backlinks/stats', (req, res) => {
+  res.json(backlinkEngine.getStats());
+});
+
+// Get outreach log
+app.get('/api/backlinks/outreach', (req, res) => {
+  res.json({ outreach: backlinkEngine.getOutreachLog() });
+});
+
+// Get syndication log
+app.get('/api/backlinks/syndication', (req, res) => {
+  res.json({ syndicated: backlinkEngine.getSyndicationLog() });
+});
+
+// Manual trigger: syndication
+app.post('/api/backlinks/syndicate', async (req, res) => {
+  console.log('[BACKLINK] Manual syndication triggered');
+  try {
+    const result = await backlinkEngine.runSyndication();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Manual trigger: outreach
+app.post('/api/backlinks/outreach', async (req, res) => {
+  console.log('[BACKLINK] Manual outreach triggered');
+  try {
+    const result = await backlinkEngine.runOutreach();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Manual trigger: broken link finder
+app.post('/api/backlinks/broken-links', async (req, res) => {
+  console.log('[BACKLINK] Manual broken link finder triggered');
+  try {
+    const result = await backlinkEngine.runBrokenLinkFinder();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Manual trigger: monitor
+app.post('/api/backlinks/monitor', async (req, res) => {
+  console.log('[BACKLINK] Manual monitor triggered');
+  try {
+    const result = await backlinkEngine.runMonitor(searchConsole);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Manual trigger: follow-up
+app.post('/api/backlinks/follow-up', async (req, res) => {
+  console.log('[BACKLINK] Manual follow-up triggered');
+  try {
+    const result = await backlinkEngine.runFollowUp();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Record a backlink manually
+app.post('/api/backlinks/record', (req, res) => {
+  const { url, source, type } = req.body;
+  if (!url || !source) return res.status(400).json({ error: 'url and source required' });
+  backlinkEngine.recordBacklink(url, source, type || 'manual');
+  res.json({ success: true });
+});
+
+// Mark outreach as replied
+app.post('/api/backlinks/outreach/reply', (req, res) => {
+  const { domain, status } = req.body;
+  if (!domain) return res.status(400).json({ error: 'domain required' });
+  backlinkEngine.markOutreachReplied(domain, status || 'replied');
+  res.json({ success: true });
+});
+
 // =============================================================================
 // API HUNTER - หา API, ทดสอบ, วิเคราะห์โอกาส
 // =============================================================================
@@ -5508,6 +5630,34 @@ cron.schedule(config.schedule.seo_weekly_report || '30 10 * * 1', async () => {
 }, { timezone: config.agent.timezone });
 
 // =============================================================================
+// SEO Subscription — Monthly Audit Cron (1st of month, 10:00 BKK)
+// =============================================================================
+
+cron.schedule('0 10 1 * *', async () => {
+  console.log('[SEO-SUB] Monthly subscription audit triggered');
+  try {
+    const results = await seoSubscription.runAllMonthlyAudits();
+    console.log(`[SEO-SUB] Completed: ${results.success}/${results.total} audits`);
+    if (results.total > 0) {
+      await gateway.notifyOwner(`📊 Monthly SEO Subscription Audit\nRun: ${results.success}/${results.total}\nFailed: ${results.failed}`);
+    }
+  } catch (e) {
+    console.error('[SEO-SUB] Cron error:', e.message);
+  }
+}, { timezone: config.agent.timezone });
+
+// Email Nurture — Process queue daily at 11:00 Bangkok time
+cron.schedule('0 11 * * *', async () => {
+  try {
+    console.log('[NURTURE] Daily queue processing...');
+    const results = await emailNurture.processNurtureQueue();
+    console.log(`[NURTURE] Done: ${results.sent} sent, ${results.skipped} skipped, ${results.errors || 0} errors`);
+  } catch (e) {
+    console.error('[NURTURE] Cron error:', e.message);
+  }
+}, { timezone: config.agent.timezone });
+
+// =============================================================================
 // SEO ENGINE - Daily Keyword Alert (ทุกวัน 08:00)
 // =============================================================================
 
@@ -5700,6 +5850,70 @@ cron.schedule('0 9,12,15,18 * * *', async () => {
     await leadFinder.checkReplies();
   } catch (error) {
     console.error('[LEAD-FINDER] Reply check error:', error.message);
+  }
+}, { timezone: config.agent.timezone });
+
+// =============================================================================
+// BACKLINK ENGINE — Auto Backlink Building (Phase 13)
+// =============================================================================
+
+// Syndication: จันทร์ + พฤหัสบดี 11:00 — แปลบทความ → Dev.to/Medium
+cron.schedule('0 11 * * 1,4', async () => {
+  if (!featureFlags.isEnabled('backlinkSyndication')) { console.log('[BACKLINK] Syndication SKIPPED (disabled)'); return; }
+  console.log('[BACKLINK] Content Syndication triggered');
+  try {
+    const result = await backlinkEngine.runSyndication();
+    console.log('[BACKLINK] Syndication result:', JSON.stringify(result));
+  } catch (error) {
+    console.error('[BACKLINK] Syndication error:', error.message);
+  }
+}, { timezone: config.agent.timezone });
+
+// Outreach: อังคาร + ศุกร์ 14:00 — หา roundup articles → pitch
+cron.schedule('0 14 * * 2,5', async () => {
+  if (!featureFlags.isEnabled('backlinkOutreach')) { console.log('[BACKLINK] Outreach SKIPPED (disabled)'); return; }
+  console.log('[BACKLINK] Roundup Outreach triggered');
+  try {
+    const result = await backlinkEngine.runOutreach();
+    console.log('[BACKLINK] Outreach result:', JSON.stringify(result));
+  } catch (error) {
+    console.error('[BACKLINK] Outreach error:', error.message);
+  }
+}, { timezone: config.agent.timezone });
+
+// Broken Link: พุธ 14:00 — หาหน้าที่มี 404 → เสนอ VXB
+cron.schedule('0 14 * * 3', async () => {
+  if (!featureFlags.isEnabled('backlinkBrokenLink')) { console.log('[BACKLINK] Broken Link SKIPPED (disabled)'); return; }
+  console.log('[BACKLINK] Broken Link Finder triggered');
+  try {
+    const result = await backlinkEngine.runBrokenLinkFinder();
+    console.log('[BACKLINK] Broken Link result:', JSON.stringify(result));
+  } catch (error) {
+    console.error('[BACKLINK] Broken Link error:', error.message);
+  }
+}, { timezone: config.agent.timezone });
+
+// Follow-up: พฤหัสบดี 10:00 — follow up outreach ที่ส่งไป 5+ วัน
+cron.schedule('0 10 * * 4', async () => {
+  if (!featureFlags.isEnabled('backlinkOutreach')) { console.log('[BACKLINK] Follow-up SKIPPED (disabled)'); return; }
+  console.log('[BACKLINK] Outreach Follow-up triggered');
+  try {
+    const result = await backlinkEngine.runFollowUp();
+    console.log('[BACKLINK] Follow-up result:', JSON.stringify(result));
+  } catch (error) {
+    console.error('[BACKLINK] Follow-up error:', error.message);
+  }
+}, { timezone: config.agent.timezone });
+
+// Monitor: อาทิตย์ 10:00 — weekly backlink report
+cron.schedule('0 10 * * 0', async () => {
+  if (!featureFlags.isEnabled('backlinkMonitor')) { console.log('[BACKLINK] Monitor SKIPPED (disabled)'); return; }
+  console.log('[BACKLINK] Weekly Monitor triggered');
+  try {
+    const result = await backlinkEngine.runMonitor(searchConsole);
+    console.log('[BACKLINK] Monitor result:', JSON.stringify(result));
+  } catch (error) {
+    console.error('[BACKLINK] Monitor error:', error.message);
   }
 }, { timezone: config.agent.timezone });
 
@@ -6403,7 +6617,7 @@ const DGP_PRICING_HTML = `
 
 const DGP_PROMO_HTML = `
   <p style="font-size:14px;color:#444;margin:0 0 8px;">ผมกำลังขยายบริการนี้ อยากได้ลูกค้ากลุ่มแรกที่ใช้งานจริง เลยให้ราคาต่ำสุดที่จะให้ได้ เงื่อนไขเดียว ถ้าผลงานออกมาดีตามเป้า ช่วยรีวิวให้ผมสั้นๆ แค่นั้น ไม่พอใจก็ไม่ต้องรีวิว ไม่มีข้อผูกมัด</p>
-  <p style="font-size:12px;color:#999;margin:0 0 24px;">* ค่า hosting จ่ายตรงกับ Webflow: ~700-800 บาท/เดือน | เว็บหลายภาษา ค่าระบบเพิ่ม 350 บาท/เดือน จ่ายตรงกับ Webflow</p>
+  <p style="font-size:12px;color:#999;margin:0 0 24px;">* ค่า hosting จ่ายตรงกับ Webflow: ~900 บาท/เดือน (29 USD) | เว็บหลายภาษา ค่าระบบเพิ่ม 350 บาท/เดือน จ่ายตรงกับ Webflow</p>
   <p style="font-size:14px;color:#444;margin:0 0 8px;"><strong>ไม่มีสัญญาผูกมัด</strong> ยกเลิกเมื่อไหร่ก็ได้ สิ่งที่ได้ไปแล้วไม่หายไปไหน Landing Page ยังใช้ต่อได้ บทความทั้งหมดยังดึง traffic ต่อ</p>
   <p style="font-size:14px;color:#444;margin:0 0 24px;">ถ้าวันนึงยิง Ads ด้วย เว็บที่โหลดเร็วและ convert สูง Google ให้ Quality Score สูง ค่าคลิกถูกลง 20-30% แล้วเอา data จาก SEO ที่สะสมมาใช้ได้เลย</p>`;
 
@@ -6836,6 +7050,598 @@ app.post('/api/leads/add-domain', (req, res) => {
   res.json({ success: true, domain, industry });
 });
 
+// ============================================================
+// SEO Audit Tool — Public API (Task #67)
+// ============================================================
+
+// Rate limiting: 5 audits per IP per hour + 5 per email per hour
+const auditRateLimit = new Map();
+function checkAuditRateLimit(key) {
+  const now = Date.now();
+  const k = key || 'unknown';
+  const entry = auditRateLimit.get(k) || { count: 0, resetAt: now + 3600000 };
+  if (now > entry.resetAt) { entry.count = 0; entry.resetAt = now + 3600000; }
+  entry.count++;
+  auditRateLimit.set(k, entry);
+  return entry.count <= 5;
+}
+
+// POST /api/audit/analyze — Run audit on URL
+app.post('/api/audit/analyze', async (req, res) => {
+  try {
+    const { url, email, apiKey } = req.body;
+    if (!url) return res.status(400).json({ error: 'url is required' });
+
+    // Email required + validation
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'Email is required', errorTh: 'กรุณาใส่อีเมล' });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!emailRegex.test(email.trim())) {
+      return res.status(400).json({ error: 'Invalid email', errorTh: 'อีเมลไม่ถูกต้อง' });
+    }
+
+    // Step 1: Block disposable/spamtrap emails BEFORE consuming rate limit
+    try {
+      const { verifyEmail: checkEmail } = await import('./lib/email-verifier.js');
+      const emailCheck = await checkEmail(email.trim());
+      const hardBlock = ['disposable', 'spamtrap'];
+      if (hardBlock.includes(emailCheck.status)) {
+        return res.status(400).json({
+          error: `Email rejected: ${emailCheck.status}`,
+          errorTh: 'ไม่รับอีเมลชั่วคราว กรุณาใช้อีเมลจริง',
+          code: 'invalid-email',
+        });
+      }
+    } catch (verifyErr) {
+      console.error('[AUDIT] Email verify error (non-blocking):', verifyErr.message);
+    }
+
+    // Step 2: Check API key (paid users bypass rate limit)
+    let creditResult = null;
+    if (apiKey) {
+      creditResult = clairifyCredits.useCredit(apiKey);
+      if (!creditResult.valid) {
+        return res.status(403).json({
+          error: creditResult.reason === 'no-credits' ? 'Credits exhausted' : 'Invalid API key',
+          errorTh: creditResult.reason === 'no-credits' ? 'เครดิตหมดแล้ว กรุณาซื้อเพิ่ม' : 'API key ไม่ถูกต้อง',
+          code: creditResult.reason,
+        });
+      }
+    } else {
+      // Step 3: Free tier — rate limit per IP + per email
+      const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
+      const emailKey = `email:${email.trim().toLowerCase()}`;
+      const ipOk = checkAuditRateLimit(ip);
+      const emailOk = checkAuditRateLimit(emailKey);
+      if (!ipOk || !emailOk) {
+        return res.status(429).json({
+          error: 'Rate limit exceeded. Try again in 1 hour.',
+          errorTh: 'ใช้งานเกินกำหนด กรุณารอ 1 ชั่วโมง',
+          code: 'rate-limit',
+          tiers: Object.entries(clairifyCredits.TIERS).map(([id, t]) => ({
+            id, name: t.name, price: t.price, credits: t.credits, features: t.features,
+          })),
+        });
+      }
+    }
+
+    const audit = await seoAudit.createAudit(url, email || '');
+
+    if (audit.error) {
+      return res.status(422).json({ error: `Could not access website: ${audit.error}`, errorTh: `เข้าเว็บไม่ได้: ${audit.error}` });
+    }
+
+    // Capture as inbound lead (warm — they came to us)
+    if (email) {
+      try {
+        const domain = audit.url.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+        const topIssues = audit.freeFindings
+          .filter(f => f.status === 'fail')
+          .slice(0, 3)
+          .map(f => f.titleTh || f.title);
+
+        const lead = {
+          place_id: `audit_${audit.auditId}`,
+          domain,
+          url: audit.url,
+          industry: '',
+          businessName: audit.businessName || domain,
+          businessNameEn: '',
+          emails: [],
+          email,
+          phones: [],
+          lineId: null,
+          facebook: null,
+          address: '',
+          googleMapsLink: null,
+          websiteScore: audit.score,
+          websiteIssues: topIssues,
+          isGoodTarget: audit.score < 70,
+          reason: `SEO Score ${audit.score}/100 (${audit.grade}) — ${audit.failCount} issues`,
+          status: 'audit-lead',
+          source: 'seo-audit',
+          foundAt: new Date().toISOString(),
+          auditId: audit.auditId,
+          seoGrade: audit.grade,
+          followUps: [],
+          emailOpened: false,
+          emailOpenedAt: null,
+          emailOpenCount: 0,
+          lastOpenAt: null,
+          emailSentAt: null,
+          emailTrackingId: null,
+          priorityScore: Math.max(0, 100 - audit.score), // worse SEO = higher priority
+        };
+
+        // Save to both JSON + Postgres
+        const leadsData = await dbLoadLeads();
+        const existingIdx = leadsData.leads.findIndex(l => l.email === email && l.domain === domain);
+        if (existingIdx >= 0) {
+          // Update existing — refresh score
+          leadsData.leads[existingIdx] = { ...leadsData.leads[existingIdx], ...lead, status: leadsData.leads[existingIdx].status };
+        } else {
+          leadsData.leads.push(lead);
+        }
+        await dbSaveLeads(leadsData);
+        await dbSaveLead(lead);
+
+        console.log(`[AUDIT-LEAD] Captured: ${email} → ${domain} (score: ${audit.score})`);
+
+        // Day-0 nurture email (immediate)
+        try {
+          await emailNurture.sendDay0(lead, audit);
+        } catch (nurtureErr) {
+          console.error('[NURTURE] Day-0 error (non-blocking):', nurtureErr.message);
+        }
+      } catch (leadErr) {
+        console.error('[AUDIT-LEAD] Save error (non-blocking):', leadErr.message);
+      }
+    }
+
+    // Return ALL findings free — HubSpot model (generosity → sharing → leads)
+    const response = {
+      auditId: audit.auditId,
+      url: audit.url,
+      score: audit.score,
+      grade: audit.grade,
+      businessName: audit.businessName,
+      totalChecks: audit.totalChecks,
+      passCount: audit.passCount,
+      failCount: audit.failCount,
+      warnCount: audit.warnCount,
+      freeFindings: audit.freeFindings,
+      premiumCount: 0,
+      passFindings: audit.passFindings,
+      categoryScores: audit.categoryScores || [],
+      predictedScore: audit.predictedScore || audit.score,
+      paid: false,
+    };
+    // Add credit info for paid users
+    if (creditResult?.valid) {
+      response.credits = creditResult.remaining;
+      response.tier = creditResult.tier;
+      if (creditResult.whiteLabel) response.whiteLabel = creditResult.whiteLabel;
+    }
+    res.json(response);
+  } catch (e) {
+    console.error('[CLAIRIFY] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/audit/report/:auditId — Get audit report (free or full if paid)
+app.get('/api/audit/report/:auditId', (req, res) => {
+  const audit = seoAudit.getAudit(req.params.auditId);
+  if (!audit) return res.status(404).json({ error: 'Audit not found or expired' });
+
+  // All findings always visible — premium unlocks Action Plan features
+  res.json({
+    auditId: audit.auditId,
+    url: audit.url,
+    score: audit.score,
+    grade: audit.grade,
+    businessName: audit.businessName,
+    totalChecks: audit.totalChecks,
+    passCount: audit.passCount,
+    failCount: audit.failCount,
+    warnCount: audit.warnCount,
+    freeFindings: audit.freeFindings,
+    premiumCount: 0,
+    passFindings: audit.passFindings,
+    categoryScores: audit.categoryScores || [],
+    predictedScore: audit.predictedScore || audit.score,
+    paid: audit.paid,
+  });
+});
+
+// GET /api/audit/stats — Audit tool stats
+app.get('/api/audit/stats', (req, res) => {
+  res.json(seoAudit.getStats());
+});
+
+// GET /api/clairify/tiers — Get available tiers
+app.get('/api/clairify/tiers', (req, res) => {
+  const tiers = Object.entries(clairifyCredits.TIERS).map(([id, t]) => ({
+    id, name: t.name, nameTh: t.nameTh, price: t.price,
+    credits: t.credits, features: t.features, mode: t.mode,
+  }));
+  res.json({ tiers });
+});
+
+// POST /api/clairify/checkout — Buy a tier (Stripe)
+app.post('/api/clairify/checkout', async (req, res) => {
+  try {
+    const { tier, email } = req.body;
+    if (!tier || !email) return res.status(400).json({ error: 'tier and email are required' });
+    const tierConfig = clairifyCredits.TIERS[tier];
+    if (!tierConfig) return res.status(400).json({ error: `Unknown tier: ${tier}` });
+
+    const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+    if (!STRIPE_KEY) return res.status(500).json({ error: 'Stripe not configured' });
+
+    const baseUrl = `${req.get('x-forwarded-proto') || req.protocol}://${req.get('host')}`;
+    const isSubscription = tierConfig.mode === 'subscription';
+
+    const params = new URLSearchParams({
+      'mode': isSubscription ? 'subscription' : 'payment',
+      'success_url': `${baseUrl}/tools/clairify/credit-success?session_id={CHECKOUT_SESSION_ID}`,
+      'cancel_url': `${baseUrl}/tools/clairify/`,
+      'customer_email': email,
+      'metadata[type]': 'clairify_tier',
+      'metadata[tier]': tier,
+      'metadata[email]': email,
+      'payment_method_types[0]': 'card',
+      'payment_method_types[1]': 'promptpay',
+    });
+
+    if (isSubscription) {
+      params.append('line_items[0][price_data][currency]', 'thb');
+      params.append('line_items[0][price_data][unit_amount]', String(tierConfig.stripAmount));
+      params.append('line_items[0][price_data][recurring][interval]', 'month');
+      params.append('line_items[0][price_data][product_data][name]', `Clairify™ ${tierConfig.name}`);
+      params.append('line_items[0][price_data][product_data][description]', tierConfig.features.join(', '));
+      params.append('line_items[0][quantity]', '1');
+    } else {
+      params.append('line_items[0][price_data][currency]', 'thb');
+      params.append('line_items[0][price_data][unit_amount]', String(tierConfig.stripAmount));
+      params.append('line_items[0][price_data][product_data][name]', `Clairify™ ${tierConfig.name}`);
+      params.append('line_items[0][price_data][product_data][description]', tierConfig.features.join(', '));
+      params.append('line_items[0][quantity]', '1');
+    }
+
+    const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${STRIPE_KEY}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const session = await stripeRes.json();
+    if (session.error) {
+      console.error('[CLAIRIFY-TIER] Stripe error:', session.error.message);
+      return res.status(400).json({ error: session.error.message });
+    }
+    console.log(`[CLAIRIFY-TIER] Checkout: ${tier} for ${email} → ${session.id}`);
+    res.json({ checkoutUrl: session.url, sessionId: session.id });
+  } catch (e) {
+    console.error('[CLAIRIFY-TIER] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/clairify/credit-verify — Verify tier purchase + return API key
+app.get('/api/clairify/credit-verify', async (req, res) => {
+  try {
+    const { session_id } = req.query;
+    if (!session_id) return res.status(400).json({ error: 'session_id required' });
+
+    const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+    if (!STRIPE_KEY) return res.status(500).json({ error: 'Stripe not configured' });
+
+    const stripeRes = await fetch(`https://api.stripe.com/v1/checkout/sessions/${session_id}`, {
+      headers: { 'Authorization': `Bearer ${STRIPE_KEY}` },
+    });
+    const session = await stripeRes.json();
+
+    if (session.payment_status !== 'paid') {
+      return res.status(402).json({ error: 'Payment not completed' });
+    }
+
+    const tier = session.metadata?.tier;
+    const email = session.metadata?.email || session.customer_email;
+    if (!tier || !email) return res.status(400).json({ error: 'Invalid session metadata' });
+
+    // Check if key already created for this session (idempotent)
+    const existing = clairifyCredits.findKeyByEmail(email);
+    if (existing && existing.tier === tier) {
+      return res.json({ apiKey: existing.apiKey, tier, email, credits: existing.credits });
+    }
+
+    const apiKey = clairifyCredits.createKey(
+      email, tier,
+      session.customer || null,
+      session.subscription || null
+    );
+    const info = clairifyCredits.getKeyInfo(apiKey);
+
+    console.log(`[CLAIRIFY-TIER] Fulfilled: ${tier} for ${email}`);
+    res.json({ apiKey, tier, email, credits: info.credits });
+  } catch (e) {
+    console.error('[CLAIRIFY-TIER] Verify error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/clairify/key-info — Get API key details
+app.get('/api/clairify/key-info', (req, res) => {
+  const apiKey = req.headers['x-clairify-key'] || req.query.apiKey;
+  if (!apiKey) return res.status(400).json({ error: 'API key required' });
+  const info = clairifyCredits.getKeyInfo(apiKey);
+  if (!info) return res.status(404).json({ error: 'Key not found' });
+  res.json(info);
+});
+
+// POST /api/clairify/white-label — Update Agency white-label settings
+app.post('/api/clairify/white-label', (req, res) => {
+  const apiKey = req.headers['x-clairify-key'] || req.body.apiKey;
+  const { companyName, logoUrl, primaryColor } = req.body;
+  if (!apiKey) return res.status(400).json({ error: 'API key required' });
+  const success = clairifyCredits.updateWhiteLabel(apiKey, { companyName, logoUrl, primaryColor });
+  if (!success) return res.status(403).json({ error: 'Agency tier required' });
+  res.json({ ok: true });
+});
+
+// POST /api/clairify/recover-key — Recover API key by email
+app.post('/api/clairify/recover-key', (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'email required' });
+  const found = clairifyCredits.findKeyByEmail(email);
+  if (!found) return res.status(404).json({ error: 'No active key found for this email' });
+  res.json({ apiKey: found.apiKey, tier: found.tier, credits: found.credits });
+});
+
+// POST /api/audit/checkout — Create Stripe Checkout Session (990 THB)
+app.post('/api/audit/checkout', async (req, res) => {
+  try {
+    const { auditId } = req.body;
+    if (!auditId) return res.status(400).json({ error: 'auditId is required' });
+
+    const audit = seoAudit.getAudit(auditId);
+    if (!audit) return res.status(404).json({ error: 'Audit not found or expired' });
+    if (audit.paid) return res.json({ alreadyPaid: true, reportUrl: `/tools/clairify/report/${auditId}` });
+
+    const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+    if (!STRIPE_KEY) return res.status(500).json({ error: 'Stripe not configured' });
+
+    const baseUrl = `${req.get('x-forwarded-proto') || req.protocol}://${req.get('host')}`;
+
+    // Create Stripe Checkout Session via API
+    const params = new URLSearchParams({
+      'mode': 'payment',
+      'success_url': `${baseUrl}/tools/clairify/report/${auditId}?session_id={CHECKOUT_SESSION_ID}`,
+      'cancel_url': `${baseUrl}/tools/clairify/report/${auditId}`,
+      'line_items[0][price_data][currency]': 'thb',
+      'line_items[0][price_data][unit_amount]': '99000',
+      'line_items[0][price_data][product_data][name]': 'Clairify™ Full Report',
+      'line_items[0][price_data][product_data][description]': `Clairify รายงานเต็ม 45+ ข้อ สำหรับ ${audit.url}`,
+      'line_items[0][quantity]': '1',
+      'metadata[auditId]': auditId,
+      'metadata[url]': audit.url,
+      'metadata[email]': audit.email || '',
+      'payment_method_types[0]': 'card',
+      'payment_method_types[1]': 'promptpay',
+    });
+
+    if (audit.email) {
+      params.append('customer_email', audit.email);
+    }
+
+    const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${STRIPE_KEY}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+
+    const session = await stripeRes.json();
+
+    if (session.error) {
+      console.error('[STRIPE] Checkout error:', session.error.message);
+      return res.status(400).json({ error: session.error.message });
+    }
+
+    console.log(`[AUDIT] Stripe checkout created: ${session.id} for audit ${auditId}`);
+    res.json({ checkoutUrl: session.url, sessionId: session.id });
+  } catch (e) {
+    console.error('[AUDIT] Checkout error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/audit/checkout/verify — Verify payment after redirect
+app.get('/api/audit/checkout/verify', async (req, res) => {
+  try {
+    const { session_id } = req.query;
+    if (!session_id) return res.status(400).json({ error: 'session_id required' });
+
+    const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+    if (!STRIPE_KEY) return res.status(500).json({ error: 'Stripe not configured' });
+
+    const stripeRes = await fetch(`https://api.stripe.com/v1/checkout/sessions/${session_id}`, {
+      headers: { 'Authorization': `Bearer ${STRIPE_KEY}` },
+    });
+
+    const session = await stripeRes.json();
+
+    if (session.payment_status === 'paid') {
+      const auditId = session.metadata?.auditId;
+      if (auditId) {
+        seoAudit.markPaid(auditId);
+        console.log(`[AUDIT] Payment verified for audit ${auditId}`);
+      }
+      res.json({ paid: true, auditId });
+    } else {
+      res.json({ paid: false, status: session.payment_status });
+    }
+  } catch (e) {
+    console.error('[AUDIT] Verify error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// SEO Subscription — Monthly Health Check (Task #70)
+// ============================================================
+
+// POST /api/audit/subscribe — Create Stripe subscription checkout
+app.post('/api/audit/subscribe', async (req, res) => {
+  try {
+    const { url, email, plan } = req.body;
+    if (!url || !email) return res.status(400).json({ error: 'url and email required' });
+
+    const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+    const priceId = plan === 'yearly' ? process.env.STRIPE_PRICE_SEO_YEARLY : process.env.STRIPE_PRICE_SEO_MONTHLY;
+    if (!STRIPE_KEY || !priceId) return res.status(500).json({ error: 'Stripe subscription not configured' });
+
+    // Check if already subscribed
+    const existing = seoSubscription.getSubscriberByEmail(email);
+    if (existing) return res.json({ alreadySubscribed: true, subscriberId: existing.id });
+
+    const proto = req.get('x-forwarded-proto') || req.protocol;
+    const baseUrl = `${proto}://${req.get('host')}`;
+
+    const params = new URLSearchParams({
+      'mode': 'subscription',
+      'success_url': `${baseUrl}/tools/clairify/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+      'cancel_url': `${baseUrl}/tools/clairify/`,
+      'customer_email': email,
+      'line_items[0][price]': priceId,
+      'line_items[0][quantity]': '1',
+      'metadata[url]': url,
+      'metadata[plan]': plan || 'monthly',
+      'metadata[type]': 'seo_subscription',
+    });
+
+    const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${STRIPE_KEY}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+
+    const session = await stripeRes.json();
+    if (session.error) return res.status(400).json({ error: session.error.message });
+
+    console.log(`[SEO-SUB] Checkout created: ${session.id} for ${email} → ${url}`);
+    res.json({ checkoutUrl: session.url, sessionId: session.id });
+  } catch (e) {
+    console.error('[SEO-SUB] Subscribe error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/audit/subscription/status — Check subscription by email
+app.get('/api/audit/subscription/status', (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.status(400).json({ error: 'email required' });
+  const sub = seoSubscription.getSubscriberByEmail(email);
+  if (!sub) return res.json({ subscribed: false });
+  res.json({
+    subscribed: true,
+    id: sub.id,
+    url: sub.url,
+    plan: sub.plan,
+    status: sub.status,
+    lastAuditAt: sub.lastAuditAt,
+    auditsCount: sub.audits.length,
+    currentScore: sub.audits.length > 0 ? sub.audits[sub.audits.length - 1].score : null,
+  });
+});
+
+// GET /api/audit/subscription/portal — Stripe Customer Portal (manage/cancel)
+app.post('/api/audit/subscription/portal', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const sub = seoSubscription.getSubscriberByEmail(email);
+    if (!sub) return res.status(404).json({ error: 'No active subscription found' });
+
+    const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+    const baseUrl = `${req.get('x-forwarded-proto') || req.protocol}://${req.get('host')}`;
+
+    const params = new URLSearchParams({
+      'customer': sub.stripeCustomerId,
+      'return_url': `${baseUrl}/tools/clairify/`,
+    });
+
+    const stripeRes = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${STRIPE_KEY}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+
+    const session = await stripeRes.json();
+    if (session.error) return res.status(400).json({ error: session.error.message });
+    res.json({ portalUrl: session.url });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/audit/subscription/stats — Subscription stats
+app.get('/api/audit/subscription/stats', (req, res) => {
+  res.json(seoSubscription.getStats());
+});
+
+// ============================================================
+// Email Nurture API
+// ============================================================
+
+app.get('/api/nurture/stats', async (req, res) => {
+  res.json(await emailNurture.getStats());
+});
+
+app.post('/api/nurture/unsubscribe', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'email required' });
+  const ok = await emailNurture.unsubscribe(email);
+  res.json({ ok, email });
+});
+
+// ============================================================
+// SEO: robots.txt + sitemap.xml
+// ============================================================
+
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send(`User-agent: *
+Allow: /tools/clairify/
+Disallow: /api/
+Sitemap: https://oracle-agent-production-546e.up.railway.app/sitemap.xml`);
+});
+
+app.get('/sitemap.xml', (req, res) => {
+  res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://oracle-agent-production-546e.up.railway.app/tools/clairify/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>`);
+});
+
+// Serve Clairify™ static files
+app.use('/tools/clairify', express.static('public/tools/clairify'));
+app.get('/tools/clairify/*', (req, res) => {
+  res.sendFile('public/tools/clairify/index.html', { root: '.' });
+});
+
+// 301 redirect old URLs
+app.get('/tools/seo-audit', (req, res) => res.redirect(301, '/tools/clairify/'));
+app.get('/tools/seo-audit/*', (req, res) => {
+  const newPath = req.path.replace('/tools/seo-audit', '/tools/clairify');
+  res.redirect(301, newPath);
+});
+
 // Sync historical outreach emails from Gmail SENT folder → leads.json
 app.post('/api/email/sync-history', async (req, res) => {
   try {
@@ -7231,6 +8037,156 @@ app.get('/vision/404check/*', (req, res) => {
 });
 
 // =============================================================================
+// UPWORK API
+// =============================================================================
+
+// OAuth Step 1: Redirect to Upwork authorization
+app.get('/api/upwork/auth', (req, res) => {
+  if (!upwork.isConfigured()) {
+    return res.status(400).json({ error: 'Upwork not configured — set UPWORK_CLIENT_ID, UPWORK_CLIENT_SECRET, UPWORK_REDIRECT_URI in .env' });
+  }
+  const url = upwork.getAuthorizationUrl();
+  res.redirect(url);
+});
+
+// OAuth Step 2: Callback — exchange code for tokens
+app.get('/api/upwork/callback', async (req, res) => {
+  try {
+    const { code, error } = req.query;
+    if (error) return res.status(400).json({ error: `Upwork denied: ${error}` });
+    if (!code) return res.status(400).json({ error: 'No authorization code received' });
+
+    const tokens = await upwork.exchangeCode(code);
+    res.json({ success: true, message: 'Upwork connected!', expires_in: tokens.expires_in });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Status check
+app.get('/api/upwork/status', (req, res) => {
+  res.json({
+    configured: upwork.isConfigured(),
+    authenticated: upwork.isAuthenticated(),
+    tokenExpiry: upwork.tokenExpiry ? new Date(upwork.tokenExpiry).toISOString() : null
+  });
+});
+
+// Search jobs (with Oracle scoring)
+app.get('/api/upwork/jobs', async (req, res) => {
+  try {
+    const { q, limit } = req.query;
+
+    let result;
+    if (q) {
+      result = await upwork.findBestJobs(q, parseInt(limit) || 20);
+    } else {
+      const data = await upwork.getLatestJobs(parseInt(limit) || 30);
+      result = {
+        ...data,
+        jobs: data.jobs.map(job => ({ ...job, _score: upwork.scoreJob(job) }))
+      };
+      result.jobs.sort((a, b) => b._score.score - a._score.score);
+    }
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// My profile (REST)
+app.get('/api/upwork/profile', async (req, res) => {
+  try {
+    const data = await upwork.getMyProfile();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Current user (GraphQL)
+app.get('/api/upwork/user', async (req, res) => {
+  try {
+    const data = await upwork.getCurrentUser();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// My proposals (REST)
+app.get('/api/upwork/proposals', async (req, res) => {
+  try {
+    const { status, page, limit } = req.query;
+    const data = await upwork.getMyProposals({
+      status,
+      page: parseInt(page) || 1,
+      limit: parseInt(limit) || 20
+    });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Submit proposal (REST)
+app.post('/api/upwork/proposals', async (req, res) => {
+  try {
+    const { jobId, coverLetter, rate, estimatedDuration, milestoneDescription, connectsToUse, boost } = req.body;
+    if (!jobId || !coverLetter) return res.status(400).json({ error: 'jobId and coverLetter required' });
+
+    const data = await upwork.submitProposal({
+      jobId, coverLetter, rate, estimatedDuration,
+      milestoneDescription, connectsToUse, boost
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// My contracts (GraphQL)
+app.get('/api/upwork/contracts', async (req, res) => {
+  try {
+    const { status, type, limit } = req.query;
+    const data = await upwork.getMyContracts({
+      status, type,
+      limit: parseInt(limit) || 20
+    });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Message rooms (GraphQL)
+app.get('/api/upwork/messages', async (req, res) => {
+  try {
+    const { limit, unread } = req.query;
+    const data = await upwork.getMessageRooms({
+      limit: parseInt(limit) || 20,
+      unreadOnly: unread === 'true'
+    });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Send message (GraphQL mutation)
+app.post('/api/upwork/messages/:roomId', async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: 'message required' });
+    const data = await upwork.sendMessage(req.params.roomId, message);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =============================================================================
 // START SERVER
 // =============================================================================
 
@@ -7246,6 +8202,10 @@ registerCleanup('memory-save', () => memory.saveAll?.(), { phase: 'cleanup', pri
 const server = app.listen(PORT, async () => {
   // Phase 3.5: Register HTTP server for graceful shutdown
   registerHttpServer(server, 'express-server');
+
+  // Email Nurture: set Gmail client + outreach email function (Day 0 = outreach logic 100%)
+  emailNurture.setGmailClient(gmailClient);
+  emailNurture.setSendOutreachEmail(leadFinder.sendFullOutreachEmail);
 
   // Phase 3.5: Initialize Session Logger
   initSessionLogger({ dir: 'data/sessions' });
@@ -7365,6 +8325,99 @@ const server = app.listen(PORT, async () => {
   };
   webhookIngress.on('beds24', '*', createBeds24Handler({ notifyOwner: notifyAll }));
   webhookIngress.on('stripe', '*', createStripeHandler({ notifyOwner: notifyAll }));
+
+  // Stripe: handle checkout.session.completed (one-time audit + subscription)
+  webhookIngress.on('stripe', 'checkout.session.completed', async (payload) => {
+    const session = payload.data?.object;
+    if (!session) return;
+
+    // Clairify tier purchase (Quick Pass / Pro / Agency)
+    if (session.metadata?.type === 'clairify_tier') {
+      const tier = session.metadata.tier;
+      const email = session.metadata.email || session.customer_email;
+      const existing = clairifyCredits.findKeyByEmail(email);
+      if (!existing || existing.tier !== tier) {
+        clairifyCredits.createKey(email, tier, session.customer, session.subscription || null);
+      }
+      const tierConfig = clairifyCredits.TIERS[tier];
+      await notifyAll(`💳 Clairify ${tierConfig?.name} ขายได้!\nEmail: ${email}\nTier: ${tier}\nAmount: ${tierConfig?.price} THB`);
+    }
+
+    // One-time audit payment
+    const auditId = session.metadata?.auditId;
+    if (auditId) {
+      seoAudit.markPaid(auditId);
+      console.log(`[AUDIT] Webhook: audit ${auditId} marked as paid`);
+      await notifyAll(`💰 SEO Audit ขายได้!\nAudit: ${auditId}\nURL: ${session.metadata.url || '-'}\nAmount: 990 THB`);
+    }
+
+    // New subscription
+    if (session.mode === 'subscription' && session.metadata?.type === 'seo_subscription') {
+      const sub = seoSubscription.createSubscriber(
+        session.customer_email || session.customer_details?.email,
+        session.metadata.url,
+        session.customer,
+        session.subscription,
+        session.metadata.plan || 'monthly'
+      );
+      // Run first audit immediately
+      const snapshot = await seoSubscription.runMonthlyAudit(sub);
+      if (snapshot) {
+        // Send first report via email
+        try {
+          const report = seoSubscription.buildComparisonReport(sub);
+          if (report && gmailClient.isConfigured()) {
+            await gmailClient.send(sub.email, report.subject, report.html);
+            console.log(`[SEO-SUB] First report sent to ${sub.email}`);
+          }
+        } catch (e) {
+          console.error(`[SEO-SUB] Email error:`, e.message);
+        }
+      }
+      await notifyAll(`📊 SEO Subscription ใหม่!\nEmail: ${sub.email}\nURL: ${sub.url}\nPlan: ${sub.plan}\nScore: ${snapshot?.score || '-'}`);
+    }
+  });
+
+  // Stripe: monthly invoice paid → run audit + send comparison report
+  webhookIngress.on('stripe', 'invoice.paid', async (payload) => {
+    const invoice = payload.data?.object;
+    if (!invoice?.subscription) return;
+
+    const sub = seoSubscription.getSubscriberByStripeId(invoice.subscription);
+    if (!sub || sub.status !== 'active') return;
+
+    console.log(`[SEO-SUB] Invoice paid for ${sub.email}, running audit...`);
+    const snapshot = await seoSubscription.runMonthlyAudit(sub);
+    if (snapshot) {
+      try {
+        const report = seoSubscription.buildComparisonReport(sub);
+        if (report && gmailClient.isConfigured()) {
+          await gmailClient.send(sub.email, report.subject, report.html);
+          console.log(`[SEO-SUB] Monthly report sent to ${sub.email}`);
+        }
+      } catch (e) {
+        console.error(`[SEO-SUB] Email error:`, e.message);
+      }
+    }
+  });
+
+  // Stripe: subscription cancelled
+  webhookIngress.on('stripe', 'customer.subscription.deleted', async (payload) => {
+    const subscription = payload.data?.object;
+    if (!subscription) return;
+
+    // Cancel SEO subscription
+    const sub = seoSubscription.cancelSubscriber(subscription.id);
+    if (sub) {
+      await notifyAll(`❌ SEO Subscription ยกเลิก\nEmail: ${sub.email}\nURL: ${sub.url}`);
+    }
+
+    // Cancel Clairify tier subscription
+    const cancelled = clairifyCredits.cancelKey(subscription.id);
+    if (cancelled) {
+      await notifyAll(`❌ Clairify ${cancelled.tier} ยกเลิก\nEmail: ${cancelled.email}`);
+    }
+  });
   webhookIngress.on('github', '*', createGitHubHandler({ notifyOwner: notifyAll }));
 
   // Log webhook events

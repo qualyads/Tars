@@ -80,7 +80,8 @@ const SHEET_ID_FILE = path.join(DATA_DIR, 'lead-sheet-id.txt');
 const HIGH_VALUE_INDUSTRIES = ['คลินิก', 'โรงแรม', 'อสังหาฯ', 'สปา'];
 const MID_VALUE_INDUSTRIES = ['ร้านอาหาร', 'ฟิตเนส', 'การศึกษา', 'อีเว้นท์', 'ถ่ายภาพ', 'ความงาม', 'co-working'];
 const GOOD_VALUE_INDUSTRIES = ['ออกแบบ', 'จิวเวลรี่', 'เฟอร์นิเจอร์', 'รถยนต์', 'ท่องเที่ยว', 'รถเช่า', 'กีฬา'];
-const BAD_EMAILS = ['noreply@', 'no-reply@', 'admin@', 'support@', 'mailer-daemon@', 'postmaster@', 'info@'];
+const BAD_EMAILS = ['noreply@', 'no-reply@', 'admin@', 'support@', 'mailer-daemon@', 'postmaster@'];
+// info@ ถูกปลดออก 2026-02-25 — เป็น email หลักของธุรกิจไทย ส่งได้จริง (เคยตัด 123 leads เปล่าๆ)
 
 // Domains that are NOT potential VXB clients (chains, government, platforms)
 const BAD_DOMAINS = [
@@ -90,8 +91,9 @@ const BAD_DOMAINS = [
   'lazada.co.th', 'shopee.co.th', 'grab.com',
   'bit.ly', 'lin.ee', 'page.link', 'goo.gl',
   'dotproperty.co.th', 'livinginsider.com', 'apthai.com',
-  'gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com'
+  'hotmail.com', 'yahoo.com', 'outlook.com'
 ];
+// gmail.com ถูกปลดออก 2026-02-25 — เจ้าของธุรกิจไทยใช้ gmail เยอะ ส่งได้จริง (เคยตัด 88 leads เปล่าๆ)
 
 // Daily email counter — shared limit for cold + follow-up (ป้องกัน spam flag)
 const DAILY_COUNTER_FILE = path.join(DATA_DIR, 'daily-email-count.json');
@@ -1282,7 +1284,7 @@ async function sendFullOutreachEmail(lead) {
 
   <!-- CTA Button -->
   <div style="text-align:center;margin:32px 0;">
-    <a href="mailto:info@visionxbrain.com?subject=ขอ Report เต็ม — ${bizName}" style="display:inline-block;background:linear-gradient(135deg,#eb3f43,#d63337);color:#fff;padding:16px 40px;border-radius:100px;text-decoration:none;font-size:16px;font-weight:bold;letter-spacing:0.3px;box-shadow:0 4px 12px rgba(235,63,67,0.3);">ขอ Report เต็มฟรี</a>
+    <a href="https://oracle-agent-production-546e.up.railway.app/tools/seo-audit/" style="display:inline-block;background:linear-gradient(135deg,#eb3f43,#d63337);color:#fff;padding:16px 40px;border-radius:100px;text-decoration:none;font-size:16px;font-weight:bold;letter-spacing:0.3px;box-shadow:0 4px 12px rgba(235,63,67,0.3);">ดู Report เพิ่มเติม</a>
     <span style="display:inline-block;width:12px;"></span>
     <a href="tel:0971536565" style="display:inline-block;background:#fff;color:#eb3f43;padding:16px 40px;border-radius:100px;text-decoration:none;font-size:16px;font-weight:bold;letter-spacing:0.3px;border:2px solid #eb3f43;">โทรปรึกษาฟรี</a>
     <p style="color:#999;font-size:13px;margin-top:10px;">หรือตอบกลับ email นี้ได้เลยครับ ไม่มีข้อผูกมัดใดๆ</p>
@@ -2286,6 +2288,18 @@ async function runDaily() {
           break;
         }
 
+        // 🛡️ Nurture dedup — ป้องกันส่ง cold email ซ้ำให้คนที่อยู่ใน nurture sequence แล้ว
+        const inNurture = leadsData.leads.find(l =>
+          l.email === lead.email && l.source === 'seo-audit' && l.nurture && l.nurture.step >= 1
+        );
+        if (inNurture) {
+          console.log(`[LEAD-FINDER] ⛔ Skip ${lead.businessName} — email ${lead.email} already in nurture sequence`);
+          lead.status = 'already_contacted';
+          lead.skipReason = 'nurture_active';
+          saveLeads(leadsData);
+          continue;
+        }
+
         // 🛡️ Gmail SENT dedup — ป้องกันส่งซ้ำหลัง deploy ใหม่ (ลูกค้าลำคาญ!)
         try {
           const alreadyContacted = await hasAlreadyContacted(lead.email);
@@ -2372,9 +2386,9 @@ async function runDaily() {
           console.error(`[LEAD-FINDER] Error sending email to ${lead.email}:`, emailErr.message);
         }
 
-        // Delay between emails (8 นาที — ดูเป็นธรรมชาติ ไม่ถูก flag spam)
+        // Delay between emails (4 นาที — ลดจาก 8 นาที เมื่อ 2026-02-25 เพื่อ throughput สูงขึ้น)
         if (emailsSent < maxEmails && unsent.indexOf(lead) < unsent.length - 1) {
-          await sleep(8 * 60 * 1000);
+          await sleep(4 * 60 * 1000);
         }
       }
     } catch (emailStepErr) {
