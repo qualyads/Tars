@@ -87,24 +87,8 @@ async function initLeadsDB() {
     dbReady = true;
     console.log('[DB-LEADS] ✅ PostgreSQL leads DB ready');
 
-    // Check DB vs file state
-    const { rows } = await pool.query('SELECT COUNT(*) as count FROM leads');
-    const dbCount = parseInt(rows[0].count);
-
-    // Check file state
-    let fileCount = 0;
-    try {
-      const fileData = JSON.parse(fs.readFileSync(LEADS_FILE, 'utf-8'));
-      fileCount = fileData.leads?.length || 0;
-    } catch { /* no file */ }
-
-    if (dbCount === 0 && fileCount > 0) {
-      // DB empty, file has data → migrate JSON → DB (first time)
-      await migrateFromJSON();
-    } else if (dbCount > 0) {
-      // DB has data → restore to file (survives deploy!)
-      await restoreToFile();
-    }
+    // Skip DB↔file sync on startup — DB has millions of rows (duplicated data),
+    // file is the source of truth for bulk reads. DB used for stats/writes only.
 
     return true;
   } catch (err) {
@@ -247,24 +231,9 @@ async function migrateFromJSON() {
  * @returns {{ leads: Array, processedDomains: Array, lastRun: string|null }}
  */
 async function loadLeads() {
-  if (!dbReady) return loadLeadsFile();
-
-  try {
-    const [leadsResult, domainsResult, lastRunResult] = await Promise.all([
-      pool.query('SELECT data FROM leads ORDER BY id'),
-      pool.query("SELECT value FROM leads_meta WHERE key = 'processedDomains'"),
-      pool.query("SELECT value FROM leads_meta WHERE key = 'lastRun'"),
-    ]);
-
-    return {
-      leads: leadsResult.rows.map(r => r.data),
-      processedDomains: domainsResult.rows[0]?.value || [],
-      lastRun: lastRunResult.rows[0]?.value || null,
-    };
-  } catch (err) {
-    console.error('[DB-LEADS] loadLeads error, falling back to file:', err.message);
-    return loadLeadsFile();
-  }
+  // Always use file for bulk reads — DB has millions of rows (duplicated data),
+  // loading all via SELECT is too slow. DB used for writes/stats/single-lead ops only.
+  return loadLeadsFile();
 }
 
 /**
@@ -272,68 +241,8 @@ async function loadLeads() {
  * @param {{ leads: Array, processedDomains?: Array, lastRun?: string }} data
  */
 async function saveLeads(data) {
-  if (!dbReady) {
-    saveLeadsFile(data);
-    return;
-  }
-
-  try {
-    const leads = data.leads || [];
-
-    // Batch upsert leads in chunks
-    const batchSize = 50;
-    for (let i = 0; i < leads.length; i += batchSize) {
-      const batch = leads.slice(i, i + batchSize);
-      const values = [];
-      const placeholders = [];
-
-      for (let j = 0; j < batch.length; j++) {
-        const lead = batch[j];
-        const offset = j * 5;
-        placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5})`);
-        values.push(
-          lead.place_id || `auto_${Date.now()}_${i + j}`,
-          lead.email || null,
-          lead.domain || null,
-          lead.status || 'new',
-          JSON.stringify(lead)
-        );
-      }
-
-      if (placeholders.length > 0) {
-        await pool.query(`
-          INSERT INTO leads (place_id, email, domain, status, data)
-          VALUES ${placeholders.join(', ')}
-          ON CONFLICT (place_id) DO UPDATE SET
-            data = EXCLUDED.data,
-            email = EXCLUDED.email,
-            domain = EXCLUDED.domain,
-            status = EXCLUDED.status,
-            updated_at = NOW()
-        `, values);
-      }
-    }
-
-    // Save meta
-    if (data.processedDomains) {
-      await pool.query(`
-        INSERT INTO leads_meta (key, value, updated_at)
-        VALUES ('processedDomains', $1, NOW())
-        ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()
-      `, [JSON.stringify(data.processedDomains)]);
-    }
-
-    if (data.lastRun !== undefined) {
-      await pool.query(`
-        INSERT INTO leads_meta (key, value, updated_at)
-        VALUES ('lastRun', $1, NOW())
-        ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()
-      `, [JSON.stringify(data.lastRun)]);
-    }
-  } catch (err) {
-    console.error('[DB-LEADS] saveLeads error, falling back to file:', err.message);
-    saveLeadsFile(data);
-  }
+  // Always save to file — DB has duplicated data, file is source of truth
+  saveLeadsFile(data);
 }
 
 /**
@@ -421,11 +330,15 @@ async function getLeadStats() {
   if (!dbReady) return null;
 
   try {
-    const { rows } = await pool.query(`
-      SELECT status, COUNT(*) as count FROM leads GROUP BY status
-    `);
+    // JS-level 3s timeout — DB has millions of rows, COUNT GROUP BY is slow
+    const result = await Promise.race([
+      pool.query('SET statement_timeout = 3000').then(() =>
+        pool.query('SELECT status, COUNT(*) as count FROM leads GROUP BY status')
+      ),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500))
+    ]);
     const stats = {};
-    rows.forEach(r => { stats[r.status] = parseInt(r.count); });
+    result.rows.forEach(r => { stats[r.status] = parseInt(r.count); });
     return stats;
   } catch {
     return null;
