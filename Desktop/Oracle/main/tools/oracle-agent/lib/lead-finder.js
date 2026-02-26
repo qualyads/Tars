@@ -101,32 +101,45 @@ const BAD_DOMAINS = [
 ];
 // gmail.com ถูกปลดออก 2026-02-25 — เจ้าของธุรกิจไทยใช้ gmail เยอะ ส่งได้จริง (เคยตัด 88 leads เปล่าๆ)
 
-// Daily email counter — shared limit for cold + follow-up (ป้องกัน spam flag)
+// Daily email counter — separate caps per type (ป้องกัน spam flag)
 const DAILY_COUNTER_FILE = path.join(DATA_DIR, 'daily-email-count.json');
-const MAX_TOTAL_EMAILS_PER_DAY = 30; // cold + follow-up + audit combined
+const MAX_COLD_PER_DAY = 15;
+const MAX_FOLLOWUP_PER_DAY = 10;
+const MAX_TOTAL_EMAILS_PER_DAY = 30; // hard ceiling for all types combined
 
-function getDailyEmailCount() {
+function _loadDailyCounter() {
+  const today = new Date().toISOString().slice(0, 10);
   try {
     const data = JSON.parse(fs.readFileSync(DAILY_COUNTER_FILE, 'utf-8'));
-    const today = new Date().toISOString().slice(0, 10);
-    if (data.date === today) return data.count;
-    return 0; // new day → reset
-  } catch { return 0; }
+    if (data.date === today) return data;
+  } catch {}
+  return { date: today, count: 0, cold: 0, followUp: 0, nurture: 0 };
 }
 
-function incrementDailyEmailCount() {
-  const today = new Date().toISOString().slice(0, 10);
-  let data;
-  try { data = JSON.parse(fs.readFileSync(DAILY_COUNTER_FILE, 'utf-8')); }
-  catch { data = { date: today, count: 0 }; }
-  if (data.date !== today) data = { date: today, count: 0 };
-  data.count++;
+function _saveDailyCounter(data) {
   fs.writeFileSync(DAILY_COUNTER_FILE, JSON.stringify(data));
+}
+
+function getDailyEmailCount() {
+  return _loadDailyCounter().count;
+}
+
+function incrementDailyEmailCount(type = 'cold') {
+  const data = _loadDailyCounter();
+  data.count++;
+  if (type === 'cold') data.cold = (data.cold || 0) + 1;
+  else if (type === 'followUp') data.followUp = (data.followUp || 0) + 1;
+  else if (type === 'nurture') data.nurture = (data.nurture || 0) + 1;
+  _saveDailyCounter(data);
   return data.count;
 }
 
-function canSendMoreToday() {
-  return getDailyEmailCount() < MAX_TOTAL_EMAILS_PER_DAY;
+function canSendMoreToday(type = 'cold') {
+  const data = _loadDailyCounter();
+  if (data.count >= MAX_TOTAL_EMAILS_PER_DAY) return false;
+  if (type === 'cold') return (data.cold || 0) < MAX_COLD_PER_DAY;
+  if (type === 'followUp') return (data.followUp || 0) < MAX_FOLLOWUP_PER_DAY;
+  return true; // nurture uses its own cap in email-nurture.js
 }
 
 // Bounce blacklist — auto-populated when emails bounce
@@ -431,11 +444,9 @@ async function hasBouncedInGmail(email) {
 async function hasReplyInGmail(email) {
   if (!email || !gmail.isConfigured()) return false;
   try {
-    const domain = email.split('@')[1];
-    const searchEmail = (domain && !GENERIC_MAIL_DOMAINS.includes(domain))
-      ? `@${domain}`
-      : email;
-    const query = `from:${searchEmail} newer_than:30d`;
+    // Always search by exact email — domain-level search was too broad
+    // (matched unrelated inbound emails like booking confirmations)
+    const query = `from:${email} newer_than:30d`;
     const results = await gmail.search(query, 1);
     return results && results.length > 0;
   } catch (err) {
@@ -530,6 +541,11 @@ async function searchGoogle(query, maxResults = 10, locationOverride = null) {
     if (!response.ok) {
       const errBody = await response.text();
       console.error(`[LEAD-FINDER] RapidAPI error ${response.status}:`, errBody.substring(0, 200));
+      // Fallback to DDG when RapidAPI fails (429/quota/etc.)
+      if (response.status === 429 || response.status === 403 || response.status >= 500) {
+        console.log(`[LEAD-FINDER] 🔄 RapidAPI ${response.status} — trying DDG fallback...`);
+        return await searchBusinessesDDG(query, city || locationOverride?.city || 'Bangkok', maxResults);
+      }
       return [];
     }
 
@@ -566,7 +582,9 @@ async function searchGoogle(query, maxResults = 10, locationOverride = null) {
 
   } catch (error) {
     console.error(`[LEAD-FINDER] Search error:`, error.message);
-    return [];
+    // Fallback to DDG on network errors too
+    console.log(`[LEAD-FINDER] 🔄 RapidAPI failed — trying DDG fallback...`);
+    return await searchBusinessesDDG(query, locationOverride?.city || 'Bangkok', maxResults);
   }
 }
 
@@ -1465,7 +1483,7 @@ async function sendFollowUp(lead, followUpNumber) {
 
       try {
         const result = await gmail.send(sendOpts);
-        incrementDailyEmailCount();
+        incrementDailyEmailCount('followUp');
         console.log(`[FOLLOW-UP] ✅ Sent #${followUpNumber} to ${lead.email} (thread: ${lead.threadId || 'new'}, daily: ${getDailyEmailCount()}/${MAX_TOTAL_EMAILS_PER_DAY})`);
         return { success: true, messageId: result.id, threadId: result.threadId, sentAt: new Date().toISOString() };
       } catch (sendErr) {
@@ -2065,8 +2083,8 @@ async function processFollowUps() {
 
   for (const lead of leadsData.leads) {
     // 🛡️ Daily limit check — หยุดทันทีถ้าหมด quota วันนี้
-    if (!canSendMoreToday()) {
-      console.log(`[FOLLOW-UP] ⛔ Daily email limit reached (${MAX_TOTAL_EMAILS_PER_DAY}) — stopping follow-ups`);
+    if (!canSendMoreToday('followUp')) {
+      console.log(`[FOLLOW-UP] ⛔ Follow-up daily limit reached (${MAX_FOLLOWUP_PER_DAY}) — stopping`);
       break;
     }
 
@@ -2100,9 +2118,8 @@ async function processFollowUps() {
         continue;
       }
     } catch (bounceCheckErr) {
-      // fail-closed: ถ้าเช็ค bounce ไม่ได้ → skip lead (ปลอดภัยกว่าส่งไปแล้ว bounce)
-      console.log(`[FOLLOW-UP] ⛔ Skip ${lead.businessName} — bounce check failed: ${bounceCheckErr.message}`);
-      continue;
+      // fail-open: Gmail API error → proceed (downstream checks will catch real issues)
+      console.log(`[FOLLOW-UP] ⚠️ Bounce check failed for ${lead.businessName} — proceeding: ${bounceCheckErr.message}`);
     }
 
     // 🛡️ Gmail reply check — ป้องกัน follow-up คนที่ตอบแล้ว (declined) หลัง deploy ใหม่
@@ -2139,19 +2156,21 @@ async function processFollowUps() {
       // Cold = 1, Follow-up #1 = 2, Follow-up #2 = 3
       // ถ้า Gmail มี >= followUpNumber + 1 → follow-up นี้ส่งไปแล้ว
       if (emailsSentCount >= followUpNumber + 1) {
-        if ((!lead.followUps || lead.followUps < followUpNumber)) {
+        if ((!lead.followUps || lead.followUps < followUpNumber) || lead.status === 'emailed') {
           // Fix local state ให้ตรงกับ Gmail
           lead.followUps = followUpNumber;
+          lead.status = 'followed_up';
+          lead.lastFollowUpAt = lead.lastFollowUpAt || new Date().toISOString();
           saveLeads(leadsData);
-          console.log(`[FOLLOW-UP] 🔧 Fixed: ${lead.businessName} already has ${emailsSentCount} emails in Gmail — set followUps=${followUpNumber}`);
+          console.log(`[FOLLOW-UP] 🔧 Fixed: ${lead.businessName} already has ${emailsSentCount} emails in Gmail — set followUps=${followUpNumber}, status=followed_up`);
         }
         continue;
       }
 
       if (daysSinceSent >= followUpDay && (!lead.followUps || lead.followUps < followUpNumber)) {
         // 🛡️ Daily limit re-check ก่อนส่งแต่ละ follow-up
-        if (!canSendMoreToday()) {
-          console.log(`[FOLLOW-UP] ⛔ Daily limit reached — skipping follow-up #${followUpNumber} for ${lead.businessName}`);
+        if (!canSendMoreToday('followUp')) {
+          console.log(`[FOLLOW-UP] ⛔ Follow-up daily limit reached — skipping follow-up #${followUpNumber} for ${lead.businessName}`);
           break;
         }
 
@@ -2163,6 +2182,7 @@ async function processFollowUps() {
           lead.status = 'followed_up';
           lead.lastFollowUpAt = new Date().toISOString();
           followUpsSent++;
+          saveLeads(leadsData); // save immediately — don't lose state on crash
         }
 
         // Delay between emails
@@ -2840,6 +2860,105 @@ async function findWebsiteViaDDG(businessName, city = 'Bangkok') {
     await sleep(2000);
   }
   return null;
+}
+
+// --- DDG Business Discovery (Fallback when RapidAPI quota exhausted) ---
+
+/**
+ * Search DDG for businesses — fallback lead source when RapidAPI fails
+ * Returns array of place-like objects (no place_id, but has name + domain)
+ */
+async function searchBusinessesDDG(query, city = 'Bangkok', maxResults = 10) {
+  console.log(`[LEAD-FINDER] 🦆 DDG business discovery: "${query}" in ${city}`);
+
+  try {
+    const fullQuery = `${query} ${city} เว็บไซต์ ติดต่อ`;
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(fullQuery)}`;
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(12000),
+      headers: { 'User-Agent': UA },
+    });
+    if (!response.ok) return [];
+
+    const html = await response.text();
+
+    // Extract business names from result titles + URLs
+    const results = [];
+    const seen = new Set();
+
+    // Parse DDG HTML results — extract title + URL pairs
+    const resultPattern = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/gi;
+    let match;
+    while ((match = resultPattern.exec(html)) !== null && results.length < maxResults) {
+      const resultUrl = match[1];
+      const title = match[2].replace(/<[^>]+>/g, '').trim();
+
+      // Extract actual URL from DDG redirect
+      let actualUrl = resultUrl;
+      const uddgMatch = resultUrl.match(/uddg=([^&]+)/);
+      if (uddgMatch) {
+        try { actualUrl = decodeURIComponent(uddgMatch[1]); } catch {}
+      }
+
+      if (!actualUrl.startsWith('http')) continue;
+
+      let hostname;
+      try { hostname = new URL(actualUrl).hostname.replace('www.', ''); } catch { continue; }
+
+      // Skip social media, directories, aggregators
+      const skipDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'youtube.com', 'linkedin.com',
+        'tiktok.com', 'wongnai.com', 'tripadvisor.com', 'google.com', 'pantip.com', 'wikipedia.org',
+        'duckduckgo.com', 'yelp.com', 'yellowpages.co.th', 'sanook.com', 'line.me'];
+      if (skipDomains.some(sd => hostname.includes(sd))) continue;
+
+      if (seen.has(hostname)) continue;
+      seen.add(hostname);
+
+      results.push({
+        place_id: `ddg_${hostname}_${Date.now()}`,
+        name: title.split(' - ')[0].split(' | ')[0].trim() || hostname,
+        address: city,
+        lat: null,
+        lng: null,
+        cid: null,
+        google_id: null,
+        domain: hostname,
+        url: actualUrl,
+        source: 'ddg_fallback',
+      });
+    }
+
+    // Also extract URLs from uddg= links (backup method)
+    if (results.length < 3) {
+      const urls = extractUrlsFromDDG(html);
+      for (const u of urls) {
+        if (results.length >= maxResults) break;
+        let hostname;
+        try { hostname = new URL(u).hostname.replace('www.', ''); } catch { continue; }
+        const skipDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'youtube.com', 'linkedin.com',
+          'tiktok.com', 'wongnai.com', 'tripadvisor.com', 'google.com', 'pantip.com', 'wikipedia.org'];
+        if (skipDomains.some(sd => hostname.includes(sd))) continue;
+        if (seen.has(hostname)) continue;
+        seen.add(hostname);
+
+        results.push({
+          place_id: `ddg_${hostname}_${Date.now()}`,
+          name: hostname.split('.')[0],
+          address: city,
+          lat: null, lng: null, cid: null, google_id: null,
+          domain: hostname,
+          url: u,
+          source: 'ddg_fallback',
+        });
+      }
+    }
+
+    console.log(`[LEAD-FINDER] 🦆 DDG found ${results.length} businesses for "${query}"`);
+    return results;
+  } catch (error) {
+    console.error(`[LEAD-FINDER] DDG discovery error:`, error.message);
+    return [];
+  }
 }
 
 // --- Strategy 3: Facebook Email Extraction ---

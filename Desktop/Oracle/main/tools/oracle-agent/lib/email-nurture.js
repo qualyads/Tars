@@ -29,27 +29,40 @@ let gmailClient = null;
 const BASE_URL = 'https://oracle-agent-production-546e.up.railway.app';
 
 // Shared daily cap — อ่าน/เขียนไฟล์เดียวกับ lead-finder
-function getSharedDailyCount() {
+// Format: { date, count, cold, followUp, nurture }
+const MAX_NURTURE_PER_DAY = 5;
+const MAX_TOTAL_EMAILS_PER_DAY = 30; // shared limit: cold + follow-up + nurture combined
+
+function _loadDailyCounter() {
+  const today = new Date().toISOString().slice(0, 10);
   try {
     const data = JSON.parse(fs.readFileSync(DAILY_COUNTER_FILE, 'utf-8'));
-    const today = new Date().toISOString().slice(0, 10);
-    if (data.date === today) return data.count;
-    return 0;
-  } catch { return 0; }
+    if (data.date === today) return data;
+  } catch {}
+  return { date: today, count: 0, cold: 0, followUp: 0, nurture: 0 };
+}
+
+function _saveDailyCounter(data) {
+  fs.writeFileSync(DAILY_COUNTER_FILE, JSON.stringify(data));
+}
+
+function getSharedDailyCount() {
+  return _loadDailyCounter().count;
+}
+
+function canSendNurture() {
+  const data = _loadDailyCounter();
+  if (data.count >= MAX_TOTAL_EMAILS_PER_DAY) return false;
+  return (data.nurture || 0) < MAX_NURTURE_PER_DAY;
 }
 
 function incrementSharedDailyCount() {
-  const today = new Date().toISOString().slice(0, 10);
-  let data;
-  try { data = JSON.parse(fs.readFileSync(DAILY_COUNTER_FILE, 'utf-8')); }
-  catch { data = { date: today, count: 0 }; }
-  if (data.date !== today) data = { date: today, count: 0 };
+  const data = _loadDailyCounter();
   data.count++;
-  fs.writeFileSync(DAILY_COUNTER_FILE, JSON.stringify(data));
+  data.nurture = (data.nurture || 0) + 1;
+  _saveDailyCounter(data);
   return data.count;
 }
-
-const MAX_TOTAL_EMAILS_PER_DAY = 30; // shared limit: cold + follow-up + nurture combined
 
 // Schedule: [step, daysAfterPrevious]
 const SCHEDULE = [
@@ -409,8 +422,9 @@ async function processNurtureQueue() {
     let changed = false;
 
     for (const lead of leadsData.leads) {
-      if (getSharedDailyCount() >= MAX_TOTAL_EMAILS_PER_DAY) {
-        console.log(`[NURTURE] Daily limit reached (${MAX_TOTAL_EMAILS_PER_DAY})`);
+      if (!canSendNurture()) {
+        const data = _loadDailyCounter();
+        console.log(`[NURTURE] Daily limit reached (nurture: ${data.nurture}/${MAX_NURTURE_PER_DAY}, total: ${data.count}/${MAX_TOTAL_EMAILS_PER_DAY})`);
         break;
       }
       if (lead.source !== 'seo-audit') continue;

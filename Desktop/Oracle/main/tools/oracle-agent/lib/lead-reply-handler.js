@@ -268,6 +268,7 @@ async function processIncomingMessage(msgId) {
   // Classify intent
   const intent = await classifyIntent(replyText, lead);
   lead.replyIntent = intent;
+  lead.replyClassification = intent; // prevent System B (checkReplies) from double-processing
 
   console.log(`[LEAD-REPLY] Intent: ${intent} | ${lead.businessName}`);
 

@@ -396,6 +396,14 @@ function getStatus() {
   };
 }
 
+/**
+ * Raw query — use existing pool (which has write access)
+ */
+async function rawQuery(sql, params = []) {
+  if (!dbReady || !pool) throw new Error('DB not ready');
+  return pool.query(sql, params);
+}
+
 export {
   initLeadsDB,
   loadLeads,
@@ -407,6 +415,7 @@ export {
   migrateFromJSON,
   isDBReady,
   getStatus,
+  rawQuery,
 };
 
 export default {
@@ -420,4 +429,5 @@ export default {
   migrateFromJSON,
   isDBReady,
   getStatus,
+  rawQuery,
 };

@@ -7988,6 +7988,43 @@ app.post('/api/leads/dedup', requireAdmin, async (req, res) => {
   }
 });
 
+// Dedup Postgres leads table — stats only (Supabase pooler is read-only)
+// Actual dedup done via file dedup (/api/leads/dedup) — DB is backup only
+app.get('/api/leads/dedup-db', requireAdmin, async (req, res) => {
+  try {
+    const dbLeads = await import('./lib/db-leads.js');
+    if (!dbLeads.isDBReady()) {
+      return res.status(503).json({ error: 'Database not ready' });
+    }
+
+    const q = dbLeads.rawQuery;
+
+    // Read-only stats with 5s timeout per query — DB has millions of rows
+    const withTimeout = (promise) => Promise.race([
+      promise,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000))
+    ]);
+
+    let total = '?', uniqueByPlaceId = '?', uniqueByDomain = '?';
+    try { const r = await withTimeout(q('SELECT COUNT(*) as cnt FROM leads')); total = parseInt(r.rows[0].cnt); } catch {}
+    try { const r = await withTimeout(q('SELECT COUNT(DISTINCT place_id) as cnt FROM leads WHERE place_id IS NOT NULL')); uniqueByPlaceId = parseInt(r.rows[0].cnt); } catch {}
+    try { const r = await withTimeout(q('SELECT COUNT(DISTINCT domain) as cnt FROM leads WHERE domain IS NOT NULL')); uniqueByDomain = parseInt(r.rows[0].cnt); } catch {}
+
+    res.json({
+      total,
+      uniqueByPlaceId,
+      uniqueByDomain,
+      estimatedDuplicates: typeof total === 'number' && typeof uniqueByPlaceId === 'number'
+        ? total - Math.max(uniqueByPlaceId, uniqueByDomain) : 'unknown (query timeout)',
+      note: 'Supabase pooler is read-only — use SQL Editor for DB cleanup. File dedup (/api/leads/dedup) is primary.',
+      fileDeduped: true,
+    });
+  } catch (e) {
+    console.error('[DEDUP-DB] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // =============================================================================
 // API COSTS — ค่าบริการ API ประจำเดือน
 // =============================================================================
