@@ -1,7 +1,8 @@
 /**
- * Lead Reply Handler — Real-time Reply Detection + Auto-Reply with Calendar Slots
+ * Lead Reply Handler — Reply Detection + Auto-Reply with Calendar Slots
  *
- * Flow: Gmail Pub/Sub webhook → listHistory → match lead → classify intent → auto-reply/notify
+ * Mode: Gmail Polling (every 2 min) — replaces Pub/Sub which requires GCP org policy changes
+ * Flow: pollNewMessages → listHistory → match lead → classify intent → auto-reply/notify
  *
  * Safety:
  * - Max 1 auto-reply per lead (autoRepliedAt field)
@@ -16,16 +17,18 @@ import googleCalendar from './google-calendar.js';
 import gateway from './gateway.js';
 import { loadLeads as dbLoadLeads, saveLeads as dbSaveLeads } from './db-leads.js';
 
-const PUBSUB_TOPIC = 'projects/oracle-agent-486604/topics/gmail-notifications';
+const POLL_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 
 // Watch state
 let watchState = {
   historyId: null,
-  expiration: null,
+  pollActive: false,
+  pollTimer: null,
   setupAt: null,
+  lastPoll: null,
   lastWebhook: null,
   processedMessages: new Set(),
-  stats: { webhooksReceived: 0, messagesProcessed: 0, repliesDetected: 0, autoRepliesSent: 0 }
+  stats: { pollCycles: 0, webhooksReceived: 0, messagesProcessed: 0, repliesDetected: 0, autoRepliesSent: 0 }
 };
 
 // Skip these senders
@@ -41,7 +44,7 @@ async function saveLeads(data) {
   return dbSaveLeads(data);
 }
 
-// ─── Setup Watch ───
+// ─── Setup Watch (Polling Mode) ───
 
 async function setupWatch() {
   try {
@@ -50,52 +53,68 @@ async function setupWatch() {
       return null;
     }
 
-    const result = await gmail.watchInbox(PUBSUB_TOPIC);
-    watchState.historyId = result.historyId;
-    watchState.expiration = result.expiration;
+    // Get initial historyId from Gmail profile
+    const token = await gmail.getAccessToken();
+    const profileRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!profileRes.ok) {
+      throw new Error(`Gmail profile fetch failed: ${profileRes.status}`);
+    }
+
+    const profile = await profileRes.json();
+    watchState.historyId = profile.historyId;
     watchState.setupAt = new Date().toISOString();
 
-    console.log(`[LEAD-REPLY] Watch active — historyId: ${result.historyId}, expires: ${new Date(result.expiration).toISOString()}`);
-    return result;
+    // Start polling
+    if (watchState.pollTimer) {
+      clearInterval(watchState.pollTimer);
+    }
+
+    watchState.pollActive = true;
+    watchState.pollTimer = setInterval(() => pollNewMessages(), POLL_INTERVAL_MS);
+
+    console.log(`[LEAD-REPLY] ✅ Polling mode active — every ${POLL_INTERVAL_MS / 1000}s, historyId: ${watchState.historyId}`);
+    return { historyId: watchState.historyId, mode: 'polling', interval: POLL_INTERVAL_MS };
   } catch (err) {
     console.error('[LEAD-REPLY] Watch setup failed:', err.message);
     return null;
   }
 }
 
-// ─── Process Gmail Webhook ───
+// ─── Poll for New Messages ───
 
-async function processGmailWebhook(payload) {
-  watchState.lastWebhook = new Date().toISOString();
-  watchState.stats.webhooksReceived++;
-
-  const emailAddress = payload.emailAddress;
-  const newHistoryId = payload.historyId;
-
-  // Need a starting historyId to query
-  if (!watchState.historyId) {
-    console.log('[LEAD-REPLY] No historyId stored, saving current and skipping');
-    watchState.historyId = newHistoryId;
-    return { status: 'skipped', reason: 'no_previous_history' };
-  }
+async function pollNewMessages() {
+  if (!watchState.historyId) return;
 
   try {
+    watchState.stats.pollCycles++;
     const historyResult = await gmail.listHistory(watchState.historyId);
 
     // Handle expired history
     if (historyResult.expired) {
-      console.log('[LEAD-REPLY] History expired, re-setting up watch');
-      await setupWatch();
-      return { status: 'rewatch', reason: 'history_expired' };
+      console.log('[LEAD-REPLY] History expired, re-initializing...');
+      const token = await gmail.getAccessToken();
+      const profileRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (profileRes.ok) {
+        const profile = await profileRes.json();
+        watchState.historyId = profile.historyId;
+      }
+      return;
     }
 
-    // Update historyId for next webhook
+    // Update historyId
     if (historyResult.historyId) {
       watchState.historyId = historyResult.historyId;
     }
 
+    watchState.lastPoll = new Date().toISOString();
+
     if (!historyResult.history || historyResult.history.length === 0) {
-      return { status: 'ok', newMessages: 0 };
+      return;
     }
 
     // Extract new message IDs
@@ -104,7 +123,72 @@ async function processGmailWebhook(payload) {
       if (entry.messagesAdded) {
         for (const added of entry.messagesAdded) {
           const msgId = added.message.id;
-          // Skip already processed
+          if (!watchState.processedMessages.has(msgId)) {
+            messageIds.add(msgId);
+          }
+        }
+      }
+    }
+
+    if (messageIds.size === 0) return;
+
+    console.log(`[LEAD-REPLY] Poll: ${messageIds.size} new message(s)`);
+
+    // Process each message
+    for (const msgId of messageIds) {
+      try {
+        await processIncomingMessage(msgId);
+        watchState.processedMessages.add(msgId);
+        watchState.stats.messagesProcessed++;
+      } catch (err) {
+        console.error(`[LEAD-REPLY] Error processing ${msgId}:`, err.message);
+      }
+    }
+
+    // Keep processedMessages set bounded
+    if (watchState.processedMessages.size > 500) {
+      const arr = [...watchState.processedMessages];
+      watchState.processedMessages = new Set(arr.slice(-200));
+    }
+  } catch (err) {
+    console.error('[LEAD-REPLY] Poll error:', err.message);
+  }
+}
+
+// ─── Process Gmail Webhook (still supported if Pub/Sub works later) ───
+
+async function processGmailWebhook(payload) {
+  watchState.lastWebhook = new Date().toISOString();
+  watchState.stats.webhooksReceived++;
+
+  const newHistoryId = payload.historyId;
+
+  if (!watchState.historyId) {
+    watchState.historyId = newHistoryId;
+    return { status: 'skipped', reason: 'no_previous_history' };
+  }
+
+  try {
+    const historyResult = await gmail.listHistory(watchState.historyId);
+
+    if (historyResult.expired) {
+      await setupWatch();
+      return { status: 'rewatch', reason: 'history_expired' };
+    }
+
+    if (historyResult.historyId) {
+      watchState.historyId = historyResult.historyId;
+    }
+
+    if (!historyResult.history || historyResult.history.length === 0) {
+      return { status: 'ok', newMessages: 0 };
+    }
+
+    const messageIds = new Set();
+    for (const entry of historyResult.history) {
+      if (entry.messagesAdded) {
+        for (const added of entry.messagesAdded) {
+          const msgId = added.message.id;
           if (!watchState.processedMessages.has(msgId)) {
             messageIds.add(msgId);
           }
@@ -118,7 +202,6 @@ async function processGmailWebhook(payload) {
 
     console.log(`[LEAD-REPLY] ${messageIds.size} new message(s) to process`);
 
-    // Process each message (don't await all in parallel — rate limit friendly)
     const results = [];
     for (const msgId of messageIds) {
       try {
@@ -132,7 +215,6 @@ async function processGmailWebhook(payload) {
       }
     }
 
-    // Keep processedMessages set from growing unbounded
     if (watchState.processedMessages.size > 500) {
       const arr = [...watchState.processedMessages];
       watchState.processedMessages = new Set(arr.slice(-200));
@@ -409,10 +491,12 @@ ${intent === 'unclear' ? '⚠️ ต้อง reply เอง' : ''}`;
 
 function getStatus() {
   return {
-    watchActive: !!watchState.historyId && !!watchState.expiration && Date.now() < watchState.expiration,
+    mode: 'polling',
+    pollActive: watchState.pollActive,
+    pollInterval: `${POLL_INTERVAL_MS / 1000}s`,
     historyId: watchState.historyId,
-    expiration: watchState.expiration ? new Date(watchState.expiration).toISOString() : null,
     setupAt: watchState.setupAt,
+    lastPoll: watchState.lastPoll,
     lastWebhook: watchState.lastWebhook,
     processedCount: watchState.processedMessages.size,
     stats: watchState.stats
@@ -423,6 +507,7 @@ export default {
   setupWatch,
   processGmailWebhook,
   processIncomingMessage,
+  pollNewMessages,
   classifyIntent,
   getStatus
 };

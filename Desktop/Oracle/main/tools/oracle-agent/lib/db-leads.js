@@ -45,33 +45,47 @@ async function initLeadsDB() {
     // Test connection
     await pool.query('SELECT 1');
 
-    // Create schema
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS leads (
-        id SERIAL PRIMARY KEY,
-        place_id TEXT UNIQUE,
-        email TEXT,
-        domain TEXT,
-        status TEXT DEFAULT 'new',
-        data JSONB NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
+    // Try to create schema — may fail on read-only poolers (Supabase transaction mode)
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS leads (
+          id SERIAL PRIMARY KEY,
+          place_id TEXT UNIQUE,
+          email TEXT,
+          domain TEXT,
+          status TEXT DEFAULT 'new',
+          data JSONB NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
 
-      CREATE TABLE IF NOT EXISTS leads_meta (
-        key TEXT PRIMARY KEY,
-        value JSONB NOT NULL,
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
+        CREATE TABLE IF NOT EXISTS leads_meta (
+          key TEXT PRIMARY KEY,
+          value JSONB NOT NULL,
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
 
-      CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
-      CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
-      CREATE INDEX IF NOT EXISTS idx_leads_domain ON leads(domain);
-      CREATE INDEX IF NOT EXISTS idx_leads_place_id ON leads(place_id);
-    `);
+        CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
+        CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
+        CREATE INDEX IF NOT EXISTS idx_leads_domain ON leads(domain);
+        CREATE INDEX IF NOT EXISTS idx_leads_place_id ON leads(place_id);
+      `);
+      console.log('[DB-LEADS] ✅ Schema created/verified');
+    } catch (ddlErr) {
+      // DDL failed (read-only connection) — check if tables already exist
+      console.log(`[DB-LEADS] ⚠️ DDL failed (${ddlErr.message.slice(0, 60)}) — checking if tables exist...`);
+      try {
+        await pool.query('SELECT 1 FROM leads LIMIT 1');
+        await pool.query('SELECT 1 FROM leads_meta LIMIT 1');
+        console.log('[DB-LEADS] ✅ Tables already exist — proceeding without DDL');
+      } catch {
+        // Tables really don't exist and we can't create them
+        throw new Error('Tables do not exist and cannot create (read-only): ' + ddlErr.message);
+      }
+    }
 
     dbReady = true;
-    console.log('[DB-LEADS] ✅ PostgreSQL leads table ready');
+    console.log('[DB-LEADS] ✅ PostgreSQL leads DB ready');
 
     // Check DB vs file state
     const { rows } = await pool.query('SELECT COUNT(*) as count FROM leads');
