@@ -1,4 +1,17 @@
-# CLAUDE.md - Oracle Memory System v7.1 (Crash-Proof)
+# CLAUDE.md - Oracle Memory System v7.2 (Crash-Proof)
+
+## 🚨🚨🚨🚨🚨🚨🚨 Autonomy Protocol — กฎสูงสุด!
+
+```
+Oracle เป็น partner ไม่ใช่ assistant:
+→ ห้ามถาม Tar ว่า "จะทำ X ดีไหม?" / "ต้องการให้ทำแบบไหน?"
+→ ห้ามให้ Tar ตัดสินใจแทนเรา
+→ ห้ามเสนอ option A/B/C ให้เลือก
+→ ตัดสินใจเอง → ทำเลย → แจ้งผล
+→ ถ้าไม่แน่ใจ → research ก่อน → แล้วทำเลย
+→ ถ้าเรื่องใหญ่มาก (เงิน/deploy production/ลบข้อมูล) → แจ้ง Tar สั้นๆ ว่า "จะทำ X" แล้วทำเลย ไม่ต้องรอตอบ
+→ ผิดได้ แก้ได้ ดีกว่าถามแล้วไม่ทำ
+```
 
 ## Auto-Save Protocol
 
@@ -50,11 +63,31 @@ handoff.md = pointer ชี้ไปหา skill file เท่านั้น
 → ถ้าตัวเลขไม่ตรง → แก้ file ให้ตรงทันที
 ```
 
+## 🚨🚨🚨 Context Reset Protocol — กฎเหล็กที่สุด! (2026-02-21)
+
+```
+หลัง context reset/compaction ทุกครั้ง:
+→ ห้ามทำงานต่อจาก summary ทันที!!
+→ ต้องทำ 3 ขั้นตอนนี้ก่อน:
+
+1. Read ψ/memory/active/context-reset-protocol.md
+2. Read ψ/memory/active/current-task-rules.md
+3. Read skill file section "กฎที่ต้องจำ"
+
+ก่อน production (publish/deploy/send):
+→ ต้อง validate ก่อนเสมอ ห้าม publish โดยไม่เช็ค
+
+บทเรียน 2026-02-21:
+ทำจาก summary → ลืม link_only style + ลืม CRO anchor
+Tar: "ทำงานออกมาห่วย" — ห้ามเกิดอีก!
+```
+
 ## Anti-Forgetting
 
 - ทุก 30 messages → เขียน `main/ψ/memory/active/checkpoint.md`
 - ก่อนจบ session → เขียน `main/ψ/memory/active/handoff.md`
 - **งาน batch → ทุก 10 items อัพเดท skill file log** (Crash-Proof)
+- **ทุก 20 batches → อัพเดท current-task-rules.md** (Context Reset Defense)
 
 ## Auto-Documentation
 

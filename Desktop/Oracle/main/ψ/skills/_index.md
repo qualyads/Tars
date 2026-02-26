@@ -59,6 +59,14 @@
 | **DGP Proposal** ⭐⭐⭐ | สร้าง proposal email DGP, pricing cards, CRO Landing Page + SEO Autopilot, VXB brand | `dgp-proposal.md` |
 | **Webflow Custom Scripts** ⭐⭐⭐ | เขียน JS ฝัง Webflow, TOC, scroll spy, Custom Code vs App Scripts, line-break bug | `webflow-custom-scripts.md` |
 | **Smolpix Auto-Blog** ⭐⭐⭐ | auto-publish SEO articles, 43 rules, Claude Sonnet, sitemap submit, cron, internal links | `smolpix-autoblog.md` |
+| **Revenue Analysis** ⭐⭐⭐⭐ | วิเคราะห์ไอเดียธุรกิจ, หารายได้, ประเมินโอกาส, business model, validate, 12 case studies | `revenue-analysis.md` |
+| **VXB Website Grader** ⭐⭐⭐⭐⭐ | Lead gen tool, SEO audit ฟรี, 103 checks, DGP funnel, HubSpot model | `vxb-website-grader.md` |
+| **Upwork** ⭐⭐⭐⭐⭐ | Upwork freelance, API OAuth+GraphQL, job search+score, submit proposal, Fixed Price, Oracle จบงานเอง | `upwork.md` |
+| **Idea Generation** ⭐⭐⭐⭐⭐ | คิดไอเดียทำเงินจากสิ่งที่มี, 5 เลนส์พลิกมุม, inventory ตัวเอง, validate 1 วัน, จับคู่เงินเร็ว+passive | `idea-generation.md` |
+| **Grand Slam SEO** ⭐⭐⭐⭐⭐ | Hormozi guarantee model, ติดหน้า 1 ใน 90 วัน, Oracle deliver, inbound flywheel, margin 95% | `grand-slam-seo.md` |
+| **SEO Autopilot** ⭐⭐⭐⭐⭐ | Oracle ทำ SEO 100% auto, MRR subscription, upsell จาก Grand Slam, multi-tenant, client dashboard | `seo-autopilot.md` |
+| **Instant Website** ⭐⭐⭐⭐ | สร้างเว็บ 24 ชม. 9,900, Relume template, entry product → upsell SEO, วันละ 2 เว็บ = 400K/เดือน | `instant-website.md` |
+| **Idea Hub** ⭐⭐⭐⭐⭐ | Entry point ทุกไอเดียธุรกิจ, 150 ideas dashboard, execution priority, passive wins, value ladder | `idea-hub.md` |
 
 ---
 
@@ -97,6 +105,13 @@
 **สร้าง DGP proposal/ปิดการขาย/pricing** → โหลด `dgp-proposal.md` ⭐⭐⭐
 **เขียน JS ฝัง Webflow/TOC/scroll spy** → โหลด `webflow-custom-scripts.md` ⭐⭐⭐
 **Smolpix auto-blog/sitemap/SEO** → โหลด `smolpix-autoblog.md` ⭐⭐⭐
+**วิเคราะห์ไอเดียธุรกิจ/หารายได้/โอกาสใหม่** → โหลด `revenue-analysis.md` ⭐⭐⭐⭐
+**คิดไอเดียใหม่จากสิ่งที่มี/พลิกมุม/brainstorm** → โหลด `idea-generation.md` ⭐⭐⭐⭐⭐
+**สร้าง Website Grader/SEO audit lead gen/DGP funnel** → โหลด `vxb-website-grader.md` ⭐⭐⭐⭐⭐
+**Grand Slam SEO/guarantee 90 วัน/Hormozi offer** → โหลด `grand-slam-seo.md` ⭐⭐⭐⭐⭐
+**SEO Autopilot/subscription/MRR/auto SEO** → โหลด `seo-autopilot.md` ⭐⭐⭐⭐⭐
+**สร้างเว็บ 24 ชม./เว็บด่วน/entry product** → โหลด `instant-website.md` ⭐⭐⭐⭐
+**ดูไอเดียทั้งหมด/execute ไอเดีย/passive income** → โหลด `idea-hub.md` ⭐⭐⭐⭐⭐
 
 ---
 

@@ -1,7 +1,68 @@
 # Session Handoff
 
-**From:** Session 2026-02-21 (Smolpix Auto-Blog Bug Fixes + Race Condition)
+**From:** Session 2026-02-26 (Smolpix SEO Overhaul)
 **To:** Next Session
+
+---
+
+## 🔔 REMINDER: เช็ค Smolpix GSC Indexing — 1-2 มี.ค. 2026
+
+```
+ทำอะไร: เช็ค indexing status ของ smolpix.co ทุก URL
+วิธี: ใช้ GSC URL Inspection API (OAuth token ใน google-token.json)
+คาดหวัง: Soft 404 หาย + 10 URLs indexed (จากเดิม 2/12)
+ถ้ายังไม่ indexed → re-submit via Indexing API
+```
+
+---
+
+## 🆕 Session 2026-02-26 — Smolpix SEO Overhaul (Critical Fix)
+
+### สถานะ: ✅ ALL DEPLOYED TO RAILWAY (cheerful-peace/pixie)
+
+### 1. SSR + Unique Metadata Fix ✅
+- **ปัญหา**: ทุกหน้าใช้ homepage title/meta/canonical + blog เป็น CSR 100%
+- **แก้**: แปลง blog [slug] เป็น Server Component + generateMetadata
+- **Files**: layout.tsx, page.tsx, blog/layout.tsx, blog/[slug]/page.tsx (rewrite), BlogPostClient.tsx (new)
+
+### 2. Keyword Consolidation ✅
+- **36 → 11 posts** (archive 25, keep 11 unique)
+- **25 redirects** (301) ใน next.config.ts
+- **5 keyword groups** + 2 off-topic consolidated
+
+### 3. Internal Links (Topic Cluster) ✅
+- **Pillar**: how-to-optimize-images → links to 10/10 supporting posts
+- **Supporting**: each links to pillar + 3 related (4/4 targets)
+- **Total**: 37 internal links (29 inline + 8 "Keep Reading")
+
+### 4. GSC Indexing Status (2026-02-26)
+| URL | Status | Last Crawl |
+|-----|--------|-----------|
+| smolpix.co | ✅ Indexed | Feb 19 |
+| /blog | ✅ Indexed | Feb 24 |
+| how-to-optimize-images (pillar) | Soft 404 | Feb 25 |
+| avif-vs-webp | Soft 404 | Feb 24 |
+| best-online-compression-tools | Unknown | never |
+| mastering-image-compression | Crawled not indexed | Jan 19 |
+| effective-ways-to-reduce | Discovered | never |
+| reduce-image-resolution | Discovered | never |
+| lazy-loading-images | Crawled not indexed | Feb 23 |
+| responsive-images-srcset | Alternate w/ canonical | Feb 24 |
+| image-cdn | Discovered | never |
+| core-web-vitals | Discovered | never |
+| webp-to-jpg | Discovered | never |
+
+→ **รอ Google recrawl 3-7 วัน** — Soft 404 + Alternate จะหายหลัง recrawl เห็น SSR content
+→ **เช็คอีกที 1-2 มี.ค.** ← Tar สั่ง
+
+### Repo & DB
+- Repo: `qualyads/pixie` → cloned `/Users/tanakitchaithip/Downloads/pixie-main/`
+- DB: `postgresql://postgres:glTiNRCeTuVUgQTPFdDfJyWsPSgFqMDm@switchback.proxy.rlwy.net:12890/railway`
+- Railway: Project `cheerful-peace`, Service `pixie`
+
+### Commits
+1. "Fix critical SEO: SSR blog posts + unique metadata + canonical per page"
+2. "Consolidate 36 blog posts → 11: archive duplicates + 301 redirects"
 
 ---
 
@@ -347,30 +408,32 @@ Legal Pages:     6996dfe6f8a55a33615ac856
 ## งานหลักระยะยาว — Task #62: Service Page SEO Overhaul
 
 > **Skill:** `ψ/skills/service-page-seo.md` ⭐⭐⭐ ← อ่านก่อนทำ!
+> **กฎงาน:** `ψ/memory/active/current-task-rules.md` ← อ่านหลัง context reset!
 
 ### Scope
 ปรับปรุง **126 service pages** ทั้ง Body Text CRO + Internal Links พร้อมกัน
 
 | งาน | ทำเสร็จ | เหลือ |
 |------|---------|-------|
-| Body Text CRO | **10/126** ✅ (Hub, CMS, E-Com, Membership, Support, One-Page, Car-Rental, Multilingual, Localization, GBP) | 116 หน้า |
-| Internal Links (5/หน้า) | **10/126 ✅ Published** (50 links) | 116 หน้า (584 links) |
+| Body Text CRO | **66/126** ✅ | 60 หน้า |
+| Internal Links (5/หน้า) | **66/126 ✅ Published** (330 links) | 60 หน้า (300 links) |
 
-### Workflow ต่อหน้า
+### Session 2026-02-25 Summary
+- Page 65: `/services/event-website-design` — CRO + 5 links ✅ Published
+- Page 66: `/services/premium-healthy-food-website-design` — CRO + 5 links ✅ Published
+- Keywords: "เว็บอาหารสุขภาพ" vol:10, "healthy food website" vol:880
+
+### Next Page (Page 67)
 ```
-1. switch_page → เปิดหน้า
-2. get_all_elements → หา String IDs + button-group IDs
-3. RapidAPI keyword research (กฎเหล็ก!)
-4. เขียน CRO content → set_text ทีละ element
-5. สร้าง 5 TextLinks → element_builder ใน button-groups
-6. Verify → ไปหน้าถัดไป
+/services/food-franchise-website-design
+page_id: 687a58a8107188066712b78d
+category: อาหาร & F&B
+73 remaining
 ```
 
-### ถัดไปควรทำ
+### Script หา next page
 ```
-1. เริ่ม 121 หน้าที่เหลือ (CRO 100% + Links พร้อมกัน)
-2. ใช้ Mandatory Checklist Protocol ทุกหน้า (ห้ามข้าม!)
-3. ลำดับ: เริ่มจาก high-traffic pages ก่อน
+node /tmp/next-page.js
 ```
 
 ### Execution Plan Data (พร้อมใช้)
@@ -650,8 +713,8 @@ Service Pages Meta:     221/246 ✅ (90%)
 Showcase Content:       17/17 ✅
 Showcase IL:            17/17 ✅ (55 links)
 Blog Title+Meta:        381/381 ✅
-Service Page CRO:       → ดู ψ/skills/service-page-seo.md
-Service Page IL:        → ดู ψ/skills/service-page-seo.md
+Service Page CRO:       66/126 ✅ (52%) → ψ/skills/service-page-seo.md
+Service Page IL:        66/126 ✅ (330 links) → ψ/skills/service-page-seo.md
 Blog Rewrite:           381/381 ✅ COMPLETE (2026-02-11)
 Backlinks:              0 ⏳ (plan ready → ψ/skills/backlink-auto.md)
 

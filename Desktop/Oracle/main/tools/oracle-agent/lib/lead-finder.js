@@ -1526,10 +1526,10 @@ async function classifyReply(replyBody, replySnippet, businessName) {
     if (clean.includes('interested')) return 'interested';
     if (clean.includes('declined')) return 'declined';
     if (clean.includes('auto_reply') || clean.includes('auto reply')) return 'auto_reply';
-    return 'interested'; // default to interested if unclear
+    return 'unclear'; // default to unclear — ให้ Tar ดูเอง ดีกว่าส่ง audit ผิดคน
   } catch (err) {
     console.error(`[CLASSIFY] Error: ${err.message}`);
-    return 'interested'; // default to interested
+    return 'unclear'; // default to unclear — ปลอดภัยกว่า interested
   }
 }
 
@@ -1804,8 +1804,9 @@ subject ต้องมีชื่อ "${bizName}" + บอกว่าเป�
  */
 async function checkReplies() {
   const leadsData = loadLeads();
-  const sentLeads = leadsData.leads.filter(l => l.status === 'emailed' || l.status === 'followed_up')
-    .filter(l => !l.replyClassification); // skip already classified replies
+  const sentLeads = leadsData.leads.filter(l =>
+    l.status === 'emailed' || l.status === 'followed_up' || l.status === 'audit_sent'
+  ).filter(l => !l.replyClassification); // skip already classified replies
 
   if (sentLeads.length === 0) return [];
 

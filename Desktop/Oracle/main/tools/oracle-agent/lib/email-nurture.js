@@ -373,6 +373,8 @@ async function processNurtureQueue() {
       if (!lead.nurture) continue;
       if (lead.nurture.unsubscribed) continue;
       if (lead.nurture.step >= 4) continue;
+      // หยุด nurture ถ้า lead ตอบแล้วหรือปิดไปแล้ว
+      if (['replied', 'closed', 'audit_sent'].includes(lead.status)) continue;
 
       // Check if it's time for next email
       const nextSendAt = lead.nurture.nextSendAt ? new Date(lead.nurture.nextSendAt).getTime() : 0;

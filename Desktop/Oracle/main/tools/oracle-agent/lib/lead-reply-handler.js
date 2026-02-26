@@ -1,0 +1,449 @@
+/**
+ * Lead Reply Handler — Real-time Reply Detection + Auto-Reply with Calendar Slots
+ *
+ * Flow: Gmail Pub/Sub webhook → listHistory → match lead → classify intent → auto-reply/notify
+ *
+ * Safety:
+ * - Max 1 auto-reply per lead (autoRepliedAt field)
+ * - Skip emails from visionxbrain, mailer-daemon, noreply
+ * - Calendar failure → fallback text
+ */
+
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { chat } from './claude.js';
+import gmail from './gmail.js';
+import { GmailClient } from './gmail.js';
+import googleCalendar from './google-calendar.js';
+import gateway from './gateway.js';
+import dbLeads from './db-leads.js';
+import emailNurture from './email-nurture.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const DATA_DIR = path.join(__dirname, '..', 'data');
+const LEADS_FILE = path.join(DATA_DIR, 'leads.json');
+const PUBSUB_TOPIC = 'projects/oracle-agent-486604/topics/gmail-notifications';
+
+// Watch state
+let watchState = {
+  historyId: null,
+  expiration: null,
+  setupAt: null,
+  lastWebhook: null,
+  processedMessages: new Set(),
+  stats: { webhooksReceived: 0, messagesProcessed: 0, repliesDetected: 0, autoRepliesSent: 0 }
+};
+
+// Skip these senders
+const SKIP_SENDERS = ['visionxbrain', 'mailer-daemon', 'noreply', 'no-reply', 'postmaster', 'googlemail'];
+
+// ─── Leads I/O ───
+
+function loadLeads() {
+  try {
+    return JSON.parse(fs.readFileSync(LEADS_FILE, 'utf-8'));
+  } catch {
+    return { leads: [], processedDomains: [], lastRun: null };
+  }
+}
+
+function saveLeads(data) {
+  const content = JSON.stringify(data, null, 2);
+  const fd = fs.openSync(LEADS_FILE, 'w');
+  fs.writeSync(fd, content);
+  fs.fsyncSync(fd);
+  fs.closeSync(fd);
+
+  // Sync to Postgres — ป้องกัน data loss เมื่อ deploy ใหม่
+  if (dbLeads.isDBReady()) {
+    dbLeads.saveLeads(data).catch(err =>
+      console.error('[LEAD-REPLY] DB sync error:', err.message)
+    );
+  }
+}
+
+// ─── Setup Watch ───
+
+async function setupWatch() {
+  try {
+    if (!gmail.isConfigured()) {
+      console.log('[LEAD-REPLY] Gmail not configured, skipping watch setup');
+      return null;
+    }
+
+    const result = await gmail.watchInbox(PUBSUB_TOPIC);
+    watchState.historyId = result.historyId;
+    watchState.expiration = result.expiration;
+    watchState.setupAt = new Date().toISOString();
+
+    console.log(`[LEAD-REPLY] Watch active — historyId: ${result.historyId}, expires: ${new Date(result.expiration).toISOString()}`);
+    return result;
+  } catch (err) {
+    console.error('[LEAD-REPLY] Watch setup failed:', err.message);
+    return null;
+  }
+}
+
+// ─── Process Gmail Webhook ───
+
+async function processGmailWebhook(payload) {
+  watchState.lastWebhook = new Date().toISOString();
+  watchState.stats.webhooksReceived++;
+
+  const emailAddress = payload.emailAddress;
+  const newHistoryId = payload.historyId;
+
+  // Need a starting historyId to query
+  if (!watchState.historyId) {
+    console.log('[LEAD-REPLY] No historyId stored, saving current and skipping');
+    watchState.historyId = newHistoryId;
+    return { status: 'skipped', reason: 'no_previous_history' };
+  }
+
+  try {
+    const historyResult = await gmail.listHistory(watchState.historyId);
+
+    // Handle expired history
+    if (historyResult.expired) {
+      console.log('[LEAD-REPLY] History expired, re-setting up watch');
+      await setupWatch();
+      return { status: 'rewatch', reason: 'history_expired' };
+    }
+
+    // Update historyId for next webhook
+    if (historyResult.historyId) {
+      watchState.historyId = historyResult.historyId;
+    }
+
+    if (!historyResult.history || historyResult.history.length === 0) {
+      return { status: 'ok', newMessages: 0 };
+    }
+
+    // Extract new message IDs
+    const messageIds = new Set();
+    for (const entry of historyResult.history) {
+      if (entry.messagesAdded) {
+        for (const added of entry.messagesAdded) {
+          const msgId = added.message.id;
+          // Skip already processed
+          if (!watchState.processedMessages.has(msgId)) {
+            messageIds.add(msgId);
+          }
+        }
+      }
+    }
+
+    if (messageIds.size === 0) {
+      return { status: 'ok', newMessages: 0 };
+    }
+
+    console.log(`[LEAD-REPLY] ${messageIds.size} new message(s) to process`);
+
+    // Process each message (don't await all in parallel — rate limit friendly)
+    const results = [];
+    for (const msgId of messageIds) {
+      try {
+        const result = await processIncomingMessage(msgId);
+        results.push(result);
+        watchState.processedMessages.add(msgId);
+        watchState.stats.messagesProcessed++;
+      } catch (err) {
+        console.error(`[LEAD-REPLY] Error processing ${msgId}:`, err.message);
+        results.push({ msgId, error: err.message });
+      }
+    }
+
+    // Keep processedMessages set from growing unbounded
+    if (watchState.processedMessages.size > 500) {
+      const arr = [...watchState.processedMessages];
+      watchState.processedMessages = new Set(arr.slice(-200));
+    }
+
+    return { status: 'ok', newMessages: messageIds.size, results };
+  } catch (err) {
+    console.error('[LEAD-REPLY] Webhook processing error:', err.message);
+    return { status: 'error', error: err.message };
+  }
+}
+
+// ─── Process Single Message ───
+
+async function processIncomingMessage(msgId) {
+  const msg = await gmail.getMessage(msgId, 'full');
+
+  // Extract sender email
+  const fromMatch = msg.from.match(/<([^>]+)>/);
+  const senderEmail = (fromMatch ? fromMatch[1] : msg.from).toLowerCase().trim();
+
+  // Skip our own emails and system emails
+  if (SKIP_SENDERS.some(s => senderEmail.includes(s))) {
+    return { msgId, status: 'skipped', reason: 'sender_filtered', sender: senderEmail };
+  }
+
+  // Match against leads — ทุก status ยกเว้น bounced/closed
+  const leadsData = loadLeads();
+  const lead = leadsData.leads.find(l =>
+    l.email && senderEmail.includes(l.email.toLowerCase()) &&
+    !['bounced', 'closed'].includes(l.status)
+  );
+
+  if (!lead) {
+    return { msgId, status: 'skipped', reason: 'not_a_lead', sender: senderEmail };
+  }
+
+  console.log(`[LEAD-REPLY] 🎯 Reply from lead: ${lead.businessName} (${senderEmail})`);
+  watchState.stats.repliesDetected++;
+
+  // Extract clean reply text
+  const replyText = GmailClient.stripQuotedText(msg.body || msg.snippet || '');
+
+  // Update lead with reply info
+  lead.status = 'replied';
+  lead.repliedAt = new Date().toISOString();
+  lead.replyMessageId = msg.id;
+  lead.replyThreadId = msg.threadId;
+  lead.replySnippet = replyText.slice(0, 500);
+
+  // Classify intent
+  const intent = await classifyIntent(replyText, lead);
+  lead.replyIntent = intent;
+
+  console.log(`[LEAD-REPLY] Intent: ${intent} | ${lead.businessName}`);
+
+  // Handle based on intent
+  if (intent === 'interested') {
+    // Auto-reply with calendar slots
+    if (!lead.autoRepliedAt) {
+      try {
+        await sendAutoReply(lead, msg, replyText);
+        lead.autoRepliedAt = new Date().toISOString();
+        watchState.stats.autoRepliesSent++;
+      } catch (err) {
+        console.error(`[LEAD-REPLY] Auto-reply failed for ${lead.businessName}:`, err.message);
+      }
+    }
+    await notifyLeadReply(lead, replyText, 'interested');
+  } else if (intent === 'declined') {
+    lead.status = 'closed';
+    lead.closedAt = new Date().toISOString();
+    lead.closeReason = 'declined_by_reply';
+    // Unsubscribe จาก nurture sequence ด้วย
+    if (lead.email) {
+      emailNurture.unsubscribe(lead.email).catch(() => {});
+    }
+    await notifyLeadReply(lead, replyText, 'declined');
+  } else {
+    // unclear — notify only, Tar handles manually
+    await notifyLeadReply(lead, replyText, 'unclear');
+  }
+
+  saveLeads(leadsData);
+  return { msgId, status: 'processed', lead: lead.businessName, intent };
+}
+
+// ─── Intent Classification ───
+
+async function classifyIntent(replyText, lead) {
+  try {
+    const response = await chat([
+      {
+        role: 'user',
+        content: `Classify this email reply intent. The original email was a business outreach offering SEO/web services to "${lead.businessName}" (${lead.industry || 'unknown industry'}).
+
+Reply text:
+"""
+${replyText.slice(0, 1000)}
+"""
+
+Classify as ONE of:
+- "interested" — wants to know more, asks questions, requests meeting/call, positive tone
+- "declined" — not interested, already has agency, budget issues, asks to stop emailing
+- "unclear" — auto-reply, out-of-office, unrelated, ambiguous
+
+Reply with ONLY the classification word, nothing else.`
+      }
+    ], {
+      system: 'You classify email reply intents. Reply with exactly one word: interested, declined, or unclear.',
+      model: 'claude-haiku-4-5-20251001',
+      maxTokens: 10,
+      skipAutoRecall: true
+    });
+
+    const intent = response.trim().toLowerCase();
+    if (['interested', 'declined', 'unclear'].includes(intent)) {
+      return intent;
+    }
+    return 'unclear';
+  } catch (err) {
+    console.error('[LEAD-REPLY] Intent classification failed:', err.message);
+    return 'unclear';
+  }
+}
+
+// ─── Auto-Reply with Calendar Slots ───
+
+async function sendAutoReply(lead, originalMsg, replyText) {
+  // Get free slots
+  let slotsText;
+  try {
+    slotsText = await getNextFreeSlots(3);
+  } catch (err) {
+    console.log('[LEAD-REPLY] Calendar unavailable, using fallback:', err.message);
+    slotsText = null;
+  }
+
+  const calendarSection = slotsText
+    ? `\n\nช่วงเวลาที่สะดวกนัดคุยครับ:\n${slotsText}\n\nหรือถ้ามีเวลาอื่นที่สะดวกกว่า แจ้งมาได้เลยครับ`
+    : '\n\nจะแจ้งเวลาว่างให้ภายหลังนะครับ';
+
+  // Generate personalized reply with AI
+  let replyBody;
+  try {
+    replyBody = await chat([
+      {
+        role: 'user',
+        content: `Write a short, professional Thai reply to a business lead who responded positively to our SEO/web outreach email.
+
+Business: ${lead.businessName} (${lead.industry || ''})
+Their reply: "${replyText.slice(0, 500)}"
+
+Requirements:
+- Thank them for replying
+- Address their specific question/interest if any
+- Keep it under 5 sentences
+- Professional but friendly tone (not robotic)
+- End with willingness to discuss further
+- Do NOT include greeting or sign-off (I'll add those)
+- Write in Thai`
+      }
+    ], {
+      system: 'You write short, natural Thai business emails. No emojis. No over-selling.',
+      model: 'claude-haiku-4-5-20251001',
+      maxTokens: 300,
+      skipAutoRecall: true
+    });
+  } catch (err) {
+    console.error('[LEAD-REPLY] AI reply generation failed:', err.message);
+    replyBody = 'ขอบคุณที่ตอบกลับครับ ยินดีมากที่สนใจบริการของเรา';
+  }
+
+  const fullBody = `
+<div style="font-family: 'Sarabun', Arial, sans-serif; font-size: 15px; color: #333; line-height: 1.7;">
+  <p>สวัสดีครับ,</p>
+  <p>${replyBody.replace(/\n/g, '<br>')}</p>
+  <p>${calendarSection.replace(/\n/g, '<br>')}</p>
+  <br>
+  <p>ขอบคุณครับ<br>
+  <strong>Tanakit (Tar)</strong><br>
+  VisionXBrain Agency<br>
+  <a href="https://visionxbrain.com">visionxbrain.com</a></p>
+</div>`.trim();
+
+  const result = await gmail.send({
+    to: lead.email,
+    subject: `Re: ${originalMsg.subject}`,
+    body: fullBody,
+    inReplyTo: `<${originalMsg.id}@mail.gmail.com>`,
+    threadId: originalMsg.threadId
+  });
+
+  lead.autoReplyMessageId = result.id;
+  console.log(`[LEAD-REPLY] ✅ Auto-reply sent to ${lead.businessName} (${lead.email})`);
+  return result;
+}
+
+// ─── Calendar Free Slots ───
+
+async function getNextFreeSlots(days = 3) {
+  if (!googleCalendar.isConfigured()) {
+    throw new Error('Google Calendar not configured');
+  }
+
+  const slots = [];
+  const now = new Date();
+
+  for (let i = 0; i < days; i++) {
+    const date = new Date(now);
+    date.setDate(date.getDate() + i);
+
+    // Skip weekends
+    const dow = date.getDay();
+    if (dow === 0 || dow === 6) continue;
+
+    const daySlots = await googleCalendar.findFreeSlots({
+      date,
+      duration: 30,
+      workStart: 10,
+      workEnd: 17
+    });
+
+    if (daySlots.length > 0) {
+      const dayName = date.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' });
+
+      // Take max 3 slots per day
+      const topSlots = daySlots.slice(0, 3).map(s => {
+        const start = new Date(s.start);
+        const end = new Date(s.end);
+        return `  • ${start.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`;
+      });
+
+      slots.push(`📅 ${dayName}\n${topSlots.join('\n')}`);
+    }
+  }
+
+  if (slots.length === 0) {
+    throw new Error('No free slots found');
+  }
+
+  return slots.join('\n\n');
+}
+
+// ─── Notify Owner ───
+
+async function notifyLeadReply(lead, replyText, intent) {
+  const intentEmoji = { interested: '🔥', declined: '❌', unclear: '❓' };
+  const intentLabel = { interested: 'สนใจ!', declined: 'ปฏิเสธ', unclear: 'ไม่ชัดเจน' };
+
+  const message = `${intentEmoji[intent]} Lead Reply: ${lead.businessName}
+Intent: ${intentLabel[intent]}
+Email: ${lead.email}
+Industry: ${lead.industry || '-'}
+
+Reply:
+"${replyText.slice(0, 300)}"
+
+${intent === 'interested' && lead.autoRepliedAt ? '✅ Auto-reply sent with calendar slots' : ''}
+${intent === 'unclear' ? '⚠️ ต้อง reply เอง' : ''}`;
+
+  try {
+    await gateway.notifyOwner(message.trim());
+    console.log(`[LEAD-REPLY] Notification sent for ${lead.businessName}`);
+  } catch (err) {
+    console.error('[LEAD-REPLY] Notification failed:', err.message);
+  }
+}
+
+// ─── Status ───
+
+function getStatus() {
+  return {
+    watchActive: !!watchState.historyId && !!watchState.expiration && Date.now() < watchState.expiration,
+    historyId: watchState.historyId,
+    expiration: watchState.expiration ? new Date(watchState.expiration).toISOString() : null,
+    setupAt: watchState.setupAt,
+    lastWebhook: watchState.lastWebhook,
+    processedCount: watchState.processedMessages.size,
+    stats: watchState.stats
+  };
+}
+
+export default {
+  setupWatch,
+  processGmailWebhook,
+  processIncomingMessage,
+  classifyIntent,
+  getStatus
+};

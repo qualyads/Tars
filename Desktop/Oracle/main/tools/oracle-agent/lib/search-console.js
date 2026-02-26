@@ -383,6 +383,68 @@ class SearchConsole {
     };
   }
 
+  // =========================================================================
+  // INDEXING API — Request Google to re-crawl URLs
+  // Requires scope: https://www.googleapis.com/auth/indexing
+  // =========================================================================
+
+  /**
+   * Request indexing for a single URL via Google Indexing API
+   * @param {string} url - Full URL to request indexing for
+   * @param {string} type - 'URL_UPDATED' or 'URL_DELETED'
+   */
+  async requestIndexing(url, type = 'URL_UPDATED') {
+    const token = await this.getAccessToken();
+    const response = await fetch('https://indexing.googleapis.com/v3/urlNotifications:publish', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url, type }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Indexing API error (${response.status}): ${error}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Batch request indexing for multiple URLs
+   * Google Indexing API limit: ~200 requests/day
+   * @param {string[]} urls - Array of full URLs
+   * @param {number} delayMs - Delay between requests (ms)
+   */
+  async batchRequestIndexing(urls, delayMs = 500) {
+    const results = { submitted: 0, failed: 0, errors: [], details: [] };
+
+    for (const url of urls) {
+      try {
+        const result = await this.requestIndexing(url, 'URL_UPDATED');
+        results.submitted++;
+        results.details.push({ url, status: 'submitted', notifyTime: result.urlNotificationMetadata?.latestUpdate?.notifyTime });
+        if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
+      } catch (e) {
+        results.failed++;
+        results.errors.push({ url, error: e.message });
+        // If we get 429 (rate limit), wait longer
+        if (e.message.includes('429')) {
+          await new Promise(r => setTimeout(r, 5000));
+        }
+        // If scope error (403), stop immediately
+        if (e.message.includes('403') && e.message.includes('indexing')) {
+          results.errors.push({ url: 'STOP', error: 'Indexing API scope not authorized. Re-run google-oauth.js to add indexing scope.' });
+          break;
+        }
+      }
+    }
+
+    return results;
+  }
+
   _daysAgo(n) {
     const d = new Date();
     d.setDate(d.getDate() - n);

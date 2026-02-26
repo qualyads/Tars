@@ -40,7 +40,8 @@ const SCOPES = [
   'https://www.googleapis.com/auth/webmasters',
   'https://www.googleapis.com/auth/business.manage',
   'https://www.googleapis.com/auth/analytics.readonly',
-  'https://www.googleapis.com/auth/spreadsheets'
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/indexing'
 ].join(' ');
 
 // Add login_hint for specific accounts
