@@ -136,9 +136,14 @@ function incrementDailyEmailCount(type = 'cold') {
 
 function canSendMoreToday(type = 'cold') {
   const data = _loadDailyCounter();
+  if (type === 'followUp') {
+    // Follow-up = reply ใน thread เดิม → ไม่เสี่ยง spam → ใช้แค่ follow-up cap
+    // ไม่ถูก block โดย total cap เพราะ follow-up มีค่ากว่า cold email
+    return (data.followUp || 0) < MAX_FOLLOWUP_PER_DAY;
+  }
+  // Cold + nurture: ใช้ทั้ง type cap + total cap
   if (data.count >= MAX_TOTAL_EMAILS_PER_DAY) return false;
   if (type === 'cold') return (data.cold || 0) < MAX_COLD_PER_DAY;
-  if (type === 'followUp') return (data.followUp || 0) < MAX_FOLLOWUP_PER_DAY;
   return true; // nurture uses its own cap in email-nurture.js
 }
 
@@ -2435,9 +2440,27 @@ async function runDaily() {
 
   } finally {
     // ALWAYS save lastRun — even if steps above failed
-    leadsData.lastRun = new Date().toISOString();
-    saveLeads(leadsData);
-    console.log(`[LEAD-FINDER] lastRun saved: ${leadsData.lastRun}`);
+    // ⚠️ Reload fresh data first! processFollowUps()/checkReplies() saved their own changes
+    // If we save the stale leadsData here, we'd overwrite follow-up status changes
+    const freshData = loadLeads();
+    freshData.lastRun = new Date().toISOString();
+    // Merge new leads from discovery (Step 1-2) that are in leadsData but not in freshData
+    const freshPlaceIds = new Set(freshData.leads.map(l => l.place_id).filter(Boolean));
+    const freshDomains = new Set(freshData.leads.map(l => l.domain).filter(Boolean));
+    for (const lead of leadsData.leads) {
+      const inFresh = (lead.place_id && freshPlaceIds.has(lead.place_id)) ||
+                      (lead.domain && freshDomains.has(lead.domain));
+      if (!inFresh) freshData.leads.push(lead);
+    }
+    // Merge processedDomains
+    if (leadsData.processedDomains) {
+      const existing = new Set(freshData.processedDomains || []);
+      for (const d of leadsData.processedDomains) {
+        if (!existing.has(d)) freshData.processedDomains.push(d);
+      }
+    }
+    saveLeads(freshData);
+    console.log(`[LEAD-FINDER] lastRun saved: ${freshData.lastRun}`);
   }
 
   // Step 7: Send summary notification
