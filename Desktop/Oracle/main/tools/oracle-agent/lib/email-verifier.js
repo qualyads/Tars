@@ -10,8 +10,8 @@
  */
 
 const VALID_STATUSES = ['ok'];
-const RISKY_STATUSES = ['catch_all', 'unknown', 'role'];
-const INVALID_STATUSES = ['fail', 'email_disabled', 'disposable', 'spamtrap'];
+const RISKY_STATUSES = ['role'];  // role email ยังส่งได้ (info@, contact@)
+const INVALID_STATUSES = ['fail', 'email_disabled', 'disposable', 'spamtrap', 'catch_all', 'unknown'];
 
 // In-memory cache — ป้องกันเรียก API ซ้ำสำหรับ email เดียวกัน
 const verifyCache = new Map();
@@ -48,8 +48,8 @@ async function verifyEmail(email) {
     if (!response.ok) {
       const text = await response.text();
       console.error(`[EMAIL-VERIFY] API error (${response.status}): ${text}`);
-      // API error → fail-open (ให้ส่งได้ แต่ flag ว่า risky)
-      return { valid: true, status: 'api_error', risky: true, source: 'error' };
+      // API error → fail-closed (ไม่ส่ง — bounce เสียชื่อ domain มากกว่าส่งช้า)
+      return { valid: false, status: 'api_error', risky: true, source: 'error' };
     }
 
     const status = (await response.text()).trim().toLowerCase();
@@ -70,8 +70,8 @@ async function verifyEmail(email) {
     return result;
   } catch (err) {
     console.error(`[EMAIL-VERIFY] Error verifying ${emailLower}:`, err.message);
-    // Network error → fail-open
-    return { valid: true, status: 'network_error', risky: true, source: 'error' };
+    // Network error → fail-closed (ไม่ส่ง — ปลอดภัยกว่า)
+    return { valid: false, status: 'network_error', risky: true, source: 'error' };
   }
 }
 

@@ -394,6 +394,21 @@ async function processNurtureQueue() {
           audit = getAudit(lead.auditId);
         }
 
+        // Verify email ก่อนส่ง — ป้องกัน bounce
+        try {
+          const { verifyEmail, isConfigured: isEmailVerifyConfigured } = await import('./email-verifier.js');
+          if (isEmailVerifyConfigured()) {
+            const check = await verifyEmail(lead.email);
+            if (!check.valid) {
+              console.log(`[NURTURE] ⛔ Skip ${lead.email} — failed verification: ${check.status}`);
+              continue;
+            }
+          }
+        } catch (verifyErr) {
+          console.error('[NURTURE] Verify error (blocking send):', verifyErr.message);
+          continue;
+        }
+
         const trackingId = randomUUID();
         const { subject, html } = builder(lead, audit);
         const fullHtml = wrapEmail(html, trackingId);

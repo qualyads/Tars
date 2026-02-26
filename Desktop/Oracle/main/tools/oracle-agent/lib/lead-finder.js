@@ -162,6 +162,10 @@ function addToBounceBlacklist(email) {
  * ฟรี, ไม่เสียเงิน, ใช้ SMTP handshake เท่านั้น (ไม่ได้ส่ง email จริง)
  */
 async function verifyEmailSMTP(email, mxHost) {
+  // Skip on Railway — EmailListVerify API handles this better
+  if (process.env.RAILWAY_ENVIRONMENT || process.env.EMAILVERIFY_API_KEY) {
+    return { valid: true, reason: 'skipped — using EmailListVerify API instead' };
+  }
   return new Promise((resolve) => {
     const timeout = 10000; // 10 seconds
     let resolved = false;

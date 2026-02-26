@@ -3614,6 +3614,21 @@ app.post('/api/gmail/send', async (req, res) => {
     if (!to || !subject || !body) {
       return res.status(400).json({ error: 'to, subject, body required' });
     }
+    // Verify email before sending
+    try {
+      const { verifyEmail } = await import('./lib/email-verifier.js');
+      const check = await verifyEmail(to);
+      if (!check.valid) {
+        return res.status(400).json({
+          error: `Email verification failed: ${check.status}`,
+          errorTh: `อีเมล ${to} ตรวจสอบไม่ผ่าน (${check.status})`
+        });
+      }
+    } catch (verifyErr) {
+      console.error('[GMAIL-SEND] Verify error:', verifyErr.message);
+      // fail-closed: ถ้า verify ไม่ได้ ไม่ส่ง
+      return res.status(500).json({ error: 'Email verification unavailable' });
+    }
     const result = await gmailClient.send({ to, subject, body, cc, bcc });
     res.json({ success: true, ...result });
   } catch (err) {
