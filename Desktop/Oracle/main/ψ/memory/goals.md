@@ -410,6 +410,69 @@ SEO Grader → VXB:     10-50K/เดือน (passive 90%)
 
 **Skill file:** `ψ/skills/backlink-auto.md` — section "Backlink Engine"
 
+### 📌 Task #78: Smolpix Growth — ทำต่อพรุ่งนี้ 27 ก.พ.
+
+> **สิ่งที่ทำเสร็จ 26 ก.พ.:**
+> SSR fix + 25 redirects + topic cluster + 2 free tools (resize + compress) + deployed + indexed
+> **Full log:** `ψ/memory/logs/2026-02-26_smolpix-todo.md`
+
+**P0: ติด GA4 (15 นาที)**
+```
+ไม่มี GA4 → วัด traffic/signup/conversion ไม่ได้เลย
+สร้าง property → ใส่ measurement ID ใน layout.tsx
+```
+
+**P1: Content Depth บน Tool Pages (1-2 ชม.)**
+```
+Tool pages มีแค่ tool + FAQ → content น้อยเกินไป
+เพิ่ม 1,500-2,000 words per page:
+  - "How to Use" step-by-step
+  - "Why resize/compress" educational section
+  - Comparison table: JPG vs PNG vs WebP vs AVIF
+  - Use cases + Tips & best practices
+```
+
+**P2: Internal Links Blog ↔ Tools (1 ชม.)**
+```
+11 blog posts ยังไม่ลิงก์ไป tools, tools ไม่ลิงก์ไป blog
+Homepage ไม่โปรโมท tools (แค่ navbar)
+```
+
+**P3: Newsletter Form Fix (30 นาที)**
+```
+Footer email form กด subscribe แล้วไม่ส่งไปไหน → leads หลุด
+```
+
+**P4: เพิ่ม Tool Pages (2-3 ชม.)**
+```
+/tools/webp-to-jpg  — 1,220,000/mo
+/tools/heic-to-jpg  — 1,220,000/mo
+/tools/webp-to-png  — 1,000,000/mo
+/tools/png-to-jpg   — 823,000/mo
+/tools/avif-to-jpg  — 450,000/mo
+```
+
+**P5: Backlinks (ต่อเนื่อง)**
+```
+DA = 0, backlinks = 0 → ไม่มีทาง rank keyword ใหญ่
+Product Hunt + Webflow Forum + Reddit + free directories
+เป้า: 20-30 backlinks ใน 1 เดือน
+```
+
+**⚠️ สำคัญ: Paid CI ≠ Organic Difficulty**
+```
+CI ต่ำ = ไม่มีคนซื้อ Google Ads
+แต่ organic SERP เต็มเว็บ DA 80+ (TinyPNG, Squoosh, Adobe)
+ต้องมี backlinks + content depth ถึงจะสู้ได้
+Long-tail rank: 1-3 เดือน | Medium: 3-6 เดือน | Big keyword: 6-12 เดือน
+```
+
+**GSC Indexing — เช็คอีกที 1-2 มี.ค.**
+```
+12 URLs checked: 2 indexed, 2 soft 404 (รอ recrawl), 8 not indexed yet
+tools/resize-image + tools/compress-image = just submitted
+```
+
 ### 🔜 Up Next — Claude ทำได้เลย
 
 | # | Task | Owner | Priority | Project | Notes |
@@ -629,4 +692,4 @@ Lead Reply Handler:     ✅ Real-time Pub/Sub + AI auto-reply (2026-02-12)
 
 ---
 
-*Last updated: 2026-02-25*
+*Last updated: 2026-02-26*

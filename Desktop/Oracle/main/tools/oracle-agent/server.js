@@ -3117,6 +3117,31 @@ app.post('/api/seo/sitemap-audit', async (req, res) => {
   }
 });
 
+// Auto-Index Queue — API endpoints
+app.get('/api/seo/auto-index/status', (req, res) => {
+  res.json({ success: true, ...seoEngine.getAutoIndexStatus() });
+});
+
+app.post('/api/seo/auto-index/run', async (req, res) => {
+  console.log('[AUTO-INDEX] Manual trigger via API');
+  try {
+    const result = await seoEngine.runDailyAutoIndex();
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/seo/auto-index/refresh', async (req, res) => {
+  console.log('[AUTO-INDEX] Queue refresh via API');
+  try {
+    const result = await seoEngine.refreshIndexQueue();
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.post('/api/seo/inspect', async (req, res) => {
   console.log('[SEO] URL Inspection triggered via API');
   try {
@@ -5736,6 +5761,21 @@ async function submitSitemapIfNeeded(reason = 'unknown') {
 cron.schedule('0 6 * * 1', async () => {
   console.log('[SEO] 🗺️ Weekly Sitemap Submit triggered');
   await submitSitemapIfNeeded('weekly-cron');
+}, { timezone: config.agent.timezone });
+
+// =============================================================================
+// AUTO-INDEX CRON — ทุกวัน 07:00 Bangkok ส่ง indexing request วันละ 200
+// =============================================================================
+cron.schedule('0 7 * * *', async () => {
+  console.log('[AUTO-INDEX] 🚀 Daily Auto-Index triggered (07:00)');
+  try {
+    const result = await seoEngine.runDailyAutoIndex();
+    console.log('[AUTO-INDEX] Result:', JSON.stringify(result));
+    logSystemEvent('seo', 'auto_index', result);
+  } catch (error) {
+    console.error('[AUTO-INDEX] Error:', error.message);
+    logSystemEvent('seo', 'auto_index_error', { error: error.message });
+  }
 }, { timezone: config.agent.timezone });
 
 // =============================================================================

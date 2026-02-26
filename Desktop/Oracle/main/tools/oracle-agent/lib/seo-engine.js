@@ -1211,6 +1211,195 @@ function getLatestReport() {
   return data.reports.length > 0 ? data.reports[0] : null;
 }
 
+// =============================================================================
+// AUTO-INDEX QUEUE — ส่ง indexing request วันละ 200 จนครบ 100%
+// =============================================================================
+
+const INDEX_QUEUE_FILE = path.join(__dirname, '../data/index-queue.json');
+const DAILY_LIMIT = 200;
+
+function loadIndexQueue() {
+  try {
+    if (fs.existsSync(INDEX_QUEUE_FILE)) {
+      return JSON.parse(fs.readFileSync(INDEX_QUEUE_FILE, 'utf8'));
+    }
+  } catch (e) {
+    console.error('[AUTO-INDEX] Error loading queue:', e.message);
+  }
+  return { pending: [], sent: [], failed: [], lastRun: null, totalSent: 0, completedAt: null };
+}
+
+function saveIndexQueue(queue) {
+  try {
+    const dir = path.dirname(INDEX_QUEUE_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(INDEX_QUEUE_FILE, JSON.stringify(queue, null, 2));
+  } catch (e) {
+    console.error('[AUTO-INDEX] Error saving queue:', e.message);
+  }
+}
+
+/**
+ * Refresh the queue: fetch sitemap → compare with SC → queue unindexed URLs
+ * Priority: services > location > showcase > integration > blog > other
+ */
+async function refreshIndexQueue() {
+  const siteUrl = 'sc-domain:visionxbrain.com';
+
+  // 1. Fetch sitemap
+  const sitemapUrls = await fetchSitemap(siteUrl);
+  if (sitemapUrls.length === 0) return { error: 'No sitemap URLs' };
+
+  // 2. Get SC pages (28 days)
+  const scPages = await searchConsole.searchAnalytics(siteUrl, {
+    dimensions: ['page'],
+    rowLimit: 1000,
+    startDate: daysAgo(28),
+    endDate: daysAgo(1),
+  });
+  const scUrlSet = new Set();
+  for (const p of scPages) {
+    scUrlSet.add(p.keys[0]);
+    scUrlSet.add(p.keys[0].replace(/\/$/, ''));
+  }
+
+  // 3. Find unindexed
+  const queue = loadIndexQueue();
+  const alreadySent = new Set(queue.sent);
+  const notIndexed = [];
+
+  for (const url of sitemapUrls) {
+    const urlClean = url.replace(/\/$/, '');
+    if (!scUrlSet.has(url) && !scUrlSet.has(urlClean) && !alreadySent.has(url)) {
+      notIndexed.push(url);
+    }
+  }
+
+  // 4. Sort by priority
+  function priority(url) {
+    if (url.includes('/services/') || url.includes('/ai-search-geo')) return 0;
+    if (url.includes('/location/')) return 1;
+    if (url.includes('/showcase/')) return 2;
+    if (url.includes('/integration')) return 3;
+    if (url.includes('/blog/')) return 4;
+    return 5;
+  }
+  notIndexed.sort((a, b) => priority(a) - priority(b));
+
+  queue.pending = notIndexed;
+  queue.sitemapTotal = sitemapUrls.length;
+  queue.scTotal = scPages.length;
+  queue.refreshedAt = new Date().toISOString();
+  if (notIndexed.length === 0) {
+    queue.completedAt = queue.completedAt || new Date().toISOString();
+  }
+  saveIndexQueue(queue);
+
+  return {
+    sitemapTotal: sitemapUrls.length,
+    scPages: scPages.length,
+    pending: notIndexed.length,
+    alreadySent: queue.sent.length,
+    coverage: Math.round((1 - notIndexed.length / sitemapUrls.length) * 1000) / 10,
+  };
+}
+
+/**
+ * Daily auto-index: send up to DAILY_LIMIT requests from the queue
+ * Called by cron every day at 07:00 Bangkok time
+ */
+async function runDailyAutoIndex() {
+  console.log('\n========================================');
+  console.log('[AUTO-INDEX] 🚀 Daily Auto-Index starting');
+  console.log('========================================\n');
+
+  // 1. Refresh queue to find new unindexed pages
+  const refreshResult = await refreshIndexQueue();
+  console.log(`[AUTO-INDEX] Queue refreshed: ${refreshResult.pending} pending, ${refreshResult.alreadySent} already sent`);
+
+  const queue = loadIndexQueue();
+  if (queue.pending.length === 0) {
+    const msg = `✅ Auto-Index: ไม่มีหน้าค้างรอ index แล้ว! Coverage ~${refreshResult.coverage}%`;
+    console.log(`[AUTO-INDEX] ${msg}`);
+    try { await gateway.notifyOwner(msg); } catch (e) { /* ok */ }
+    return { success: true, message: 'No pending URLs', coverage: refreshResult.coverage };
+  }
+
+  // 2. Send up to DAILY_LIMIT
+  const batch = queue.pending.splice(0, DAILY_LIMIT);
+  let success = 0;
+  let failed = 0;
+  let quotaHit = false;
+
+  for (const url of batch) {
+    try {
+      await searchConsole.requestIndexing(url, 'URL_UPDATED');
+      success++;
+      queue.sent.push(url);
+      queue.totalSent = (queue.totalSent || 0) + 1;
+      // Rate limit: 400ms between requests
+      await new Promise(r => setTimeout(r, 400));
+    } catch (e) {
+      const errMsg = e.message || '';
+      if (errMsg.includes('429') || errMsg.includes('quota')) {
+        // Quota hit → put remaining back
+        const remaining = batch.slice(batch.indexOf(url));
+        queue.pending.unshift(...remaining);
+        quotaHit = true;
+        console.log(`[AUTO-INDEX] ⚠️ Quota hit at ${success} URLs`);
+        break;
+      }
+      failed++;
+      queue.failed.push({ url, error: errMsg.substring(0, 100), date: new Date().toISOString() });
+    }
+  }
+
+  queue.lastRun = new Date().toISOString();
+  queue.lastResult = { success, failed, quotaHit, remaining: queue.pending.length };
+
+  if (queue.pending.length === 0) {
+    queue.completedAt = new Date().toISOString();
+  }
+
+  saveIndexQueue(queue);
+
+  // 3. Notify
+  const daysLeft = queue.pending.length > 0 ? Math.ceil(queue.pending.length / DAILY_LIMIT) : 0;
+  let msg = `🚀 Auto-Index Report\n`;
+  msg += `✅ Sent: ${success}${failed > 0 ? ` | ❌ Failed: ${failed}` : ''}${quotaHit ? ' | ⚠️ Quota hit' : ''}\n`;
+  msg += `📊 Total sent: ${queue.totalSent} | Remaining: ${queue.pending.length}\n`;
+  if (daysLeft > 0) {
+    msg += `⏱️ Est. complete: ${daysLeft} วัน\n`;
+  } else {
+    msg += `🎉 ส่งครบแล้ว! รอ Google crawl\n`;
+  }
+  msg += `Coverage: ~${refreshResult.coverage}%`;
+
+  console.log(`[AUTO-INDEX] Done: ${success} sent, ${failed} failed, ${queue.pending.length} remaining`);
+  try { await gateway.notifyOwner(msg); } catch (e) { /* ok */ }
+
+  return { success: true, sent: success, failed, quotaHit, remaining: queue.pending.length, coverage: refreshResult.coverage };
+}
+
+/**
+ * Get auto-index queue status
+ */
+function getAutoIndexStatus() {
+  const queue = loadIndexQueue();
+  return {
+    pending: queue.pending.length,
+    sent: queue.sent.length,
+    failed: queue.failed.length,
+    totalSent: queue.totalSent || 0,
+    lastRun: queue.lastRun,
+    lastResult: queue.lastResult,
+    completedAt: queue.completedAt,
+    sitemapTotal: queue.sitemapTotal,
+    refreshedAt: queue.refreshedAt,
+    daysLeft: queue.pending.length > 0 ? Math.ceil(queue.pending.length / DAILY_LIMIT) : 0,
+  };
+}
+
 export default {
   runWeeklyReport,
   runKeywordAlert,
@@ -1220,4 +1409,7 @@ export default {
   runNow,
   getStatus,
   getLatestReport,
+  runDailyAutoIndex,
+  refreshIndexQueue,
+  getAutoIndexStatus,
 };
