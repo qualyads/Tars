@@ -476,9 +476,11 @@ async function processNurtureQueue() {
           lead.nurture.completedAt = new Date().toISOString();
         }
 
-        changed = true;
         incrementSharedDailyCount();
         results.sent++;
+
+        // Save ทันทีหลังส่งแต่ละ lead — กัน data loss ถ้า crash กลางทาง
+        await saveLeads(leadsData);
 
         console.log(`[NURTURE] Step ${nextStep} sent: ${lead.email} (${lead.domain})`);
 
@@ -488,10 +490,6 @@ async function processNurtureQueue() {
         console.error(`[NURTURE] Error sending step ${nextStep} to ${lead.email}:`, e.message);
         results.errors++;
       }
-    }
-
-    if (changed) {
-      await saveLeads(leadsData);
     }
   } catch (e) {
     console.error('[NURTURE] Queue error:', e.message);

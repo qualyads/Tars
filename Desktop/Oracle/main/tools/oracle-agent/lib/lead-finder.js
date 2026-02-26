@@ -1317,6 +1317,9 @@ async function sendFullOutreachEmail(lead) {
     </tr>
   </table>
 
+  <!-- Unsubscribe -->
+  <p style="color:#bbb;font-size:11px;text-align:center;margin-top:32px;">ไม่ต้องการรับ email จากเรา? ตอบกลับว่า "ยกเลิก" ได้เลยครับ</p>
+
   <!-- Tracking Pixel -->
   <img src="https://oracle-agent-production-546e.up.railway.app/api/email/track/${trackingId}.png" width="1" height="1" style="display:block;width:1px;height:1px;border:0;opacity:0;" alt="">
 
@@ -1359,29 +1362,7 @@ async function sendFullOutreachEmail(lead) {
   }
 }
 
-// Keep legacy function names for backward compatibility
-async function generateAuditEmail(lead) {
-  // Redirects to full pipeline — returns { subject, body } format for follow-up compatibility
-  const result = await sendFullOutreachEmail(lead);
-  if (result.success) return { subject: result.subject, body: '(sent via full pipeline)' };
-  return null;
-}
-
-async function sendOutreachEmail(lead, emailContent) {
-  // Legacy: for follow-up emails only (simple send without full template)
-  try {
-    const result = await gmail.send({
-      to: lead.email,
-      subject: emailContent.subject,
-      body: emailContent.body
-    });
-    console.log(`[LEAD-FINDER] Email sent to ${lead.email}: ${emailContent.subject}`);
-    return { success: true, messageId: result.id, threadId: result.threadId, sentAt: new Date().toISOString() };
-  } catch (error) {
-    console.error(`[LEAD-FINDER] Failed to send email to ${lead.email}:`, error.message);
-    return { success: false, error: error.message };
-  }
-}
+// generateAuditEmail + sendOutreachEmail legacy wrappers ลบแล้ว — ไม่มีที่เรียกใช้
 
 /**
  * Send follow-up email
