@@ -7094,14 +7094,22 @@ app.get('/api/email/stats', async (req, res) => {
   try {
     const leads = leadFinder.getLeads();
     const emailed = leads.filter(l => l.emailSentAt || l.status === 'emailed');
+    const delivered = emailed.filter(l => l.status !== 'bounced');
     const pixelOpened = leads.filter(l => l.emailOpened);
     const clicked = leads.filter(l => l.emailClicked);
+    const replied = leads.filter(l => l.status === 'replied');
+    const bounced = emailed.filter(l => l.status === 'bounced');
     res.json({
       totalEmailed: emailed.length,
+      totalDelivered: delivered.length,
+      totalBounced: bounced.length,
+      bounceRate: emailed.length ? Math.round((bounced.length / emailed.length) * 100) + '%' : '0%',
       pixelOpens: pixelOpened.length,
       pixelOpenNote: 'Gmail pre-fetch ทำให้ไม่แม่น — ดู clicks แทน',
       totalClicked: clicked.length,
-      clickRate: emailed.length ? Math.round((clicked.length / emailed.length) * 100) + '%' : '0%',
+      clickRate: delivered.length ? Math.round((clicked.length / delivered.length) * 100) + '%' : '0%',
+      totalReplied: replied.length,
+      replyRate: delivered.length ? ((replied.length / delivered.length) * 100).toFixed(1) + '%' : '0%',
       leads: emailed.map(l => ({
         name: l.businessName || l.businessNameEn || l.domain,
         domain: l.domain,
@@ -7910,6 +7918,71 @@ app.post('/api/leads/clean', async (req, res) => {
 
     writeFileSync(leadsFile, JSON.stringify(ld, null, 2));
     res.json({ before, after: ld.leads.length, removed });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Heavy dedup — remove duplicate leads (same place_id or domain+email), keep best version
+app.post('/api/leads/dedup', requireAdmin, async (req, res) => {
+  try {
+    const { readFileSync, writeFileSync } = await import('fs');
+    const leadsFile = join(__dirname, 'data', 'leads.json');
+    const ld = JSON.parse(readFileSync(leadsFile, 'utf-8'));
+    const before = ld.leads.length;
+
+    // Status priority — higher = keep this version
+    const STATUS_RANK = { replied: 6, audit_sent: 5, closed: 4, followed_up: 3, emailed: 2, bounced: 1, new: 0 };
+
+    // Group by dedup key: place_id > (domain + email) > domain > email
+    const groups = new Map();
+    for (const lead of ld.leads) {
+      const key = lead.place_id
+        || ((lead.domain || '') + '|' + (lead.email || lead.emailSentTo || ''))
+        || lead.domain
+        || lead.email
+        || lead.emailSentTo
+        || `unknown_${Math.random()}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(lead);
+    }
+
+    // For each group, pick the best version
+    const deduped = [];
+    let dupCount = 0;
+    for (const [, dupes] of groups) {
+      if (dupes.length > 1) dupCount += dupes.length - 1;
+      // Sort: highest status rank first, then most recent emailSentAt, then most fields
+      dupes.sort((a, b) => {
+        const rankA = STATUS_RANK[a.status] ?? 0;
+        const rankB = STATUS_RANK[b.status] ?? 0;
+        if (rankB !== rankA) return rankB - rankA;
+        // More recent emailSentAt wins
+        const dateA = a.emailSentAt || '';
+        const dateB = b.emailSentAt || '';
+        if (dateB !== dateA) return dateB.localeCompare(dateA);
+        // More fields wins
+        return Object.keys(b).length - Object.keys(a).length;
+      });
+      deduped.push(dupes[0]);
+    }
+
+    ld.leads = deduped;
+
+    // Also dedup processedDomains
+    if (ld.processedDomains) {
+      ld.processedDomains = [...new Set(ld.processedDomains)];
+    }
+
+    writeFileSync(leadsFile, JSON.stringify(ld, null, 2));
+
+    res.json({
+      success: true,
+      before,
+      after: deduped.length,
+      duplicatesRemoved: dupCount,
+      processedDomains: ld.processedDomains?.length || 0,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

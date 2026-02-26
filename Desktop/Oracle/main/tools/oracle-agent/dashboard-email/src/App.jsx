@@ -45,16 +45,17 @@ function pctOf(part, total) {
 function HeroKPIs({ leads, email }) {
   const total = leads?.total || 0;
   const emailed = email?.totalEmailed || 0;
+  const delivered = email?.totalDelivered || emailed;
+  const bounced = email?.totalBounced || 0;
   const clicked = email?.totalClicked || 0;
-  const replied = leads?.replied || 0;
-  const clickRate = emailed ? ((clicked / emailed) * 100).toFixed(1) + '%' : '0%';
+  const replied = email?.totalReplied || leads?.replied || 0;
 
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
       <StatCard title="ลีดทั้งหมด" value={fmtNum(total)} badge="all-time" />
-      <StatCard title="ส่งอีเมลแล้ว" value={fmtNum(emailed)} badge={pctOf(emailed, total) + ' of total'} />
-      <StatCard title="คลิกลิงก์" value={fmtNum(clicked)} badge={clickRate + ' click rate'} />
-      <StatCard title="ตอบกลับ" value={fmtNum(replied)} badge={replied > 0 ? pctOf(replied, emailed) + ' reply rate' : 'ยังไม่มี'} />
+      <StatCard title="ส่งอีเมลแล้ว" value={fmtNum(emailed)} badge={bounced > 0 ? `${fmtNum(delivered)} delivered, ${fmtNum(bounced)} bounce` : pctOf(emailed, total) + ' of total'} />
+      <StatCard title="คลิกลิงก์" value={fmtNum(clicked)} badge={delivered > 0 ? ((clicked / delivered) * 100).toFixed(1) + '% click rate' : '0%'} />
+      <StatCard title="ตอบกลับ" value={fmtNum(replied)} badge={delivered > 0 ? ((replied / delivered) * 100).toFixed(1) + '% reply rate' : 'ยังไม่มี'} />
     </div>
   );
 }
@@ -153,8 +154,8 @@ function PipelineFunnel({ leads, email }) {
     { label: 'ลีดทั้งหมด', value: leads?.total || 0, color: '#d4d4d4' },
     { label: 'เป้าหมายดี', value: leads?.goodTargets || 0, color: '#a3a3a3' },
     { label: 'ส่งอีเมล', value: email?.totalEmailed || 0, color: '#737373' },
-    { label: 'คลิกลิงก์', value: email?.totalClicked || 0, color: '#eb3f43' },
-    { label: 'ตอบกลับ', value: leads?.replied || 0, color: '#027a48' },
+    { label: 'ถึงผู้รับ', value: email?.totalDelivered || 0, color: '#525252' },
+    { label: 'ตอบกลับ', value: email?.totalReplied || leads?.replied || 0, color: '#027a48' },
     { label: 'ปิดดีล', value: leads?.closed || 0, color: '#7c3aed' },
   ];
 
@@ -349,7 +350,11 @@ function LeadsTable({ emailLeads }) {
   const [search, setSearch] = useState('');
 
   const leads = (emailLeads || [])
-    .filter(l => filter === 'all' || l.status === filter)
+    .filter(l => {
+      if (filter === 'all') return true;
+      if (filter === 'clicked') return l.clicked;
+      return l.status === filter;
+    })
     .filter(l => !search || l.name?.toLowerCase().includes(search.toLowerCase()) || l.domain?.toLowerCase().includes(search.toLowerCase()));
 
   const columns = [
@@ -404,7 +409,7 @@ function LeadsTable({ emailLeads }) {
             }`}
           >
             {f === 'all' ? 'ทั้งหมด' : statusLabel(f)}
-            {f !== 'all' && ` (${(emailLeads || []).filter(l => l.status === f).length})`}
+            {f !== 'all' && ` (${(emailLeads || []).filter(l => f === 'clicked' ? l.clicked : l.status === f).length})`}
           </button>
         ))}
         <input
@@ -430,10 +435,11 @@ function LeadsTable({ emailLeads }) {
 function ActionItems({ leads, email, emailLeads }) {
   const actions = [];
   const emailed = email?.totalEmailed || 0;
+  const delivered = email?.totalDelivered || emailed;
   const clicked = email?.totalClicked || 0;
-  const replied = leads?.replied || 0;
-  const bounced = (emailLeads || []).filter(l => l.status === 'bounced').length;
-  const clickRate = emailed > 0 ? (clicked / emailed) * 100 : 0;
+  const replied = email?.totalReplied || leads?.replied || 0;
+  const bounced = email?.totalBounced || 0;
+  const clickRate = delivered > 0 ? (clicked / delivered) * 100 : 0;
   const bounceRate = emailed > 0 ? (bounced / emailed) * 100 : 0;
 
   if (replied === 0 && emailed > 20) {
