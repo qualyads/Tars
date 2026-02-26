@@ -17,11 +17,39 @@ import { randomUUID } from 'crypto';
 // Day 0 uses the EXACT same outreach email logic as lead-finder
 let sendOutreachEmail = null; // set via setSendOutreachEmail()
 
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __nFilename = fileURLToPath(import.meta.url);
+const __nDirname = path.dirname(__nFilename);
+const DAILY_COUNTER_FILE = path.join(__nDirname, '..', 'data', 'daily-email-count.json');
+
 let gmailClient = null;
 const BASE_URL = 'https://oracle-agent-production-546e.up.railway.app';
-const DAILY_CAP = 20;
-let sentToday = 0;
-let lastResetDate = '';
+
+// Shared daily cap — อ่าน/เขียนไฟล์เดียวกับ lead-finder
+function getSharedDailyCount() {
+  try {
+    const data = JSON.parse(fs.readFileSync(DAILY_COUNTER_FILE, 'utf-8'));
+    const today = new Date().toISOString().slice(0, 10);
+    if (data.date === today) return data.count;
+    return 0;
+  } catch { return 0; }
+}
+
+function incrementSharedDailyCount() {
+  const today = new Date().toISOString().slice(0, 10);
+  let data;
+  try { data = JSON.parse(fs.readFileSync(DAILY_COUNTER_FILE, 'utf-8')); }
+  catch { data = { date: today, count: 0 }; }
+  if (data.date !== today) data = { date: today, count: 0 };
+  data.count++;
+  fs.writeFileSync(DAILY_COUNTER_FILE, JSON.stringify(data));
+  return data.count;
+}
+
+const MAX_TOTAL_EMAILS_PER_DAY = 30; // shared limit: cold + follow-up + nurture combined
 
 // Schedule: [step, daysAfterPrevious]
 const SCHEDULE = [
@@ -31,6 +59,12 @@ const SCHEDULE = [
   [4, 3],  // Day 8 (3 days after step 3)
 ];
 
+// HTML escape — ป้องกัน injection จาก user-supplied data
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function setGmailClient(client) {
   gmailClient = client;
 }
@@ -39,13 +73,7 @@ function setSendOutreachEmail(fn) {
   sendOutreachEmail = fn;
 }
 
-function resetDailyCounter() {
-  const today = new Date().toISOString().slice(0, 10);
-  if (lastResetDate !== today) {
-    sentToday = 0;
-    lastResetDate = today;
-  }
-}
+// resetDailyCounter removed — ใช้ shared file counter แทน
 
 // ==================== EMAIL TEMPLATES ====================
 // VXB Professional Template — ตาม email-marketing.md + vxb-voice.md
@@ -96,7 +124,7 @@ function actionBox(title, impact, detail) {
 }
 
 function buildDay0(lead, audit) {
-  const biz = audit?.businessName || lead.businessName || lead.domain;
+  const biz = escapeHtml(audit?.businessName || lead.businessName || lead.domain);
   const score = audit?.score || lead.websiteScore || '?';
   const grade = audit?.grade || '';
   const reportUrl = lead.auditId ? `${BASE_URL}/tools/seo-audit/report/${lead.auditId}` : `${BASE_URL}/tools/seo-audit/`;
@@ -139,7 +167,7 @@ function buildDay0(lead, audit) {
 }
 
 function buildDay2(lead, audit) {
-  const biz = audit?.businessName || lead.businessName || lead.domain;
+  const biz = escapeHtml(audit?.businessName || lead.businessName || lead.domain);
   const score = audit?.score || lead.websiteScore || '?';
   const grade = audit?.grade || '';
   const reportUrl = lead.auditId ? `${BASE_URL}/tools/seo-audit/report/${lead.auditId}` : `${BASE_URL}/tools/seo-audit/`;
@@ -187,7 +215,7 @@ function buildDay2(lead, audit) {
 }
 
 function buildDay5(lead) {
-  const biz = lead.businessName || lead.domain;
+  const biz = escapeHtml(lead.businessName || lead.domain);
   const subject = `Action Plan สำหรับ ${biz} — 5 ขั้นตอนที่ทำเองได้เลยวันนี้`;
   const content = `
     <p style="font-size:16px;">สวัสดีครับ</p>
@@ -239,7 +267,7 @@ function buildDay5(lead) {
 }
 
 function buildDay8(lead) {
-  const biz = lead.businessName || lead.domain;
+  const biz = escapeHtml(lead.businessName || lead.domain);
   const score = lead.websiteScore || '?';
   const subject = `Case Study จริง — ธุรกิจท่องเที่ยวจาก page 5 ขึ้น page 1 ใน 3 เดือน`;
   const content = `
@@ -373,7 +401,6 @@ async function sendDay0(lead, audit) {
 async function processNurtureQueue() {
   if (!gmailClient) return { sent: 0, skipped: 0, error: 'Gmail not configured' };
 
-  resetDailyCounter();
   const results = { sent: 0, skipped: 0, errors: 0 };
   const now = Date.now();
 
@@ -382,7 +409,10 @@ async function processNurtureQueue() {
     let changed = false;
 
     for (const lead of leadsData.leads) {
-      if (sentToday >= DAILY_CAP) break;
+      if (getSharedDailyCount() >= MAX_TOTAL_EMAILS_PER_DAY) {
+        console.log(`[NURTURE] Daily limit reached (${MAX_TOTAL_EMAILS_PER_DAY})`);
+        break;
+      }
       if (lead.source !== 'seo-audit') continue;
       if (!lead.email) continue;
       if (!lead.nurture) continue;
@@ -447,7 +477,7 @@ async function processNurtureQueue() {
         }
 
         changed = true;
-        sentToday++;
+        incrementSharedDailyCount();
         results.sent++;
 
         console.log(`[NURTURE] Step ${nextStep} sent: ${lead.email} (${lead.domain})`);
@@ -481,7 +511,7 @@ async function unsubscribe(email) {
       lead.nurture.unsubscribed = true;
       lead.nurture.completedAt = new Date().toISOString();
       await saveLeads(leadsData);
-      await saveLead(lead);
+      // saveLead ไม่ต้องเรียกซ้ำ — saveLeads upsert ทั้ง array แล้ว
       console.log(`[NURTURE] Unsubscribed: ${email}`);
       return true;
     }
@@ -507,7 +537,7 @@ async function getStats() {
       inProgress++;
     }
 
-    return { total: auditLeads.length, waiting, inProgress, completed, unsubscribed, sentToday };
+    return { total: auditLeads.length, waiting, inProgress, completed, unsubscribed, sentToday: getSharedDailyCount() };
   } catch {
     return { total: 0, waiting: 0, inProgress: 0, completed: 0, unsubscribed: 0, sentToday: 0 };
   }

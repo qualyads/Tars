@@ -21,6 +21,12 @@ import { fileURLToPath } from 'url';
 
 const resolveMx = promisify(dns.resolveMx);
 
+// HTML escape — ป้องกัน injection จาก user-supplied data (businessName, domain)
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -924,11 +930,12 @@ function generateJsonInstruction(bizName, bizType) {
  * Prompt สำหรับธุรกิจที่มีเว็บไซต์ — วิเคราะห์เว็บ + screenshot
  */
 function generateWebsitePrompt(bizName, bizType, domain, websiteUrl, issues, servicePage, isHotel, screenshotValid = false) {
+  const safeBiz = escapeHtml(bizName);
   const screenshotHtml = screenshotValid ? `
 - หลังแนะนำตัว ใส่ screenshot เว็บลูกค้าด้วย HTML:
 <div style="text-align:center;margin:16px 0;">
-  <p style="font-size:13px;color:#888;margin:0 0 8px;">เว็บไซต์ปัจจุบันของ ${bizName}:</p>
-  <img src="https://image.thum.io/get/width/600/${websiteUrl}" alt="เว็บไซต์ ${bizName}" style="width:100%;max-width:580px;border-radius:12px;border:1px solid #eee;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+  <p style="font-size:13px;color:#888;margin:0 0 8px;">เว็บไซต์ปัจจุบันของ ${safeBiz}:</p>
+  <img src="https://image.thum.io/get/width/600/${websiteUrl}" alt="เว็บไซต์ ${safeBiz}" style="width:100%;max-width:580px;border-radius:12px;border:1px solid #eee;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
 </div>` : `
 - ห้ามใส่ screenshot/รูปใดๆ ของเว็บลูกค้า (ภาพไม่พร้อม)`;
 
@@ -1810,7 +1817,8 @@ async function checkReplies() {
   const leadsData = loadLeads();
   const sentLeads = leadsData.leads.filter(l =>
     l.status === 'emailed' || l.status === 'followed_up' || l.status === 'audit_sent'
-  ).filter(l => !l.replyClassification); // skip already classified replies
+  ).filter(l => !l.replyClassification) // skip already classified replies
+   .filter(l => !l.autoRepliedAt);      // skip already handled by Pub/Sub (lead-reply-handler)
 
   if (sentLeads.length === 0) return [];
 
@@ -1901,12 +1909,19 @@ ${lead.auditSentAt ? '→ ส่ง Audit Report ให้แล้วอัต�
         } else if (classification === 'declined') {
           lead.status = 'closed';
           lead.closedReason = 'declined';
+          // Unsubscribe จาก nurture ด้วย (เหมือน lead-reply-handler)
+          if (lead.email) {
+            try {
+              const nurtureMod = (await import('./email-nurture.js')).default;
+              await nurtureMod.unsubscribe(lead.email);
+            } catch (unsErr) { console.error('[REPLY] Nurture unsubscribe error:', unsErr.message); }
+          }
           await telegram.notifyOwner(`[LEAD] ❌ ${lead.businessName} ปฏิเสธ
 
 ข้อความ: ${lead.replySnippet || '(ดูใน Gmail)'}
 Email: ${lead.email}
 
-→ Mark as closed แล้ว`);
+→ Mark as closed + unsubscribed แล้ว`);
 
         } else if (classification === 'auto_reply') {
           // Don't count as real reply — revert status
@@ -2104,7 +2119,9 @@ async function processFollowUps() {
         continue;
       }
     } catch (bounceCheckErr) {
-      // fail-open
+      // fail-closed: ถ้าเช็ค bounce ไม่ได้ → skip lead (ปลอดภัยกว่าส่งไปแล้ว bounce)
+      console.log(`[FOLLOW-UP] ⛔ Skip ${lead.businessName} — bounce check failed: ${bounceCheckErr.message}`);
+      continue;
     }
 
     // 🛡️ Gmail reply check — ป้องกัน follow-up คนที่ตอบแล้ว (declined) หลัง deploy ใหม่
