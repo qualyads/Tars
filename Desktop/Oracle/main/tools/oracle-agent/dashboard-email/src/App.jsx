@@ -18,6 +18,7 @@ function statusLabel(s) {
     closed: 'ปิดดีล',
     new: 'ใหม่',
     followedUp: 'Follow-up',
+    followed_up: 'Follow-up',
   };
   return map[s] || s;
 }
@@ -31,6 +32,7 @@ function statusColor(s) {
     clicked: 'bg-amber-100 text-amber-700',
     closed: 'bg-purple-100 text-purple-700',
     new: 'bg-gray-100 text-gray-600',
+    followed_up: 'bg-indigo-100 text-indigo-700',
   };
   return map[s] || 'bg-gray-100 text-gray-600';
 }
@@ -393,7 +395,7 @@ function LeadsTable({ emailLeads }) {
     },
   ];
 
-  const filters = ['all', 'emailed', 'clicked', 'bounced', 'replied'];
+  const filters = ['all', 'emailed', 'followed_up', 'clicked', 'bounced', 'replied'];
 
   return (
     <section className="mb-8">
