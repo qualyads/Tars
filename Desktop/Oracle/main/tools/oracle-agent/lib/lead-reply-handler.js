@@ -9,22 +9,13 @@
  * - Calendar failure → fallback text
  */
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { chat } from './claude.js';
 import gmail from './gmail.js';
 import { GmailClient } from './gmail.js';
 import googleCalendar from './google-calendar.js';
 import gateway from './gateway.js';
-import dbLeads from './db-leads.js';
-import emailNurture from './email-nurture.js';
+import { loadLeads as dbLoadLeads, saveLeads as dbSaveLeads } from './db-leads.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const DATA_DIR = path.join(__dirname, '..', 'data');
-const LEADS_FILE = path.join(DATA_DIR, 'leads.json');
 const PUBSUB_TOPIC = 'projects/oracle-agent-486604/topics/gmail-notifications';
 
 // Watch state
@@ -40,29 +31,14 @@ let watchState = {
 // Skip these senders
 const SKIP_SENDERS = ['visionxbrain', 'mailer-daemon', 'noreply', 'no-reply', 'postmaster', 'googlemail'];
 
-// ─── Leads I/O ───
+// ─── Leads I/O (ใช้ db-leads.js — Postgres first, file fallback) ───
 
-function loadLeads() {
-  try {
-    return JSON.parse(fs.readFileSync(LEADS_FILE, 'utf-8'));
-  } catch {
-    return { leads: [], processedDomains: [], lastRun: null };
-  }
+async function loadLeads() {
+  return dbLoadLeads();
 }
 
-function saveLeads(data) {
-  const content = JSON.stringify(data, null, 2);
-  const fd = fs.openSync(LEADS_FILE, 'w');
-  fs.writeSync(fd, content);
-  fs.fsyncSync(fd);
-  fs.closeSync(fd);
-
-  // Sync to Postgres — ป้องกัน data loss เมื่อ deploy ใหม่
-  if (dbLeads.isDBReady()) {
-    dbLeads.saveLeads(data).catch(err =>
-      console.error('[LEAD-REPLY] DB sync error:', err.message)
-    );
-  }
+async function saveLeads(data) {
+  return dbSaveLeads(data);
 }
 
 // ─── Setup Watch ───
@@ -184,7 +160,7 @@ async function processIncomingMessage(msgId) {
   }
 
   // Match against leads — ทุก status ยกเว้น bounced/closed
-  const leadsData = loadLeads();
+  const leadsData = await loadLeads();
   const lead = leadsData.leads.find(l =>
     l.email && senderEmail.includes(l.email.toLowerCase()) &&
     !['bounced', 'closed'].includes(l.status)
@@ -232,7 +208,10 @@ async function processIncomingMessage(msgId) {
     lead.closeReason = 'declined_by_reply';
     // Unsubscribe จาก nurture sequence ด้วย
     if (lead.email) {
-      emailNurture.unsubscribe(lead.email).catch(() => {});
+      try {
+        const emailNurture = (await import('./email-nurture.js')).default;
+        await emailNurture.unsubscribe(lead.email);
+      } catch (e) { console.error('[LEAD-REPLY] Nurture unsubscribe error:', e.message); }
     }
     await notifyLeadReply(lead, replyText, 'declined');
   } else {
@@ -240,7 +219,7 @@ async function processIncomingMessage(msgId) {
     await notifyLeadReply(lead, replyText, 'unclear');
   }
 
-  saveLeads(leadsData);
+  await saveLeads(leadsData);
   return { msgId, status: 'processed', lead: lead.businessName, intent };
 }
 

@@ -323,6 +323,21 @@ async function sendDay0(lead, audit) {
       place_id: lead.place_id || `audit_${Date.now()}`,
     };
 
+    // Verify email ก่อนส่ง Day-0 — ป้องกัน bounce จาก email ปลอมใน audit form
+    try {
+      const { verifyEmail, isConfigured: isEmailVerifyConfigured } = await import('./email-verifier.js');
+      if (isEmailVerifyConfigured()) {
+        const check = await verifyEmail(lead.email);
+        if (!check.valid) {
+          console.log(`[NURTURE] Day-0 ⛔ Skip ${lead.email} — failed verification: ${check.status}`);
+          return;
+        }
+      }
+    } catch (verifyErr) {
+      console.error('[NURTURE] Day-0 verify error (blocking send):', verifyErr.message);
+      return;
+    }
+
     console.log(`[NURTURE] Day-0 sending outreach email: ${lead.email} (${lead.domain})`);
 
     const result = await sendOutreachEmail(outreachLead);

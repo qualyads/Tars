@@ -195,6 +195,18 @@ const __dirname = dirname(__filename);
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
+// ─── Admin Auth Middleware — ป้องกัน sensitive routes ───
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'oracle-admin-2026';
+function requireAdmin(req, res, next) {
+  const key = req.headers['x-api-key'] || req.query.api_key;
+  // Allow internal calls (Railway internal network)
+  const isInternal = req.ip === '127.0.0.1' || req.ip === '::1' || req.hostname === 'localhost';
+  if (isInternal || key === ADMIN_API_KEY) {
+    return next();
+  }
+  res.status(401).json({ error: 'Unauthorized — X-API-Key required' });
+}
+
 // Email Dashboard — static React app
 // Old paths → redirect to new
 app.get('/email*', (req, res) => res.redirect(301, '/vision/email' + req.path.replace('/email', '') + (req.path.endsWith('/') ? '' : '/')));
@@ -3608,7 +3620,7 @@ app.get('/api/gmail/message/:id', async (req, res) => {
 });
 
 // Send email
-app.post('/api/gmail/send', async (req, res) => {
+app.post('/api/gmail/send', requireAdmin, async (req, res) => {
   try {
     const { to, subject, body, cc, bcc } = req.body;
     if (!to || !subject || !body) {
@@ -6098,7 +6110,7 @@ app.get('/api/leads/enrich/status', (req, res) => {
   res.json({ running: enrichRunning, lastResult: enrichLastResult });
 });
 
-app.post('/api/leads/run', async (req, res) => {
+app.post('/api/leads/run', requireAdmin, async (req, res) => {
   if (leadFinderRunning) {
     return res.json({ message: 'Lead finder already running', status: 'busy' });
   }
@@ -6147,7 +6159,7 @@ app.get('/api/leads/export', async (req, res) => {
 });
 
 // Import/merge leads data (กู้ข้อมูลหลัง deploy)
-app.post('/api/leads/import', async (req, res) => {
+app.post('/api/leads/import', requireAdmin, async (req, res) => {
   try {
     const incoming = req.body;
     if (!incoming || !incoming.leads) {
@@ -6331,10 +6343,22 @@ app.post('/api/leads/test-audit', async (req, res) => {
 });
 
 // Test: send genuine value-first outreach email — Tar's 13 Requirements
-app.post('/api/leads/test-email', async (req, res) => {
+app.post('/api/leads/test-email', requireAdmin, async (req, res) => {
   try {
     const { to, lead_index } = req.body;
     if (!to) return res.status(400).json({ error: 'to (email) required' });
+
+    // Verify email before sending
+    try {
+      const { verifyEmail } = await import('./lib/email-verifier.js');
+      const check = await verifyEmail(to);
+      if (!check.valid) {
+        return res.status(400).json({ error: `Email verification failed: ${check.status}`, errorTh: `อีเมล ${to} ตรวจสอบไม่ผ่าน (${check.status})` });
+      }
+    } catch (verifyErr) {
+      console.error('[TEST-EMAIL] Verify error:', verifyErr.message);
+      return res.status(500).json({ error: 'Email verification unavailable' });
+    }
 
     const leads = leadFinder.getLeads();
     const idx = lead_index || 0;
@@ -6857,11 +6881,23 @@ ${extraContext ? `- บริบทจากที่โทรคุย: ${extra
 });
 
 // DGP Send — ส่ง proposal email (standalone, ไม่ผูก lead finder)
-app.post('/api/dgp/send', async (req, res) => {
+app.post('/api/dgp/send', requireAdmin, async (req, res) => {
   try {
     const { bizName, email, subject, customParts, htmlBody, industry, domain } = req.body;
     if (!email || !subject) return res.status(400).json({ error: 'email and subject required' });
     if (!bizName) return res.status(400).json({ error: 'bizName required' });
+
+    // Verify email before sending
+    try {
+      const { verifyEmail } = await import('./lib/email-verifier.js');
+      const check = await verifyEmail(email);
+      if (!check.valid) {
+        return res.status(400).json({ error: `Email verification failed: ${check.status}`, errorTh: `อีเมล ${email} ตรวจสอบไม่ผ่าน (${check.status})` });
+      }
+    } catch (verifyErr) {
+      console.error('[DGP-SEND] Verify error:', verifyErr.message);
+      return res.status(500).json({ error: 'Email verification unavailable' });
+    }
 
     // Block duplicate sends
     if (isDgpAlreadySent(email, bizName)) {
@@ -7044,7 +7080,7 @@ app.get('/api/email/stats', async (req, res) => {
 });
 
 // Reset leads data (for development)
-app.post('/api/leads/reset', async (req, res) => {
+app.post('/api/leads/reset', requireAdmin, async (req, res) => {
   try {
     const { writeFileSync } = await import('fs');
     const { join, dirname } = await import('path');

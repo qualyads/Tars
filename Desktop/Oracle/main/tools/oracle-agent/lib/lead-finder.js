@@ -489,7 +489,7 @@ function extractDomain(url) {
 // Discovery — Find business via Local Rank Tracker (RapidAPI)
 // ============================================================
 
-const RAPIDAPI_KEY = '014d445a38msh0645e22d930fd07p17eea5jsn5c8866bfbb22';
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || '';
 const RAPIDAPI_HOST = 'local-rank-tracker.p.rapidapi.com';
 const BUSINESS_DATA_HOST = 'local-business-data.p.rapidapi.com';
 
