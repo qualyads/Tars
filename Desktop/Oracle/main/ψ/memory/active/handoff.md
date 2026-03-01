@@ -1,7 +1,56 @@
 # Session Handoff
 
-**From:** Session 2026-02-26 (Smolpix SEO Overhaul)
+**From:** Session 2026-03-01 (Auto System Cost Audit)
 **To:** Next Session
+
+---
+
+## 🆕 Session 2026-03-01 — Auto System Cost Audit + ปิดระบบสิ้นเปลือง
+
+### สถานะ: ✅ DEPLOYED TO RAILWAY
+
+### สิ่งที่ทำ
+Tar สั่ง audit ระบบ auto ทั้งหมดที่ใช้ AI API → พบ 17 ระบบ auto → ปิดเหลือ 3 กลุ่ม
+
+### ระบบที่ปิด (14 ตัว)
+| ระบบ | เหตุผล |
+|------|--------|
+| **Autonomous Loop** | ตัวร้ายสุด ~430K Sonnet tokens/วัน, idea ซ้ำไม่ actionable |
+| Autonomous Ideas | ปิดอยู่แล้ว (OFF ตั้งแต่ 2026-02-20) |
+| API Hunter | ปิดอยู่แล้ว (OFF ตั้งแต่ 2026-02-20) |
+| Morning Briefing | Tar ไม่อ่าน + ซ้ำกับ Daily Digest (ไม่ใช้ AI) |
+| Evening Summary | เหมือนกัน |
+| Self Reflection | journal AI ไม่มีใครดู |
+| LINE Summarizer | สรุปแล้วไม่มีใครอ่าน |
+| Terminal Summarizer | เหมือนกัน |
+| Forbes Weekly | Tar ไม่อ่าน |
+| Hospitality Trends | Tar ไม่อ่าน |
+| Weekly Revenue | Tar ไม่อ่าน |
+| SEO Weekly Report | Tar ไม่อ่าน |
+| SEO Keyword Alert | Tar ไม่อ่าน + ควรเป็น rule-based |
+| Backlink (4 ตัว) | ยังไม่ได้ใช้จริง |
+
+### ระบบที่เปิดอยู่ (3 กลุ่ม)
+| ระบบ | Model | Schedule |
+|------|-------|----------|
+| Heartbeat | Haiku | ทุก 30 นาที (8:00-22:00) |
+| Lead Finder | Haiku | 10:00 + 15:00 ทุกวัน |
+| Lead Reply Check | Haiku | 9,12,15,18 ทุกวัน |
+| + Hotel ops (ไม่ใช้ AI) | - | Daily Summary, Checkout, Revenue |
+
+### Cost ก่อน/หลัง
+| | ก่อน | หลัง |
+|---|------|------|
+| Tokens/วัน | ~550K+ (Sonnet หนัก) | ~108K (Haiku ล้วน) |
+| Cost/วัน | ~30 ฿ | ~1.2 ฿ |
+| Cost/เดือน | ~900 ฿ | ~36 ฿ |
+
+### ไฟล์ที่แก้
+- `config.json` → `auto_opportunity_alert: false` (ปิด Autonomous Loop)
+- `lib/feature-flags.js` → เปลี่ยน default enabled เป็น false 14 ตัว
+
+### หลักการจาก Tar
+> "ถ้าไม่ได้อ่าน แปลว่ามันไม่ได้สร้าง value" — เปิดแค่สิ่งที่ทำเงินจริง + ops จริง
 
 ---
 
@@ -415,22 +464,44 @@ Legal Pages:     6996dfe6f8a55a33615ac856
 
 | งาน | ทำเสร็จ | เหลือ |
 |------|---------|-------|
-| Body Text CRO | **70/126** ✅ | 56 หน้า |
-| Internal Links (5/หน้า) | **70/126 ✅ Published** (350 links) | 56 หน้า (280 links) |
+| Body Text CRO | **75/126** ✅ Published | 51 หน้า |
+| Internal Links (5/หน้า) | **75/126 ✅ Published** (375 links) | 51 หน้า (255 links) |
 
-### Session 2026-02-26 Summary
-- Page 69: `/services/event-website-design` — CRO 165 elements + 5 links ✅ Published
-- Page 70: `/services/premium-healthy-food-website-design` — CRO 167 elements + 5 links (pre-existing) ✅ Pending publish (rate limited)
-- Page 71: `/services/automotive-website-design` — parsed 160 elements, keywords ready, MCP timeout
-
-### Next Page (Page 71 — in progress)
+### 🚨 Page 76 — IN PROGRESS (ต้องทำต่อพรุ่งนี้!)
 ```
-/services/automotive-website-design
-page_id: 687a589a02c1bf411c811cd4
-Keywords: โชว์รูมรถยนต์ (2,900), Digital Showroom (9,900)
-Elements: 160, No existing links
-Status: MCP Designer timed out — need to reactivate Designer tab
-56 remaining
+/services/global-ecommerce-website-development
+page_id / component: 68765c9e42d65abb4674af48
+Keywords: global ecommerce website development (PASS)
+```
+
+**สถานะ Page 76:**
+- CRO Rewrite: ✅ 169/169 elements DONE (Batch 1-56)
+- Links สร้างแล้ว 5/5 แต่มีปัญหา:
+  1. pricing → /services/ecommerce-website ✅ CONFIRMED (fixed text+url)
+  2. pricing → /services/premium-toy-ecommerce-website ✅ SUCCESS
+  3. features → /services/mother-and-child-ecommerce-website ✅ SUCCESS
+  4. faq → /services/webflow-ecommerce-store-development ⚠️ timeout + test duplicate — fixed 1 link แต่อาจมี duplicate
+  5. cta → /services/e-commerce-website-design ⚠️ timeout — fixed text+url แต่อาจมี duplicate
+
+**สิ่งที่ต้องทำพรุ่งนี้:**
+1. เปิด Designer → ดู visual ที่ FAQ section + bottom CTA section
+2. ลบ link ซ้ำ (ถ้ามี) — หา link ที่ text = "Text Link" หรือ href = "#"
+3. get_all_elements timeout ซ้ำ (หน้าหนัก 169+ elements + links ที่เพิ่ม)
+   → อาจต้อง refresh Designer page ก่อน get_all_elements
+4. validate-links.py → ต้อง PASS
+5. Publish Page 76
+6. Update skill file → 76/126 done, 380 links
+
+**ปัญหา get_all_elements:**
+- timeout 4+ ครั้ง — payload ใหญ่เกินจากหน้าที่มี elements เยอะ
+- element_builder timeout 3+ ครั้ง — แต่สร้างจริงทุกครั้ง (timeout ≠ failure)
+- bridge (get_selected_element, set_text, set_link) ยังทำงานปกติ
+
+### Next Pages (หลัง 76 เสร็จ)
+```
+77. /services/shopee-lazada-marketplace-expert
+78. /services/e-commerce-website-design
+50 remaining after 76
 ```
 
 ### Script หา next page
@@ -715,8 +786,8 @@ Service Pages Meta:     221/246 ✅ (90%)
 Showcase Content:       17/17 ✅
 Showcase IL:            17/17 ✅ (55 links)
 Blog Title+Meta:        381/381 ✅
-Service Page CRO:       70/126 ✅ (56%) → ψ/skills/service-page-seo.md
-Service Page IL:        70/126 ✅ (350 links) → ψ/skills/service-page-seo.md
+Service Page CRO:       75/126 ✅ (60%) + Page 76 in progress → ψ/skills/service-page-seo.md
+Service Page IL:        75/126 ✅ (375 links) + Page 76 links done (needs verify) → ψ/skills/service-page-seo.md
 Blog Rewrite:           381/381 ✅ COMPLETE (2026-02-11)
 Backlinks:              0 ⏳ (plan ready → ψ/skills/backlink-auto.md)
 

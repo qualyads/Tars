@@ -109,7 +109,7 @@
     "auto_reply_line": true,
     "auto_morning_briefing": true,
     "auto_rank_report": true,
-    "auto_opportunity_alert": true,
+    "auto_opportunity_alert": false,
     "auto_investment_alert": true,
     "require_approval": ["booking", "refund", "promotion", "negative_review_response", "large_purchase", "contract"]
   },
