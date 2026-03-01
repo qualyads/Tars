@@ -1381,6 +1381,12 @@ async function sendFullOutreachEmail(lead) {
     };
   } catch (error) {
     console.error(`[AUTO-EMAIL] ❌ Failed for ${bizName} (${to}):`, error.message);
+    // Alert Tar via Telegram if token/auth error
+    if (error.message && (error.message.includes('invalid_grant') || error.message.includes('invalid_rapt') || error.message.includes('Token refresh failed'))) {
+      try {
+        await telegram.notifyOwner(`🚨 Gmail Token ตาย! ส่ง email ไม่ได้\n\nLead: ${bizName}\nError: ${error.message}\n\nแก้: รัน node get-gmail-token.js`);
+      } catch (_) {}
+    }
     return { success: false, error: error.message };
   }
 }
@@ -1493,6 +1499,9 @@ async function sendFollowUp(lead, followUpNumber) {
         return { success: true, messageId: result.id, threadId: result.threadId, sentAt: new Date().toISOString() };
       } catch (sendErr) {
         console.error(`[FOLLOW-UP] ❌ Failed to send to ${lead.email}:`, sendErr.message);
+        if (sendErr.message && (sendErr.message.includes('invalid_grant') || sendErr.message.includes('invalid_rapt') || sendErr.message.includes('Token refresh failed'))) {
+          try { await telegram.notifyOwner(`🚨 Gmail Token ตาย! follow-up ส่งไม่ได้\n\nError: ${sendErr.message}\n\nแก้: รัน node get-gmail-token.js`); } catch (_) {}
+        }
         return { success: false, error: sendErr.message };
       }
     }
@@ -2657,6 +2666,9 @@ function addManualDomain(domain, industry = 'ไม่ระบุ') {
 function getStats() {
   const leadsData = loadLeads();
   const leads = leadsData.leads;
+  const isGmailSync = l => l.source === 'gmail_sync' || l.reason === 'synced from Gmail SENT';
+  const real = leads.filter(l => !isGmailSync(l));
+  const synced = leads.filter(l => isGmailSync(l));
 
   return {
     total: leads.length,
@@ -2669,7 +2681,20 @@ function getStats() {
     closed: leads.filter(l => l.status === 'closed').length,
     bounced: leads.filter(l => l.status === 'bounced').length,
     processedDomains: leadsData.processedDomains.length,
-    lastRun: leadsData.lastRun
+    lastRun: leadsData.lastRun,
+    breakdown: {
+      real: {
+        total: real.length,
+        emailed: real.filter(l => l.status === 'emailed').length,
+        bounced: real.filter(l => l.status === 'bounced').length,
+        replied: real.filter(l => l.status === 'replied' || l.status === 'audit_sent').length
+      },
+      gmailSynced: {
+        total: synced.length,
+        emailed: synced.filter(l => l.status === 'emailed').length,
+        bounced: synced.filter(l => l.status === 'bounced').length
+      }
+    }
   };
 }
 

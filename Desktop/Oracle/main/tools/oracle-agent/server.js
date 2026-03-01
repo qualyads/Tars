@@ -5920,6 +5920,31 @@ cron.schedule('0 9,12,15,18 * * *', async () => {
   }
 }, { timezone: config.agent.timezone });
 
+// Gmail Health Check: ทุก 6 ชม. — เช็ค token ยังใช้ได้ไหม แจ้ง Telegram ถ้าตาย
+cron.schedule('0 6,12,18,0 * * *', async () => {
+  try {
+    const token = await gmailClient.getAccessToken();
+    if (token) {
+      console.log('[GMAIL-HEALTH] ✅ Token OK');
+    }
+  } catch (error) {
+    console.error('[GMAIL-HEALTH] ❌ Token FAILED:', error.message);
+    try {
+      await telegram.notifyOwner(
+        `🚨 Gmail Token ตาย!\n\n` +
+        `Error: ${error.message}\n\n` +
+        `ระบบ email lead หยุดทำงาน:\n` +
+        `- ส่ง email ไม่ได้\n` +
+        `- เช็ค reply ไม่ได้\n` +
+        `- follow-up ไม่ได้\n\n` +
+        `แก้: รัน node get-gmail-token.js แล้วอัพเดท Railway`
+      );
+    } catch (tgErr) {
+      console.error('[GMAIL-HEALTH] Telegram notify failed:', tgErr.message);
+    }
+  }
+}, { timezone: config.agent.timezone });
+
 // =============================================================================
 // BACKLINK ENGINE — Auto Backlink Building (Phase 13)
 // =============================================================================
@@ -7093,17 +7118,39 @@ app.get('/api/email/click/:trackingId', (req, res) => {
 app.get('/api/email/stats', async (req, res) => {
   try {
     const leads = leadFinder.getLeads();
+    const isGmailSync = l => l.source === 'gmail_sync' || l.reason === 'synced from Gmail SENT';
     const emailed = leads.filter(l => l.emailSentAt || l.status === 'emailed');
     const delivered = emailed.filter(l => l.status !== 'bounced');
     const pixelOpened = leads.filter(l => l.emailOpened);
     const clicked = leads.filter(l => l.emailClicked);
     const replied = leads.filter(l => l.status === 'replied');
     const bounced = emailed.filter(l => l.status === 'bounced');
+
+    // Separate real lead finder vs gmail synced
+    const realEmailed = emailed.filter(l => !isGmailSync(l));
+    const realBounced = realEmailed.filter(l => l.status === 'bounced');
+    const realDelivered = realEmailed.filter(l => l.status !== 'bounced');
+    const gmailEmailed = emailed.filter(l => isGmailSync(l));
+    const gmailBounced = gmailEmailed.filter(l => l.status === 'bounced');
+
     res.json({
       totalEmailed: emailed.length,
       totalDelivered: delivered.length,
       totalBounced: bounced.length,
       bounceRate: emailed.length ? Math.round((bounced.length / emailed.length) * 100) + '%' : '0%',
+      // Real lead finder stats (excludes gmail sync)
+      realLeadFinder: {
+        emailed: realEmailed.length,
+        delivered: realDelivered.length,
+        bounced: realBounced.length,
+        bounceRate: realEmailed.length ? Math.round((realBounced.length / realEmailed.length) * 100) + '%' : '0%',
+        bounceRateNum: realEmailed.length ? Math.round((realBounced.length / realEmailed.length) * 100) : 0
+      },
+      gmailSynced: {
+        emailed: gmailEmailed.length,
+        bounced: gmailBounced.length,
+        bounceRate: gmailEmailed.length ? Math.round((gmailBounced.length / gmailEmailed.length) * 100) + '%' : '0%'
+      },
       pixelOpens: pixelOpened.length,
       pixelOpenNote: 'Gmail pre-fetch ทำให้ไม่แม่น — ดู clicks แทน',
       totalClicked: clicked.length,
@@ -7119,7 +7166,8 @@ app.get('/api/email/stats', async (req, res) => {
         clicked: l.emailClicked || false,
         clickCount: l.emailClickCount || 0,
         firstClick: l.emailClickedAt || null,
-        lastClick: l.lastClickAt || null
+        lastClick: l.lastClickAt || null,
+        source: isGmailSync(l) ? 'gmail_sync' : 'lead_finder'
       }))
     });
   } catch (e) {
@@ -7858,6 +7906,7 @@ app.post('/api/email/sync-history', async (req, res) => {
         websiteScore: 0,
         websiteIssues: [],
         isGoodTarget: true,
+        source: 'gmail_sync',
         reason: 'synced from Gmail SENT',
         status: 'emailed',
         foundAt: new Date(date).toISOString(),
@@ -8757,7 +8806,7 @@ const server = app.listen(PORT, async () => {
               url: isFreeMail ? '' : `https://${toDomain}`,
               industry: '', businessName: bizName, businessNameEn: '', emails: [toEmail], email: toEmail,
               phones: [], lineId: null, facebook: null, address: '', googleMapsLink: null,
-              websiteScore: 0, websiteIssues: [], isGoodTarget: true, reason: 'synced from Gmail SENT',
+              websiteScore: 0, websiteIssues: [], isGoodTarget: true, source: 'gmail_sync', reason: 'synced from Gmail SENT',
               status: 'emailed', foundAt: new Date(date).toISOString(), emailSentAt: new Date(date).toISOString(),
               emailSentTo: toEmail, threadId: email.threadId || null, followUps: 0, gmailMessageId: email.id
             });

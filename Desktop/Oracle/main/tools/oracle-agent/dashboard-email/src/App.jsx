@@ -51,11 +51,15 @@ function HeroKPIs({ leads, email }) {
   const bounced = email?.totalBounced || 0;
   const clicked = email?.totalClicked || 0;
   const replied = email?.totalReplied || leads?.replied || 0;
+  const real = email?.realLeadFinder;
+  const realBounced = real?.bounced || 0;
+  const realEmailed = real?.emailed || emailed;
+  const realBounceRate = real?.bounceRate || '0%';
 
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
       <StatCard title="ลีดทั้งหมด" value={fmtNum(total)} badge="all-time" />
-      <StatCard title="ส่งอีเมลแล้ว" value={fmtNum(emailed)} badge={bounced > 0 ? `${fmtNum(delivered)} delivered, ${fmtNum(bounced)} bounce` : pctOf(emailed, total) + ' of total'} />
+      <StatCard title="ส่งอีเมลแล้ว" value={fmtNum(emailed)} badge={realBounced > 0 ? `${fmtNum(realEmailed)} real, bounce ${realBounceRate}` : pctOf(emailed, total) + ' of total'} />
       <StatCard title="คลิกลิงก์" value={fmtNum(clicked)} badge={delivered > 0 ? ((clicked / delivered) * 100).toFixed(1) + '% click rate' : '0%'} />
       <StatCard title="ตอบกลับ" value={fmtNum(replied)} badge={delivered > 0 ? ((replied / delivered) * 100).toFixed(1) + '% reply rate' : 'ยังไม่มี'} />
     </div>
@@ -440,9 +444,9 @@ function ActionItems({ leads, email, emailLeads }) {
   const delivered = email?.totalDelivered || emailed;
   const clicked = email?.totalClicked || 0;
   const replied = email?.totalReplied || leads?.replied || 0;
-  const bounced = email?.totalBounced || 0;
+  const realBounceRateNum = email?.realLeadFinder?.bounceRateNum || 0;
   const clickRate = delivered > 0 ? (clicked / delivered) * 100 : 0;
-  const bounceRate = emailed > 0 ? (bounced / emailed) * 100 : 0;
+  const bounceRate = realBounceRateNum;
 
   if (replied === 0 && emailed > 20) {
     actions.push({
